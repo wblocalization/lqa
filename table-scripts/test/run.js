@@ -241,6 +241,47 @@ test('Фильтры', () => {
   G.showInProgressTranslatorTasks(); G.showAllTranslatorTasks();
 });
 
+test('Правка прямо в листе: журнал, цветные языки, новая строка получает номер и списки', () => {
+  const sh = tasks();
+  const row = rowOf('LIT-7');
+  const old = sh.getRange(row, 10).getValue();
+  sh.getRange(row, 10).setValue('Холд');
+  G.onEdit({ range: sh.getRange(row, 10), oldValue: old, value: 'Холд' });
+  let last = log().getRange(log().getLastRow(), 1, 1, 7).getValues()[0];
+  same([last[2], last[3], last[4], last[5], last[6]], ['Правка в таблице', 'LIT-7', 'Статус', old, 'Холд']);
+
+  sh.getRange(row, 7).setValue('Грузинский, Узбекский');
+  G.onEdit({ range: sh.getRange(row, 7), oldValue: 'x', value: 'Грузинский, Узбекский' });
+  assert.ok(sh.getRange(row, 7).getRichTextValue().styles.length === 2, 'языки покрашены');
+
+  // Новая задача вписана руками в пустую строку под последней
+  const r = sh.getLastRow() + 1;
+  sh.getRange(r, 3).setValue('Задача руками');
+  G.onEdit({ range: sh.getRange(r, 3), value: 'Задача руками' });
+  assert.ok(sh.getRange(r, 10).getDataValidation(), 'списки появились');
+  assert.equal(sh.getRange(r, 1).getValue(), '', 'без подрядчика номера ещё нет');
+  sh.getRange(r, 13).setValue('LogrusIT');
+  G.onEdit({ range: sh.getRange(r, 13), value: 'LogrusIT' });
+  assert.match(String(sh.getRange(r, 1).getValue()), /^LIT-26-\d+$/);
+  last = log().getRange(log().getLastRow(), 1, 1, 7).getValues()[0];
+  assert.ok(['Создание задачи (в таблице)', 'Правка в таблице'].includes(last[2]));
+
+  // Дата: в событии приходит числом — в журнал пишется датой
+  assert.equal(G.editedText_('46296', true), '01.10.2026');
+
+  // Переводчики
+  const t = tr(); const tr2 = t.getLastRow() + 1;
+  t.getRange(tr2, 4).setValue('Руками');
+  G.onEdit({ range: t.getRange(tr2, 4), value: 'Руками' });
+  assert.ok(t.getRange(tr2, 8).getDataValidation());
+  last = log().getRange(log().getLastRow(), 1, 1, 7).getValues()[0];
+  assert.equal(last[2], 'Правка в таблице (переводчик)');
+
+  // «Списки» — обновляются цвета, без ошибок
+  G.onEdit({ range: ss.getSheetByName('Списки').getRange('E20') });
+  assert.equal(ctx.SCRIPT_LOCK_HELD, false);
+});
+
 test('colorizeRowDirectly: на оформленном листе не красит, на неоформленном — правильные колонки', () => {
   const sh = ss.insertSheet('TS');
   sh.getRange(1, 1, 2, 17).setValues([Array(17).fill('h'), ['TS-1', '', 'x', '', 'Магазинка', '', '', 'ASAP', '', 'Принято', '', '', 'LogrusIT', 'Анастасия Лисовая', '', '', '']]);

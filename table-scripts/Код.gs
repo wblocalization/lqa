@@ -120,13 +120,71 @@ function onOpen() {
 }
 
 /**
- * Правка на листе «Списки» (новый менеджер, продукт, подрядчик) — сразу обновляем цвета.
- * Выпадающие списки подтягиваются из «Списков» сами.
+ * Правки прямо в листе (без окон):
+ *  - «Списки» — сразу обновляем цвета (выпадающие списки подтягиваются сами);
+ *  - лист задач — языки красятся, новая строка получает выпадающие списки и номер, правка идёт в «Журнал»;
+ *  - лист переводчиков — новая строка получает выпадающие списки, правка идёт в «Журнал».
  */
 function onEdit(e) {
   if (!e || !e.range) return;
-  if (e.range.getSheet().getName() !== LISTS_SHEET) return;
-  try { refreshColorRules_(); } catch (err) {}
+  const name = e.range.getSheet().getName();
+  try {
+    if (name === LISTS_SHEET) refreshColorRules_();
+    else if (name === TASKS_SHEET) onTasksEdit_(e);
+    else if (name === TRANSLATORS_SHEET) onTranslatorsEdit_(e);
+  } catch (err) {}
+}
+
+/** Значение из события правки в читаемый вид (даты приходят числом). */
+function editedText_(v, isDate) {
+  if (v === undefined || v === null) return '';
+  if (isDate && /^\d+(\.\d+)?$/.test(String(v))) return fmtDate_(new Date(Math.round((Number(v) - 25569) * 86400000)), 'dd.MM.yyyy');
+  return String(v);
+}
+
+function onTasksEdit_(e) {
+  const range = e.range, sh = range.getSheet();
+  const row = range.getRow(), n = range.getNumRows();
+  const col = range.getColumn(), lastCol = col + range.getNumColumns() - 1;
+  if (row < 2) return;
+
+  // Новая строка, вписанная руками, — ставим выпадающие списки
+  if (!sh.getRange(row, COL.STATUS).getDataValidation()) applyTaskValidations_(sh, row, n);
+  if (n > 50) return; // большая вставка — дальше не разбираем построчно
+
+  const values = sh.getRange(row, 1, n, TASK_COLS).getValues();
+  values.forEach((r, i) => {
+    // Номер задачи, если его нет: как только есть подрядчик и тема
+    if (!str_(r[COL.ID - 1]) && str_(r[COL.CONTRACTOR - 1]) && str_(r[COL.SUBJECT - 1])) {
+      withScriptLock_(() => {
+        const id = generateNextTaskId(sh, str_(r[COL.CONTRACTOR - 1]));
+        sh.getRange(row + i, COL.ID).setValue(id);
+        r[COL.ID - 1] = id;
+        logChange('Создание задачи (в таблице)', id, 'Тема письма', '', str_(r[COL.SUBJECT - 1]));
+      });
+    }
+    if (col <= COL.LANGS && lastCol >= COL.LANGS) colorizeLanguagesCell(sh, row + i);
+  });
+
+  // Одна ячейка — пишем в журнал, что было и что стало
+  if (n === 1 && col === lastCol && col !== COL.ID) {
+    const isDate = col === COL.DATE || col === COL.DUE;
+    const before = editedText_(e.oldValue, isDate), after = cellText_(values[0][col - 1]);
+    if (before !== after) logChange('Правка в таблице', str_(values[0][COL.ID - 1]), TASK_FIELD_NAMES[col], before, after);
+  }
+}
+
+function onTranslatorsEdit_(e) {
+  const range = e.range, sh = range.getSheet();
+  const row = range.getRow(), col = range.getColumn();
+  if (row < 2) return;
+  if (!sh.getRange(row, TCOL.READY).getDataValidation()) applyTranslatorValidations_(sh, row, range.getNumRows());
+  if (range.getNumRows() === 1 && range.getNumColumns() === 1) {
+    const r = sh.getRange(row, 1, 1, TR_COLS).getValues()[0];
+    const names = ['Дата', 'Сторона', 'Раздел', 'Задача', 'Заказчик', 'Переводчик', 'Редактор', 'Готовность', 'Комментарий'];
+    const before = editedText_(e.oldValue, col === TCOL.DATE), after = cellText_(r[col - 1]);
+    if (before !== after) logChange('Правка в таблице (переводчик)', str_(r[TCOL.TASK - 1]), names[col - 1], before, after);
+  }
 }
 
 // Старые пункты меню — теперь всё делает «Оформить таблицу».
@@ -1862,6 +1920,11 @@ function writeManagerGuide_() {
         'Статус меняется одной кнопкой, остальное — в блоках ниже.',
         '«Сохранить». Все правки попадают в «📝 Журнал».'],
         hint: 'Удалить задачу — внизу окна, спросит подтверждение. Отменить удаление нельзя.' },
+      { icon: '✏️', title: 'Можно править прямо в листе', rows: [
+        ['Статус, сроки, SP…', 'Меняйте прямо в ячейке — цвета обновятся сами, правка попадёт в «📝 Журнал».'],
+        ['Языки', 'Через запятую, как в других строках: «Грузинский, Казахский». Цвет появится сам.'],
+        ['Новая задача', 'Можно вписать в пустую строку: как только есть тема и подрядчик, появится номер.']],
+        hint: 'Через «➕ Добавить задачу» всё равно удобнее: тема письма соберётся сама, её можно сразу скопировать.' },
       { icon: '📅', title: 'Сроки и статусы', rows: [
         ['Дедлайн', 'Примерная срочность: ASAP, 1-2 дня, до недели…'],
         ['Срок сдачи', 'Дата, к которой нужно сдать заказчику.'],

@@ -154,6 +154,8 @@ class Range {
   each(fn) { for (let i = 0; i < this.nr; i++) for (let j = 0; j < this.nc; j++) fn(this.r + i, this.c + j, i, j); }
   getSheet() { return this.sh; }
   getRow() { return this.r; }
+  getNumRows() { return this.nr; }
+  getNumColumns() { return this.nc; }
   getColumn() { return this.c; }
   getValues() { const out = []; for (let i = 0; i < this.nr; i++) { const row = []; for (let j = 0; j < this.nc; j++) row.push(this.sh.peek(this.r + i, this.c + j).v ?? ''); out.push(row); } return out; }
   getValue() { return this.sh.peek(this.r, this.c).v ?? ''; }
