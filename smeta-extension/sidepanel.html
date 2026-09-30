@@ -6,57 +6,87 @@
 <link rel="stylesheet" href="sidepanel.css">
 </head>
 <body>
-<main>
-  <header>
-    <p class="eyebrow">Сметы → таблица</p>
-    <h1>Новая смета</h1>
-  </header>
+<header class="top">
+  <h1>Сметы</h1>
+  <button id="openSettings" class="icon-btn" type="button" title="Настройки" aria-label="Настройки">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.09a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+  </button>
+</header>
 
-  <details id="settings">
-    <summary>⚙️ Настройки</summary>
-    <label>Адрес веб-приложения Apps Script
+<main>
+  <section id="settings" class="card settings" hidden>
+    <h2>Настройки</h2>
+    <label>Адрес веб-приложения
       <input id="setUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec">
     </label>
     <label>Токен
       <input id="setToken" type="password" autocomplete="off">
     </label>
-    <label>Ваше имя (для «Журнала»)
+    <label>Ваше имя <span class="opt">для «Журнала»</span>
       <input id="setUser" type="text" placeholder="Анастасия Лисовая">
     </label>
-    <label>Коды подрядчиков через запятую
+    <label>Коды подрядчиков <span class="opt">через запятую</span>
       <input id="setPrefixes" type="text" placeholder="LIT">
     </label>
-    <button id="saveSettings" class="btn ghost" type="button">Сохранить</button>
-  </details>
+    <div class="row-btns">
+      <button id="closeSettings" class="btn ghost" type="button">Отмена</button>
+      <button id="saveSettings" class="btn" type="button">Сохранить</button>
+    </div>
+  </section>
 
-  <label id="drop" class="drop">
-    <input id="file" type="file" accept="application/pdf,.pdf" hidden>
-    <strong>Перетащите PDF сметы сюда</strong>
-    <span>или нажмите, чтобы выбрать файл</span>
-  </label>
+  <section id="empty">
+    <label id="drop" class="drop">
+      <input id="file" type="file" accept="application/pdf,.pdf" hidden>
+      <span class="drop-icon" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="m9 15 3-3 3 3"/></svg>
+      </span>
+      <strong>Перетащите PDF сметы</strong>
+      <span>или нажмите, чтобы выбрать</span>
+    </label>
+    <p class="muted center">Номер задачи и сумма с НДС найдутся сами</p>
+  </section>
 
   <form id="form" hidden>
-    <p id="fileName" class="muted mono"></p>
+    <div class="file-chip">
+      <span class="pdf-badge">PDF</span>
+      <span id="fileName" class="file-name"></span>
+      <button id="reset" class="icon-btn small" type="button" title="Другая смета" aria-label="Другая смета">✕</button>
+    </div>
 
-    <label>Задача
-      <input id="task" type="text" required placeholder="LIT-26" autocomplete="off">
-    </label>
-    <div id="rowInfo" class="rowinfo" hidden></div>
+    <div class="card amount">
+      <label for="total" class="eyebrow">Итого с НДС</label>
+      <div class="amount-line">
+        <input id="total" type="text" inputmode="decimal" required>
+        <span class="cur">₽</span>
+      </div>
+      <p id="totalHint" class="hint"></p>
+    </div>
 
-    <label>Итого с НДС, ₽
-      <input id="total" type="text" inputmode="decimal" required>
-    </label>
-    <p id="totalHint" class="muted"></p>
+    <div class="card">
+      <label for="task" class="eyebrow">Задача</label>
+      <input id="task" class="task-input" type="text" required placeholder="LIT-26" autocomplete="off">
+      <div id="rowInfo" class="rowinfo" hidden></div>
+    </div>
 
-    <label>Ссылка на смету на ВБ Диске
-      <span class="with-btn">
+    <div class="card">
+      <label for="link" class="eyebrow">Ссылка на ВБ Диск</label>
+      <div class="with-btn">
         <input id="link" type="url" required placeholder="https://…">
-        <button id="pasteLink" class="btn ghost small" type="button" title="Вставить из буфера">📋</button>
-      </span>
-    </label>
+        <button id="pasteLink" class="btn ghost" type="button" title="Вставить из буфера">Вставить</button>
+      </div>
+    </div>
 
-    <button id="submit" class="btn" type="submit">Записать в таблицу</button>
+    <button id="submit" class="btn primary" type="submit">Записать в таблицу</button>
   </form>
+
+  <section id="done" class="done" hidden>
+    <span class="done-check" aria-hidden="true">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+    </span>
+    <h2>Записано</h2>
+    <p id="doneText"></p>
+    <button id="again" class="btn primary" type="button">Ещё одна смета</button>
+  </section>
 
   <p id="status" class="status" role="status"></p>
 </main>

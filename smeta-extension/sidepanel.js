@@ -7,7 +7,9 @@ const $ = (s) => document.querySelector(s);
 const els = {
   settings: $('#settings'), setUrl: $('#setUrl'), setToken: $('#setToken'), setUser: $('#setUser'),
   setPrefixes: $('#setPrefixes'), saveSettings: $('#saveSettings'),
-  drop: $('#drop'), file: $('#file'), form: $('#form'), fileName: $('#fileName'),
+  openSettings: $('#openSettings'), closeSettings: $('#closeSettings'),
+  empty: $('#empty'), drop: $('#drop'), file: $('#file'), form: $('#form'), fileName: $('#fileName'),
+  reset: $('#reset'), done: $('#done'), doneText: $('#doneText'), again: $('#again'),
   task: $('#task'), rowInfo: $('#rowInfo'), total: $('#total'), totalHint: $('#totalHint'),
   link: $('#link'), pasteLink: $('#pasteLink'), submit: $('#submit'), status: $('#status'),
 };
@@ -19,12 +21,22 @@ let current = null; // { fileName } — смета, которая сейчас 
 async function loadSettings() {
   const saved = await chrome.storage.local.get('settings');
   settings = { ...settings, ...(saved.settings || {}) };
+  fillSettings();
+  if (!settings.url || !settings.token) els.settings.hidden = false;
+}
+
+function fillSettings() {
   els.setUrl.value = settings.url;
   els.setToken.value = settings.token;
   els.setUser.value = settings.user;
   els.setPrefixes.value = settings.prefixes;
-  if (!settings.url || !settings.token) els.settings.open = true;
 }
+
+els.openSettings.addEventListener('click', () => {
+  fillSettings();
+  els.settings.hidden = !els.settings.hidden;
+});
+els.closeSettings.addEventListener('click', () => { els.settings.hidden = true; });
 
 els.saveSettings.addEventListener('click', async () => {
   settings = {
@@ -34,7 +46,7 @@ els.saveSettings.addEventListener('click', async () => {
     prefixes: els.setPrefixes.value.trim() || DEFAULT_PREFIXES.join(', '),
   };
   await chrome.storage.local.set({ settings });
-  els.settings.open = false;
+  els.settings.hidden = true;
   setStatus('Настройки сохранены', 'ok');
   if (els.task.value) lookup();
 });
@@ -46,6 +58,23 @@ function setStatus(text, kind = 'info') {
   els.status.textContent = text;
   els.status.className = `status ${kind}`;
 }
+
+// ---------- Экраны: пусто → форма → готово ----------
+function showScreen(name) {
+  els.empty.hidden = name !== 'empty';
+  els.form.hidden = name !== 'form';
+  els.done.hidden = name !== 'done';
+}
+
+function resetToEmpty() {
+  current = null;
+  els.file.value = '';
+  showRow(null);
+  setStatus('');
+  showScreen('empty');
+}
+els.reset.addEventListener('click', resetToEmpty);
+els.again.addEventListener('click', resetToEmpty);
 
 // ---------- Чтение PDF ----------
 async function readPdfTexts(file) {
@@ -75,18 +104,18 @@ async function handleFile(file) {
   }
 
   current = { fileName: file.name };
-  els.form.hidden = false;
+  showScreen('form');
   els.fileName.textContent = file.name;
   els.task.value = parsed.task || '';
   els.total.value = parsed.total ? formatMoney(parsed.total.gross) : '';
   els.totalHint.textContent = parsed.total
     ? `без НДС ${formatMoney(parsed.total.net)} + НДС ${Math.round(parsed.total.rate * 100)}% ${formatMoney(parsed.total.vat)}`
     : 'Итог с НДС не нашёлся — впишите вручную.';
+  els.totalHint.classList.toggle('bad', !parsed.total);
   els.link.value = '';
 
   const missing = [!parsed.task && 'номер задачи', !parsed.total && 'итог с НДС'].filter(Boolean);
-  setStatus(missing.length ? `Не нашлось: ${missing.join(', ')}. Проверьте поля.` : 'Проверьте данные и вставьте ссылку с ВБ Диска.',
-    missing.length ? 'err' : 'info');
+  setStatus(missing.length ? `Не нашлось: ${missing.join(', ')}. Проверьте поля.` : '', missing.length ? 'err' : 'info');
   lookup();
   (parsed.task && parsed.total ? els.link : els.task).focus();
 }
@@ -129,7 +158,7 @@ async function lookup() {
     showRow({ kind: 'warn', html: 'Настройки не заполнены — строку в таблице не проверить.' });
     return;
   }
-  showRow({ kind: '', html: `Ищу ${esc(task)} в таблице…` });
+  showRow({ kind: 'pending', html: `Ищу ${esc(task)} в таблице…` });
   try {
     const r = await api({ action: 'lookup', task });
     if (seq !== lookupSeq) return;
@@ -141,8 +170,8 @@ async function lookup() {
     const filled = r.link || r.total;
     showRow({
       kind: filled ? 'warn' : '',
-      html: `<b>${esc(r.subject || task)}</b><br>${esc([r.contractor, r.manager].filter(Boolean).join(' · '))}` +
-        (filled ? `<br>⚠️ Смета уже внесена: ${esc(r.total ? formatMoney(Number(r.total)) + ' ₽' : '—')}. При записи перезапишется.` : ''),
+      html: `<b>${esc(r.subject || task)}</b><span class="meta">${esc([r.contractor, r.manager].filter(Boolean).join(' · '))}</span>` +
+        (filled ? `<span class="note">Смета уже внесена: ${esc(r.total ? formatMoney(Number(r.total)) + ' ₽' : '—')}. При записи перезапишется.</span>` : ''),
     });
   } catch (e) {
     if (seq !== lookupSeq) return;
@@ -193,10 +222,11 @@ els.form.addEventListener('submit', async (e) => {
       r = await api({ action: 'write', task, total, link, fileName: current?.fileName || '', overwrite: true });
     }
     if (!r.ok) throw new Error(r.error);
-    setStatus(`✅ ${task}: ${formatMoney(total)} ₽ и ссылка записаны (строка ${r.row})`, 'ok');
-    els.form.hidden = true;
-    els.file.value = '';
+    els.doneText.textContent = `${task} · ${formatMoney(total)} ₽ и ссылка в строке ${r.row}`;
+    setStatus('');
     current = null;
+    els.file.value = '';
+    showScreen('done');
   } catch (err) {
     setStatus(`Не записалось: ${err.message}`, 'err');
   } finally {
