@@ -58,7 +58,7 @@ function smetaLookup_(req) {
   if (!t) return { ok: true, found: false };
   const v = t.values;
   return {
-    ok: true, found: true, row: t.row,
+    ok: true, found: true, row: t.row, matched: t.matched,
     subject: v[t.col.subject], contractor: v[t.col.contractor], manager: v[t.col.manager],
     link: v[t.col.link], total: v[t.col.total],
   };
@@ -91,7 +91,7 @@ function smetaWrite_(req) {
 
 function smetaFindTask_(task) {
   const taskId = String(task || '').trim().toUpperCase();
-  if (!/^[A-Z]+-\d+$/.test(taskId)) throw new Error('Номер задачи должен быть вида LIT-26');
+  if (!/^[A-Z]+-\d+(-\d+)?$/.test(taskId)) throw new Error('Номер должен быть вида LIT-26-2203');
 
   const sheet = smetaSpreadsheet_().getSheetByName(SMETA_TASKS_SHEET);
   if (!sheet) throw new Error('Нет листа «' + SMETA_TASKS_SHEET + '»');
@@ -104,9 +104,15 @@ function smetaFindTask_(task) {
     if (col[k] < 0) throw new Error('Не найдена колонка «' + SMETA_H[k] + '»');
   });
 
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][col.task]).trim().toUpperCase() === taskId) {
-      return { sheet: sheet, row: i + 1, values: data[i], col: col, taskId: taskId };
+  // Сначала ищем номер целиком (LIT-26-2203), потом — строку задачи без номера сметы (LIT-26).
+  const candidates = [taskId];
+  const short = taskId.match(/^([A-Z]+-\d+)-\d+$/);
+  if (short) candidates.push(short[1]);
+  for (const id of candidates) {
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][col.task]).trim().toUpperCase() === id) {
+        return { sheet: sheet, row: i + 1, values: data[i], col: col, taskId: taskId, matched: id };
+      }
     }
   }
   return null;

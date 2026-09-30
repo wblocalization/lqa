@@ -10,21 +10,21 @@ test('parseMoney понимает пробелы и запятую', () => {
 });
 
 test('номер задачи берётся из имени файла', () => {
-  assert.equal(taskFromFileName('LIT-26-2203.pdf'), 'LIT-26');
-  assert.equal(taskFromFileName('LIT-26-2203 РВБ.pdf'), 'LIT-26');
-  assert.equal(taskFromFileName('LIT-26-2203_РВБ.pdf'), 'LIT-26');
-  assert.equal(taskFromFileName('LIT-26-2203 RWB-1.pdf'), 'LIT-26');
-  assert.equal(taskFromFileName('419cc3c8-LIT-26-2217-___.pdf'), 'LIT-26');
-  assert.equal(taskFromFileName('Смета GLB-5-100 финал.pdf'), 'GLB-5');
+  assert.equal(taskFromFileName('LIT-26-2203.pdf'), 'LIT-26-2203');
+  assert.equal(taskFromFileName('LIT-26-2203 РВБ.pdf'), 'LIT-26-2203');
+  assert.equal(taskFromFileName('LIT-26-2203_РВБ.pdf'), 'LIT-26-2203');
+  assert.equal(taskFromFileName('LIT-26-2203 RWB-1.pdf'), 'LIT-26-2203');
+  assert.equal(taskFromFileName('419cc3c8-LIT-26-2217-___.pdf'), 'LIT-26-2217');
+  assert.equal(taskFromFileName('Смета GLB-5-100 финал.pdf'), 'GLB-5-100');
   assert.equal(taskFromFileName('lit_7.pdf'), 'LIT-7');
   assert.equal(taskFromFileName('смета от 22.09.pdf'), null);
 });
 
 test('если в имени файла номера нет — берётся номер сметы из текста, а не чужой код', () => {
-  assert.equal(taskFromTexts(['WB-2063_AZ_AM_HY', '1LIT-26-2217']), 'LIT-26');
+  assert.equal(taskFromTexts(['WB-2063_AZ_AM_HY', '1LIT-26-2217']), 'LIT-26-2217');
   assert.equal(taskFromTexts(['WB-2063_AZ_AM_HY']), null);
-  assert.equal(parseEstimate(['1LIT-26-2217'], 'LIT-30-1.pdf').task, 'LIT-30');
-  assert.equal(parseEstimate(['1LIT-26-2217'], 'смета.pdf').task, 'LIT-26');
+  assert.equal(parseEstimate(['1LIT-26-2217'], 'LIT-30-1.pdf').task, 'LIT-30-1');
+  assert.equal(parseEstimate(['1LIT-26-2217'], 'смета.pdf').task, 'LIT-26-2217');
 });
 
 test('итог с НДС находится по арифметике, а не по подписям', () => {
@@ -36,7 +36,7 @@ test('итог с НДС находится по арифметике, а не �
     'Без НДС', 'НДС (22%)', 'С НДС',
   ];
   const r = parseEstimate(texts, 'LIT-26-2217 смета.pdf');
-  assert.equal(r.task, 'LIT-26');
+  assert.equal(r.task, 'LIT-26-2217');
   assert.deepEqual(r.total, { net: 90925.53, vat: 20003.62, gross: 110929.15, rate: 0.22 });
 });
 

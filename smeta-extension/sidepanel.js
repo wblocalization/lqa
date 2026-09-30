@@ -201,7 +201,7 @@ els.form.addEventListener('submit', async (e) => {
   const task = normTask(els.task.value);
   const total = Number(els.total.value.replace(/[\s  ₽]/g, '').replace(',', '.'));
   const link = els.link.value.trim();
-  if (!task) return setStatus('Укажите задачу, например LIT-26', 'err');
+  if (!task) return setStatus('Укажите номер, например LIT-26-2203', 'err');
   if (!(total > 0)) return setStatus('Сумма не похожа на число', 'err');
   if (!/^https?:\/\//i.test(link)) return setStatus('Вставьте ссылку на смету с ВБ Диска', 'err');
 
@@ -231,8 +231,8 @@ els.form.addEventListener('submit', async (e) => {
 });
 
 function normTask(s) {
-  const m = String(s).trim().match(/^([A-Za-z]+)[-_ ]?(\d+)$/);
-  return m ? `${m[1].toUpperCase()}-${Number(m[2])}` : '';
+  const m = String(s).trim().match(/^([A-Za-z]+)[-_ ]?(\d+)(?:[-_ ](\d+))?$/);
+  return m ? [m[1].toUpperCase(), m[2], m[3]].filter(Boolean).join('-') : '';
 }
 
 function esc(s) {

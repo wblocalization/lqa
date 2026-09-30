@@ -49,14 +49,14 @@ export function findTotalWithVat(amountsCents) {
 }
 
 // Код подрядчика — 2–6 латинских букв перед номером: LIT-26, GLB-5.
-// Номер сметы «LIT-26-2203» (код-задача-смета) надёжнее всего, поэтому ищем его первым.
-const ESTIMATE_NO_RE = /(?<![A-Za-z])([A-Za-z]{2,6})[-_](\d+)[-_]\d+/;
+// Номер сметы «LIT-26-2203» (код-задача-смета) берём целиком, поэтому ищем его первым.
+const ESTIMATE_NO_RE = /(?<![A-Za-z])([A-Za-z]{2,6})[-_](\d+)[-_](\d+)(?!\d)/;
 const TASK_RE = /(?<![A-Za-z0-9])([A-Za-z]{2,6})[-_](\d+)(?!\d)/;
 
-const toTask = (m) => `${m[1].toUpperCase()}-${Number(m[2])}`;
+const toTask = (m) => [m[1].toUpperCase(), m[2], m[3]].filter(Boolean).join('-');
 
 /**
- * Номер задачи из имени файла: «LIT-26-2203 РВБ.pdf» → LIT-26.
+ * Номер из имени файла: «LIT-26-2203 РВБ.pdf» → LIT-26-2203.
  * Номер стоит в начале имени; всё, что после него (РВБ и прочее), не учитывается.
  */
 export function taskFromFileName(fileName) {
