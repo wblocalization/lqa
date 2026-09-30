@@ -55,10 +55,14 @@ const TASK_RE = /(?<![A-Za-z0-9])([A-Za-z]{2,6})[-_](\d+)(?!\d)/;
 
 const toTask = (m) => `${m[1].toUpperCase()}-${Number(m[2])}`;
 
-/** Номер задачи из имени файла: «LIT-26-2203.pdf» → LIT-26. */
+/**
+ * Номер задачи из имени файла: «LIT-26-2203 РВБ.pdf» → LIT-26.
+ * Номер стоит в начале имени; всё, что после него (РВБ и прочее), не учитывается.
+ */
 export function taskFromFileName(fileName) {
-  const name = String(fileName).replace(/\.pdf$/i, '');
-  const m = name.match(ESTIMATE_NO_RE) || name.match(TASK_RE);
+  const name = String(fileName).replace(/\.pdf$/i, '').trim();
+  const atStart = name.match(new RegExp('^' + ESTIMATE_NO_RE.source)) || name.match(new RegExp('^' + TASK_RE.source));
+  const m = atStart || name.match(ESTIMATE_NO_RE) || name.match(TASK_RE);
   return m ? toTask(m) : null;
 }
 

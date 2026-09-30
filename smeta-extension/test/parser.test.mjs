@@ -11,6 +11,9 @@ test('parseMoney понимает пробелы и запятую', () => {
 
 test('номер задачи берётся из имени файла', () => {
   assert.equal(taskFromFileName('LIT-26-2203.pdf'), 'LIT-26');
+  assert.equal(taskFromFileName('LIT-26-2203 РВБ.pdf'), 'LIT-26');
+  assert.equal(taskFromFileName('LIT-26-2203_РВБ.pdf'), 'LIT-26');
+  assert.equal(taskFromFileName('LIT-26-2203 RWB-1.pdf'), 'LIT-26');
   assert.equal(taskFromFileName('419cc3c8-LIT-26-2217-___.pdf'), 'LIT-26');
   assert.equal(taskFromFileName('Смета GLB-5-100 финал.pdf'), 'GLB-5');
   assert.equal(taskFromFileName('lit_7.pdf'), 'LIT-7');
