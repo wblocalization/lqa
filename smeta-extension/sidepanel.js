@@ -201,7 +201,7 @@ els.form.addEventListener('submit', async (e) => {
   const task = normTask(els.task.value);
   const total = Number(els.total.value.replace(/[\s  ₽]/g, '').replace(',', '.'));
   const link = els.link.value.trim();
-  if (!task) return setStatus('Укажите номер, например LIT-26-2203', 'err');
+  if (!task) return setStatus('Укажите номер', 'err');
   if (!(total > 0)) return setStatus('Сумма не похожа на число', 'err');
   if (!/^https?:\/\//i.test(link)) return setStatus('Вставьте ссылку на смету с ВБ Диска', 'err');
 

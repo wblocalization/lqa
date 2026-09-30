@@ -104,15 +104,23 @@ function smetaFindTask_(task) {
     if (col[k] < 0) throw new Error('Не найдена колонка «' + SMETA_H[k] + '»');
   });
 
-  // Сначала ищем номер целиком (LIT-26-2203), потом — строку задачи без номера сметы (LIT-26).
-  const candidates = [taskId];
-  const short = taskId.match(/^([A-Z]+-\d+)-\d+$/);
-  if (short) candidates.push(short[1]);
-  for (const id of candidates) {
+  const same = function (cell, id) { return String(cell).trim().toUpperCase() === id; };
+  const found = function (i, id) {
+    return { sheet: sheet, row: i + 1, values: data[i], col: col, taskId: taskId, matched: id };
+  };
+
+  // 1) номер в колонке «№ задачи»; 2) номер в любой другой колонке строки (например, «Тикет»);
+  // 3) номер без последней части (из «ABC-12-345» — «ABC-12») в колонке «№ задачи».
+  for (let i = 1; i < data.length; i++) {
+    if (same(data[i][col.task], taskId)) return found(i, taskId);
+  }
+  for (let i = 1; i < data.length; i++) {
+    if (data[i].some(function (cell) { return same(cell, taskId); })) return found(i, taskId);
+  }
+  const short = taskId.match(/^(.+)-\d+$/);
+  if (short) {
     for (let i = 1; i < data.length; i++) {
-      if (String(data[i][col.task]).trim().toUpperCase() === id) {
-        return { sheet: sheet, row: i + 1, values: data[i], col: col, taskId: taskId, matched: id };
-      }
+      if (same(data[i][col.task], short[1])) return found(i, short[1]);
     }
   }
   return null;
