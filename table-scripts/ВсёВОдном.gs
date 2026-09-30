@@ -1,4 +1,15 @@
 /*************************************************************
+ * ВсёВОдном.gs — вся таблица задач в одном файле.
+ *
+ * Как поставить: в таблице «Расширения → Apps Script», удалить все старые файлы,
+ * создать один файл-скрипт, вставить этот текст целиком, сохранить (Ctrl+S).
+ * Дальше — README, шаги 4–6 (токен, развёртывание, «Оформить таблицу»).
+ *
+ * Собран автоматически из Код.gs, Перенос.gs, Smeta.gs и HTML-окон (tools/bundle.js).
+ * Править лучше исходные файлы и пересобирать.
+ *************************************************************/
+
+/*************************************************************
  * Код.gs — таблица задач локализации.
  *
  * Листы:  «📌 Задачи (менеджеры)», «✍️ Задачи (переводчики)», «Списки»,
@@ -2090,3 +2101,422 @@ function writeTranslatorGuide_() {
         ['Показать все', 'Сбрасывает любой фильтр.']] }
     ]);
 }
+
+
+/*************************************************************
+ * Перенос.gs — разовый перенос истории из старой таблицы
+ * (лист «Localization Misc») в «📌 Задачи (менеджеры)».
+ *
+ * Меню: «⚙️ Настройки → 📥 Перенести историю из старой таблицы».
+ * Сначала показывает, сколько задач перенесёт и сколько пропустит, и переносит только после подтверждения.
+ * Задачи, номера которых уже есть в новой таблице, пропускаются — запускать повторно безопасно.
+ * После переноса файл можно удалить.
+ *************************************************************/
+
+const OLD_SHEET_NAME = 'Localization Misc';
+
+// Колонки старого листа (A..S)
+const OLD = {
+  ID: 1, SIDE: 2, DATE: 3, SUBJECT: 4, TASK: 5, BAND: 6, CUSTOMER: 7, LANGS: 8, DEADLINE: 9, DUE: 10,
+  STATUS: 11, ESTIMATE: 12, TOTAL: 13, CONTRACTOR: 14, MANAGER: 15, DELIVERY: 16, SP: 17, COMMENT: 18, COMPLAINTS: 19
+};
+const OLD_COLS = 19;
+
+// Объединённые ячейки в старой таблице: одна задача подрядчику на несколько строк (разные запросы из Band).
+// Номер, тему, дату и т. п. раскопируем на каждую строку. Сумму и SP — нет, иначе деньги посчитаются дважды.
+const OLD_NO_FILL = [OLD.TOTAL, OLD.SP, OLD.COMMENT, OLD.COMPLAINTS];
+
+// «Сторона» из старой таблицы → «Продукт» (по памятке из инструкции)
+const OLD_SIDE_TO_PRODUCT = {
+  'Маркетинг': 'Магазинка Пуши и коммуникации: Маркетинг',
+  'Маркетплейс': 'Магазинка',
+  'Поддержка покупателей': 'Поддержка Покупатели',
+  'Поддержка продавца': 'Поддержка Продавцы',
+  'Поддержка продавцов': 'Поддержка Продавцы',
+  'Справочный центр': 'Поддержка Продавцы',
+  'Портал продавца': 'WBP',
+  'Портал продавца, Справочный центр': 'WBP',
+  '"Портал продавца, Справочный центр"': 'WBP',
+  'Контент': 'WBP Контент',
+  'Склады': 'Логобъекты WBWH',
+  'WB Taxi': 'WB Такси',
+  'WB Job': 'Логобъекты WB Job',
+  'Логистика': 'Логобъекты Логистика',
+  'Юридичка': 'Межнар',
+  'Геоданные': 'Межнар',
+  'ИБ': 'Инфобез',
+  'ДРУГОЕ': 'Межнар'
+};
+
+function migrateFromOldTable() {
+  const ui = SpreadsheetApp.getUi();
+  const resp = ui.prompt('Перенос истории',
+    'Вставьте ссылку на старую таблицу (где лист «' + OLD_SHEET_NAME + '»):', ui.ButtonSet.OK_CANCEL);
+  if (resp.getSelectedButton() !== ui.Button.OK) return;
+  const m = resp.getResponseText().match(/\/d\/([a-zA-Z0-9_-]{20,})/) || resp.getResponseText().trim().match(/^([a-zA-Z0-9_-]{20,})$/);
+  if (!m) { ui.alert('Не похоже на ссылку на Google Таблицу.'); return; }
+
+  const plan = planMigration_(SpreadsheetApp.openById(m[1]));
+  if (!plan.rows.length) {
+    ui.alert('Переносить нечего: ' + plan.skippedExisting + ' задач уже есть в новой таблице, ' + plan.skippedEmpty + ' строк пустые.');
+    return;
+  }
+  const ok = ui.alert('Перенос истории',
+    'Будет добавлено задач: ' + plan.rows.length + ' (с ' + plan.from + ' по ' + plan.to + ').\n' +
+    'Уже есть в новой таблице — пропущу: ' + plan.skippedExisting + '.\n' +
+    'Пустые строки и повторы шапки — пропущу: ' + plan.skippedEmpty + '.\n\n' +
+    'Задачи встанут под текущими, свежие выше. Продолжить?', ui.ButtonSet.YES_NO);
+  if (ok !== ui.Button.YES) return;
+
+  applyMigration_(plan);
+  ui.alert('Готово: перенесено ' + plan.rows.length + ' задач. Цвета и выпадающие списки обновлены.');
+}
+
+function isUrl_(s) {
+  return /^https?:\/\//i.test(String(s || '').trim());
+}
+
+function numOrEmpty_(v) {
+  if (v === '' || v === null) return '';
+  const n = Number(String(v).replace(/\s/g, '').replace(',', '.'));
+  return isFinite(n) ? n : v;
+}
+
+/** Читает старый лист и готовит строки для новой таблицы (ничего не записывает). */
+function planMigration_(oldSs) {
+  const old = oldSs.getSheetByName(OLD_SHEET_NAME);
+  if (!old) throw new Error('В старой таблице нет листа «' + OLD_SHEET_NAME + '»');
+  const lastRow = old.getLastRow();
+  const range = old.getRange(1, 1, lastRow, OLD_COLS);
+  const values = range.getValues();
+  const bandRich = old.getRange(1, OLD.BAND, lastRow, 1).getRichTextValues().map(r => r[0]);
+
+  // Раскопировать объединённые ячейки на все их строки
+  range.getMergedRanges().forEach(mr => {
+    const r0 = mr.getRow(), c0 = mr.getColumn();
+    for (let c = c0; c < c0 + mr.getNumColumns(); c++) {
+      if (OLD_NO_FILL.indexOf(c) !== -1) continue;
+      const v = values[r0 - 1][c - 1];
+      for (let r = r0; r < r0 + mr.getNumRows(); r++) {
+        values[r - 1][c - 1] = v;
+        if (c === OLD.BAND) bandRich[r - 1] = bandRich[r0 - 1];
+      }
+    }
+  });
+
+  // Что уже есть в новой таблице: по номеру, а строки без номера — по теме, дате и ссылке
+  const tasks = getTasksSheet();
+  const existing = {}, existingKeys = {};
+  const cur = readRows_(tasks, COL.DATE);
+  const curLinks = subjectLinks_(tasks);
+  const keyOf = (subject, date, link) => [str_(subject).replace(LINK2_MARKER, ''), fmtDate_(date, 'yyyy-MM-dd') || str_(date), link || ''].join('|');
+  cur.forEach((r, i) => {
+    if (str_(r[COL.ID - 1])) existing[str_(r[COL.ID - 1])] = true;
+    else existingKeys[keyOf(r[COL.SUBJECT - 1], r[COL.DATE - 1], curLinks[i] && curLinks[i].link)] = true;
+  });
+
+  const rows = [];
+  let skippedExisting = 0, skippedEmpty = 0, from = null, to = null;
+  for (let i = lastRow; i >= 2; i--) { // снизу вверх — свежие задачи первыми, как в новой таблице
+    const v = values[i - 1];
+    const get = c => str_(v[c - 1]);
+    const id = get(OLD.ID), subject = get(OLD.SUBJECT), taskText = get(OLD.TASK);
+    if (!id && !subject && !taskText && !get(OLD.BAND)) { skippedEmpty++; continue; }
+    if (subject === 'Тема письма в аутлуке' || get(OLD.STATUS) === 'Статус') { skippedEmpty++; continue; }
+    if (id && existing[id]) { skippedExisting++; continue; }
+
+    // «Задача» в старой таблице — чаще номер тикета (LOCAL-493), иначе описание
+    const ticketMatch = taskText.match(/^LOCAL[-\s]?(\d+)$/i);
+    const ticket = ticketMatch ? 'LOCAL-' + ticketMatch[1] : '';
+    const comment = [
+      get(OLD.COMMENT),
+      taskText && !ticketMatch && taskText !== subject ? 'Задача: ' + taskText : '',
+      get(OLD.COMPLAINTS) ? 'Жалобы на заказчика: ' + get(OLD.COMPLAINTS) : ''
+    ].filter(Boolean).join('\n');
+
+    const band = linksFromRich_(bandRich[i - 1]).link || (isUrl_(get(OLD.BAND)) ? get(OLD.BAND) : '');
+    if (!id && existingKeys[keyOf(subject || taskText || '(без темы)', v[OLD.DATE - 1], band)]) { skippedExisting++; continue; }
+    const deadline = get(OLD.DEADLINE) === 'Дедлайн (если есть)' ? '' : get(OLD.DEADLINE);
+    const side = get(OLD.SIDE);
+    const date = v[OLD.DATE - 1];
+
+    rows.push({
+      link: band,
+      values: [
+        id, ticket, subject || taskText || '(без темы)', date, OLD_SIDE_TO_PRODUCT[side] || side,
+        get(OLD.CUSTOMER), get(OLD.LANGS), deadline, v[OLD.DUE - 1] instanceof Date ? v[OLD.DUE - 1] : get(OLD.DUE),
+        get(OLD.STATUS), get(OLD.ESTIMATE), numOrEmpty_(v[OLD.TOTAL - 1]), get(OLD.CONTRACTOR), get(OLD.MANAGER),
+        get(OLD.DELIVERY), numOrEmpty_(v[OLD.SP - 1]), comment
+      ]
+    });
+    if (date instanceof Date) {
+      if (!from || date < from) from = date;
+      if (!to || date > to) to = date;
+    }
+  }
+  return {
+    rows: rows, skippedExisting: skippedExisting, skippedEmpty: skippedEmpty,
+    from: fmtDate_(from, 'dd.MM.yyyy') || '—', to: fmtDate_(to, 'dd.MM.yyyy') || '—'
+  };
+}
+
+/** Дописывает строки под текущими задачами и оформляет лист. */
+function applyMigration_(plan) {
+  withScriptLock_(() => {
+    const sh = getTasksSheet();
+    const start = sh.getLastRow() + 1;
+    const n = plan.rows.length;
+    const need = start + n - 1 - sh.getMaxRows();
+    if (need > 0) sh.insertRowsAfter(sh.getMaxRows(), need);
+
+    const CHUNK = 1000;
+    for (let off = 0; off < n; off += CHUNK) {
+      const part = plan.rows.slice(off, off + CHUNK);
+      sh.getRange(start + off, 1, part.length, TASK_COLS).setValues(part.map(p => p.values));
+      sh.getRange(start + off, COL.SUBJECT, part.length, 1)
+        .setRichTextValues(part.map(p => [buildSubjectRich_(String(p.values[COL.SUBJECT - 1]), p.link, '')]));
+    }
+    logChange('Перенос истории', '', '', '', n + ' задач из старой таблицы');
+  });
+  designTasksSheet_(getTasksSheet());
+}
+
+
+/**
+ * Приёмник для расширения «Сметы → таблица».
+ * Принимает номер задачи, итог с НДС и ссылку на смету и пишет их в лист задач менеджеров,
+ * а в «📝 Журнал» — что поменялось.
+ *
+ * Ещё умеет добавлять задачи менеджеров из расширения (вкладка «Задача»). Для этого файл должен
+ * лежать в проекте самой таблицы: он вызывает те же функции, что и окно «➕ Добавить задачу».
+ *
+ * Лучше ставить ОТДЕЛЬНЫМ проектом Apps Script (script.google.com → «Создать проект»),
+ * чтобы не трогать основной скрипт таблицы: тогда впишите ID таблицы ниже.
+ * Если всё-таки кладёте в скрипт самой таблицы — ID можно оставить пустым,
+ * но проверьте, что там ещё нет своей функции doPost.
+ */
+
+// ID таблицы — кусок адреса между /d/ и /edit.
+const SMETA_SPREADSHEET_ID = '';
+
+const SMETA_TASKS_SHEET = '📌 Задачи (менеджеры)';
+const SMETA_LOG_SHEET = '📝 Журнал';
+const SMETA_H = {
+  task: '№ задачи',
+  subject: 'Тема письма',
+  link: 'Смета (ссылка)',
+  total: 'Итого с НДС, ₽',
+  contractor: 'Подрядчик',
+  manager: 'Менеджер',
+};
+
+/** Запустите один раз из редактора: создаст токен и покажет его в журнале выполнения. */
+function setupSmetaToken() {
+  const token = Utilities.getUuid().replace(/-/g, '');
+  PropertiesService.getScriptProperties().setProperty('SMETA_TOKEN', token);
+  Logger.log('Токен для расширения: ' + token);
+}
+
+function doPost(e) {
+  let req;
+  try {
+    req = JSON.parse(e.postData.contents);
+  } catch (err) {
+    return smetaJson_({ ok: false, error: 'Некорректный запрос' });
+  }
+  const token = PropertiesService.getScriptProperties().getProperty('SMETA_TOKEN');
+  if (!token || req.token !== token) return smetaJson_({ ok: false, error: 'Неверный токен' });
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  SCRIPT_LOCK_HELD = true; // Код.gs не будет брать блокировку второй раз
+  try {
+    if (req.action === 'lookup') return smetaJson_(smetaLookup_(req));
+    if (req.action === 'write') return smetaJson_(smetaWrite_(req));
+    if (req.action === 'taskForm') return smetaJson_(taskForm_());
+    if (req.action === 'previewTaskId') return smetaJson_(previewTaskId_(req));
+    if (req.action === 'addTask') return smetaJson_(addTask_(req));
+    // Запросы из расширения выполняются от имени владельца таблицы, поэтому «кто я» берём только из настроек расширения
+    if (req.action === 'recentTasks') { requireTableScript_(); return smetaJson_({ ok: true, tasks: getRecentTasksForRepeat(req.manager || '*') }); }
+    if (req.action === 'checkDuplicates') { requireTableScript_(); return smetaJson_({ ok: true, duplicates: findDuplicateTasks(req.task || {}) }); }
+    if (req.action === 'myTasks') { requireTableScript_(); return smetaJson_(Object.assign({ ok: true }, getMyOpenTasks(req.manager || '*'))); }
+    if (req.action === 'setStatus') return smetaJson_(setStatus_(req));
+    return smetaJson_({ ok: false, error: 'Неизвестное действие' });
+  } catch (err) {
+    return smetaJson_({ ok: false, error: String(err && err.message || err) });
+  } finally {
+    SCRIPT_LOCK_HELD = false;
+    lock.releaseLock();
+  }
+}
+
+function smetaLookup_(req) {
+  const t = smetaFindTask_(req.task);
+  if (!t) return { ok: true, found: false };
+  const v = t.values;
+  return {
+    ok: true, found: true, row: t.row, matched: t.matched,
+    subject: v[t.col.subject], contractor: v[t.col.contractor], manager: v[t.col.manager],
+    link: v[t.col.link], total: v[t.col.total],
+  };
+}
+
+function smetaWrite_(req) {
+  const total = Number(req.total);
+  const link = String(req.link || '').trim();
+  if (!(total > 0)) return { ok: false, error: 'Сумма должна быть больше нуля' };
+  if (!/^https?:\/\//i.test(link)) return { ok: false, error: 'Ссылка должна начинаться с http' };
+
+  const t = smetaFindTask_(req.task);
+  if (!t) return { ok: false, error: 'Задача ' + req.task + ' не найдена в листе «' + SMETA_TASKS_SHEET + '»' };
+
+  const oldLink = t.values[t.col.link];
+  const oldTotal = t.values[t.col.total];
+  if ((oldLink || oldTotal) && !req.overwrite) {
+    return { ok: false, error: 'exists', link: oldLink, total: oldTotal };
+  }
+
+  const sheet = t.sheet;
+  sheet.getRange(t.row, t.col.link + 1).setValue(link);
+  sheet.getRange(t.row, t.col.total + 1).setValue(Math.round(total * 100) / 100);
+
+  const who = 'Расширение смет' + (req.user ? ' (' + req.user + ')' : '');
+  smetaLog_(who, t.taskId, SMETA_H.link, oldLink, link);
+  smetaLog_(who, t.taskId, SMETA_H.total, oldTotal, total);
+  return { ok: true, row: t.row };
+}
+
+function smetaFindTask_(task) {
+  const taskId = String(task || '').trim().toUpperCase();
+  if (!taskId || taskId.length > 100) throw new Error('Пустой номер задачи');
+
+  const sheet = smetaSpreadsheet_().getSheetByName(SMETA_TASKS_SHEET);
+  if (!sheet) throw new Error('Нет листа «' + SMETA_TASKS_SHEET + '»');
+  const data = sheet.getDataRange().getValues();
+  const header = data[0].map(function (h) { return String(h).trim(); });
+
+  const col = {};
+  Object.keys(SMETA_H).forEach(function (k) {
+    col[k] = header.indexOf(SMETA_H[k]);
+    if (col[k] < 0) throw new Error('Не найдена колонка «' + SMETA_H[k] + '»');
+  });
+
+  const same = function (cell, id) { return String(cell).trim().toUpperCase() === id; };
+  const found = function (i, id) {
+    return { sheet: sheet, row: i + 1, values: data[i], col: col, taskId: taskId, matched: id };
+  };
+
+  // 1) номер в колонке «№ задачи»; 2) номер в любой другой колонке строки (например, «Тикет»);
+  // 3) номер без последней части (из «ABC-12-345» — «ABC-12») в колонке «№ задачи».
+  for (let i = 1; i < data.length; i++) {
+    if (same(data[i][col.task], taskId)) return found(i, taskId);
+  }
+  for (let i = 1; i < data.length; i++) {
+    if (data[i].some(function (cell) { return same(cell, taskId); })) return found(i, taskId);
+  }
+  const short = taskId.match(/^(.+)-\d+$/);
+  if (short) {
+    for (let i = 1; i < data.length; i++) {
+      if (same(data[i][col.task], short[1])) return found(i, short[1]);
+    }
+  }
+  return null;
+}
+
+function smetaLog_(who, taskId, field, before, after) {
+  const log = smetaSpreadsheet_().getSheetByName(SMETA_LOG_SHEET);
+  if (!log) return;
+  log.appendRow([new Date(), who, 'Смета из расширения', taskId, field,
+    before === undefined ? '' : before, after]);
+}
+
+function smetaSpreadsheet_() {
+  return SMETA_SPREADSHEET_ID
+    ? SpreadsheetApp.openById(SMETA_SPREADSHEET_ID)
+    : SpreadsheetApp.getActiveSpreadsheet();
+}
+
+function smetaJson_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+/* ============================================================
+ *  ДОБАВЛЕНИЕ ЗАДАЧИ ИЗ РАСШИРЕНИЯ
+ *  Использует функции окна «➕ Добавить задачу» из Код.gs.
+ * ============================================================ */
+
+function requireTableScript_() {
+  if (typeof submitNewTaskFromDialog !== 'function' || typeof getAddTaskFormLists !== 'function') {
+    throw new Error('Добавление задач работает, только когда Smeta.gs лежит в проекте самой таблицы');
+  }
+}
+
+/** Справочники для формы: подрядчики, продукты, языки и т. д. — те же, что в окне в таблице. */
+function taskForm_() {
+  requireTableScript_();
+  return { ok: true, lists: getAddTaskFormLists() };
+}
+
+/** Какой номер получит задача у этого подрядчика (подсказка; настоящий выдаётся при добавлении). */
+function previewTaskId_(req) {
+  requireTableScript_();
+  const contractor = String(req.contractor || '').trim();
+  if (!contractor) return { ok: true, id: '' };
+  return { ok: true, id: generateNextTaskId(getTasksSheet(), contractor) };
+}
+
+function addTask_(req) {
+  requireTableScript_();
+  const t = req.task || {};
+  const str = function (v) { return String(v == null ? '' : v).trim(); };
+
+  const task = {
+    ticket: str(t.ticket), contractor: str(t.contractor), subject: str(t.subject),
+    link: str(t.link), link2: str(t.link2), date: str(t.date), product: str(t.product),
+    customer: str(t.customer), deadline: str(t.deadline), exactDeadline: str(t.exactDeadline),
+    status: str(t.status), deliveryStatus: str(t.deliveryStatus), estimateLink: str(t.estimateLink),
+    total: str(t.total), sp: str(t.sp), manager: str(t.manager), comment: str(t.comment),
+    languages: (Array.isArray(t.languages) ? t.languages : []).map(str).filter(Boolean),
+  };
+  if (!task.contractor) return { ok: false, error: 'Выберите подрядчика' };
+  if (!task.subject) return { ok: false, error: 'Впишите тему' };
+  if (task.ticket && !/^LOCAL-\d+$/.test(task.ticket)) return { ok: false, error: 'Тикет должен быть вида LOCAL-1234' };
+  ['link', 'link2', 'estimateLink'].forEach(function (k) {
+    if (task[k] && !/^https?:\/\//i.test(task[k])) throw new Error('Ссылка должна начинаться с http: ' + task[k]);
+  });
+
+  // В «Журнал» пишем, что задачу добавили из расширения и кто.
+  LOG_ACTOR = 'Расширение' + (req.user ? ' (' + req.user + ')' : '');
+  try {
+    const id = submitNewTaskFromDialog(task);
+    return { ok: true, id: id };
+  } finally {
+    LOG_ACTOR = '';
+  }
+}
+
+/** Быстрая смена статуса из вкладки «Мои задачи». */
+function setStatus_(req) {
+  requireTableScript_();
+  LOG_ACTOR = 'Расширение' + (req.user ? ' (' + req.user + ')' : '');
+  try {
+    return setTaskStatus(req.row, req.id, req.origSubject, req.status);
+  } finally {
+    LOG_ACTOR = '';
+  }
+}
+
+
+// ==================== ОКНА (HTML) ====================
+// Текст всех окон — чтобы не создавать 9 отдельных HTML-файлов.
+const HTML_FILES = {
+  "Общее": "<style>\n  :root {\n    --ink: #1F2328; --soft: #5F6B7A; --line: #E2E5E9; --field: #D5D9DF; --bg: #FFFFFF; --panel: #F6F7F9;\n    --head: #2D3340; --accent: #2563EB; --accent-soft: #EEF3FE;\n    --ok: #15803D; --ok-soft: #ECF7EF; --warn: #7F6000; --warn-soft: #FFF8E6; --err: #B42318; --err-soft: #FDEDEA;\n  }\n  * { box-sizing: border-box; }\n  [hidden] { display: none !important; }\n  html, body { margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.45 Arial, sans-serif; }\n  body { padding: 14px 16px 16px; }\n  body.has-foot { padding-bottom: 76px; }\n  h2 { margin: 0 0 10px; font-size: 15px; }\n  h3 { margin: 16px 0 8px; font-size: 13.5px; }\n  .muted { color: var(--soft); }\n  .small { font-size: 12px; }\n\n  /* поля */\n  .stack { display: flex; flex-direction: column; gap: 11px; }\n  .field { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 12px; font-weight: 700; color: var(--soft); }\n  .req { color: #C0262D; }\n  input[type=text], input[type=url], input[type=date], input[type=number], select, textarea {\n    width: 100%; padding: 7px 10px; font: inherit; font-size: 13px; color: var(--ink); font-weight: 400;\n    border: 1px solid var(--field); border-radius: 7px; background: #fff; min-height: 34px;\n  }\n  textarea { resize: vertical; min-height: 60px; }\n  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }\n  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }\n  .three { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }\n  .prefixed { display: flex; }\n  .prefixed span { display: grid; place-items: center; padding: 0 9px; border: 1px solid var(--field); border-right: none;\n    border-radius: 7px 0 0 7px; background: #F3F4F6; font-size: 12px; color: var(--soft); font-weight: 700; }\n  .prefixed input { border-radius: 0 7px 7px 0; }\n  .with-btn { display: flex; gap: 6px; }\n\n  /* таблетки-галочки (языки, люди) */\n  .chips { display: flex; flex-wrap: wrap; gap: 4px; }\n  .chip { position: relative; cursor: pointer; font-weight: 400; }\n  .chip input { position: absolute; opacity: 0; pointer-events: none; }\n  .chip span { display: inline-block; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--field); font-size: 11.5px; line-height: 1.5; color: var(--ink); background: #fff; }\n  .chip input:checked + span { background: var(--accent); border-color: var(--accent); color: #fff; }\n  .chip input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }\n  .chip-group-title { font-size: 11px; color: var(--soft); font-weight: 400; margin: 4px 0 2px; }\n\n  /* кнопки */\n  button { font: inherit; cursor: pointer; }\n  .btn { padding: 9px 14px; border-radius: 8px; border: 1px solid var(--field); background: #fff; color: var(--ink); font-weight: 700; font-size: 13px; }\n  .btn:hover { background: var(--panel); }\n  .btn:disabled { opacity: .55; cursor: default; }\n  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }\n  .btn.primary:hover { filter: brightness(1.07); }\n  .btn.small { padding: 5px 10px; font-size: 12px; }\n  .btn.full { width: 100%; }\n  .link-danger { background: none; border: none; color: var(--err); font-size: 12px; padding: 6px; }\n  .foot { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 8px; align-items: center;\n    padding: 12px 16px; background: #fff; border-top: 1px solid var(--line); }\n  .foot .grow { flex: 1; }\n  .foot.col { flex-direction: column; align-items: stretch; gap: 2px; }\n\n  /* блоки */\n  .preview { padding: 10px 12px; border-radius: 8px; background: var(--accent-soft); border: 1px solid #D6E2FB; }\n  .preview .lbl { display: block; font-size: 11px; font-weight: 700; color: var(--soft); margin-bottom: 3px; }\n  .preview p { margin: 0; word-break: break-word; }\n  .card { padding: 10px 12px; border-radius: 8px; background: var(--panel); }\n  .card .t { font-weight: 700; }\n  details.more { border-top: 1px solid var(--line); padding-top: 8px; }\n  details.more > summary { cursor: pointer; font-weight: 700; color: var(--soft); font-size: 12.5px; }\n  details.more[open] > summary { margin-bottom: 10px; }\n  details.more > .stack { margin-bottom: 4px; }\n\n  /* выбор статуса одной кнопкой */\n  .seg { display: flex; flex-wrap: wrap; border: 1px solid var(--field); border-radius: 8px; overflow: hidden; }\n  .seg button { flex: 1 1 auto; padding: 7px 6px; border: none; border-right: 1px solid var(--field); background: #fff;\n    font-size: 12px; font-weight: 700; color: var(--soft); }\n  .seg button:last-child { border-right: none; }\n  .seg button.on { color: #111; }\n\n  /* результаты поиска */\n  .results { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; max-height: 260px; overflow-y: auto; }\n  .results button { display: block; width: 100%; text-align: left; padding: 7px 10px; border: none;\n    border-bottom: 1px solid var(--line); background: #fff; font-size: 12.5px; color: var(--ink); }\n  .results button:last-child { border-bottom: none; }\n  .results button:hover, .results button.on { background: var(--accent-soft); }\n  .results b { margin-right: 4px; }\n  .results .d { color: var(--soft); font-size: 11px; }\n\n  /* сообщения */\n  .msg { min-height: 1em; font-size: 12.5px; color: var(--soft); }\n  .msg.ok { color: var(--ok); }\n  .msg.err { color: var(--err); font-weight: 700; }\n  .hint { padding: 8px 10px; border-radius: 7px; background: var(--warn-soft); color: var(--warn); font-size: 12.5px; }\n\n  /* отчёты */\n  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin: 10px 0; }\n  .tile { background: var(--panel); border-radius: 8px; padding: 10px; text-align: center; }\n  .tile .num { font-size: 20px; font-weight: 700; }\n  .tile .lbl { font-size: 11px; color: var(--soft); }\n  .tile.bad .num { color: var(--err); }\n  .group { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; }\n  .group h4 { margin: 0 0 6px; font-size: 13px; }\n  .line { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; border-bottom: 1px solid #F0F1F3; font-size: 12.5px; }\n  .line:last-child { border-bottom: none; }\n  .line a { color: var(--accent); text-decoration: none; }\n  .line .v { font-weight: 700; white-space: nowrap; }\n  .total { background: var(--panel); border-radius: 8px; padding: 10px; text-align: center; font-weight: 700; margin-top: 8px; }\n  pre.out { white-space: pre-wrap; background: var(--panel); border-radius: 8px; padding: 12px; font-size: 12px; margin: 8px 0; }\n  .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 700; white-space: nowrap; background: #EFEFEF; color: #434343; }\n  .b-done { background: #D9EAD3; color: #274E13; } .b-progress { background: #D6E4F0; color: #0B5394; } .b-review { background: #FFF2CC; color: #7F6000; }\n  table.kv { width: 100%; border-collapse: collapse; font-size: 12.5px; }\n  table.kv td { padding: 5px 6px; border-bottom: 1px solid #F0F1F3; }\n  table.kv td:last-child { text-align: right; font-weight: 700; }\n  hr.sep { border: none; border-top: 1px solid var(--line); margin: 18px 0; }\n</style>\n<script>\n  const $ = s => document.querySelector(s);\n  const $$ = s => [...document.querySelectorAll(s)];\n\n  function esc(s) {\n    return String(s == null ? '' : s).replace(/[&<>\"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\n  }\n\n  /** Вызов функции из Код.gs как промис; ошибки не теряются. */\n  function run(fn, ...args) {\n    return new Promise((resolve, reject) => {\n      google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[fn](...args);\n    });\n  }\n\n  function fillSelect(el, items, placeholder, selected) {\n    el.innerHTML = (placeholder == null ? '' : `<option value=\"\">${esc(placeholder)}</option>`) +\n      (items || []).map(v => `<option value=\"${esc(v)}\"${v === selected ? ' selected' : ''}>${esc(v)}</option>`).join('');\n  }\n\n  /** Галочки-таблетки. groups: [{ title, items }]; label — как подписать пункт. */\n  function renderChips(container, groups, checked, label) {\n    checked = checked || [];\n    container.innerHTML = groups.filter(g => g.items && g.items.length).map(g =>\n      (g.title ? `<div class=\"chip-group-title\">${esc(g.title)}</div>` : '') +\n      '<div class=\"chips\">' + g.items.map(v =>\n        `<label class=\"chip\"><input type=\"checkbox\" value=\"${esc(v)}\"${checked.includes(v) ? ' checked' : ''}><span>${esc(label ? label(v) : v)}</span></label>`\n      ).join('') + '</div>'\n    ).join('');\n  }\n\n  function chipValues(container) {\n    return [...container.querySelectorAll('input:checked')].map(cb => cb.value);\n  }\n\n  function setMsg(el, text, kind) {\n    el.textContent = text || '';\n    el.className = 'msg' + (kind ? ' ' + kind : '');\n  }\n\n  function todayIso() {\n    const d = new Date();\n    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');\n  }\n\n  function money(x) {\n    return Number(x || 0).toLocaleString('ru-RU', { maximumFractionDigits: 2 });\n  }\n\n  function copyText(text) {\n    return navigator.clipboard.writeText(text).catch(() => {\n      const t = document.createElement('textarea');\n      t.value = text; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove();\n    });\n  }\n\n  /** Копирует HTML со ссылками — при вставке в Doc/почту/Band ссылки остаются кликабельными. */\n  function copyHtml(html) {\n    const holder = document.createElement('div');\n    holder.contentEditable = true;\n    holder.style.cssText = 'position:fixed;left:-9999px';\n    holder.innerHTML = html;\n    document.body.appendChild(holder);\n    const range = document.createRange();\n    range.selectNodeContents(holder);\n    const sel = window.getSelection();\n    sel.removeAllRanges(); sel.addRange(range);\n    document.execCommand('copy');\n    sel.removeAllRanges(); holder.remove();\n  }\n</script>\n",
+  "AddTaskDialog": "<!DOCTYPE html>\n<html>\n<head>\n<base target=\"_top\">\n<?!= include('Общее') ?>\n<style>\n  /* Тема письма и «Скопировать» всегда видны сверху, даже при прокрутке */\n  .preview { position: sticky; top: 0; z-index: 5; margin: -14px -16px 0; border-radius: 0; border-width: 0 0 1px; padding: 10px 16px;\n    display: flex; gap: 10px; align-items: flex-start; box-shadow: 0 2px 6px rgb(0 0 0 / .06); }\n  .preview .btn { flex: none; }\n  .preview .txt { flex: 1; min-width: 0; }\n</style>\n</head>\n<body class=\"has-foot\">\n  <div class=\"stack\">\n    <div class=\"preview\">\n      <div class=\"txt\"><span class=\"lbl\">ТЕМА ПИСЬМА</span><p id=\"preview\">Выберите подрядчика — появится номер и тема</p></div>\n      <button class=\"btn small\" id=\"copyBtn\" type=\"button\">Скопировать</button>\n    </div>\n\n    <div class=\"two\">\n      <label class=\"field\"><span>Подрядчик <span class=\"req\">*</span></span><select id=\"contractor\"></select></label>\n      <label class=\"field\">Тикет\n        <span class=\"prefixed\"><span>LOCAL-</span><input type=\"text\" id=\"ticketNum\" inputmode=\"numeric\" placeholder=\"1234\"></span>\n      </label>\n    </div>\n\n    <label class=\"field\">Повторить задачу<select id=\"repeat\"><option value=\"\">— новая задача с нуля —</option></select></label>\n    <label class=\"field\"><span>Тема <span class=\"req\">*</span></span><input type=\"text\" id=\"subject\" placeholder=\"Только суть — номер и коды добавятся сами\"></label>\n    <label class=\"field\">Ссылка на Band<input type=\"url\" id=\"link\" placeholder=\"https://band.wb.ru/…\"></label>\n\n    <div class=\"two\">\n      <label class=\"field\">Продукт<select id=\"product\"></select></label>\n      <label class=\"field\">Дата<input type=\"date\" id=\"date\"></label>\n    </div>\n    <div class=\"two\">\n      <label class=\"field\">Дедлайн<select id=\"deadline\"></select></label>\n      <label class=\"field\">Срок сдачи<input type=\"date\" id=\"exactDeadline\"></label>\n    </div>\n    <label class=\"field\">Ник заказчика<input type=\"text\" id=\"customer\" placeholder=\"@nick\"></label>\n\n    <div class=\"field\">Языки<div id=\"langs\"></div></div>\n\n    <div class=\"two\">\n      <label class=\"field\">Менеджер<select id=\"manager\"></select></label>\n      <label class=\"field\">Статус<select id=\"status\"></select></label>\n    </div>\n\n    <details class=\"more\">\n      <summary>Ещё поля: доп. ссылка, смета, итого, SP, статус отдачи, комментарий</summary>\n      <div class=\"stack\">\n        <label class=\"field\">Доп. ссылка на Band<input type=\"url\" id=\"link2\" placeholder=\"если задача из двух переписок\"></label>\n        <label class=\"field\">Смета (ссылка)<input type=\"url\" id=\"estimateLink\"></label>\n        <div class=\"three\">\n          <label class=\"field\">Итого с НДС, ₽<input type=\"number\" id=\"total\" step=\"0.01\" min=\"0\"></label>\n          <label class=\"field\">SP<input type=\"number\" id=\"sp\" step=\"1\" min=\"0\"></label>\n          <label class=\"field\">Статус отдачи<select id=\"deliveryStatus\"></select></label>\n        </div>\n        <label class=\"field\">Комментарий<input type=\"text\" id=\"comment\"></label>\n      </div>\n    </details>\n    <div id=\"msg\" class=\"msg\"></div>\n  </div>\n\n  <div class=\"foot\">\n    <button class=\"btn primary grow\" id=\"submitBtn\" type=\"button\">Добавить задачу</button>\n  </div>\n\n<script>\n  let LISTS = null;\n  let nextId = '';\n\n  let RECENT = [];\n  $('#date').value = todayIso();\n\n  run('getAddTaskFormLists').then(d => {\n    LISTS = d;\n    fillSelect($('#contractor'), d.contractors, 'Выберите…');\n    fillSelect($('#product'), d.products, '—');\n    fillSelect($('#deadline'), d.deadlines, '—');\n    fillSelect($('#status'), d.statuses, '—', d.statuses.includes('Принято') ? 'Принято' : '');\n    fillSelect($('#deliveryStatus'), d.deliveryStatuses, '—');\n    fillSelect($('#manager'), d.managers, '—', d.currentManager);\n    renderChips($('#langs'), [\n      { title: '', items: d.languages.regular },\n      { title: 'ШТАТ', items: d.languages.shtat },\n      { title: 'Редкие', items: d.languages.rare }\n    ], [], v => v.replace(/^ШТАТ\\s+/i, ''));\n    updatePreview();\n    return run('getRecentTasksForRepeat', d.currentManager || '');\n  }).then(list => {\n    RECENT = list || [];\n    $('#repeat').innerHTML = '<option value=\"\">— новая задача с нуля —</option>' +\n      RECENT.map((t, i) => `<option value=\"${i}\">${esc(t.title)} · ${esc(t.date)}${t.ticket ? ' · ' + esc(t.ticket) : ''}</option>`).join('');\n  }).catch(e => setMsg($('#msg'), 'Не получилось загрузить списки: ' + e.message, 'err'));\n\n  function checkedLangs() { return chipValues($('#langs')); }\n\n  function buildSubject(id) {\n    const contractor = $('#contractor').value, product = $('#product').value;\n    const codes = checkedLangs().map(l => LISTS.langCodes[l]).filter(Boolean);\n    const prefix = `[${id}]` + (contractor ? `[${contractor}]` : '') + codes.map(c => `[${c}]`).join('') + (product ? `[${product}]` : '');\n    const s = $('#subject').value.trim();\n    return s ? prefix + ' ' + s : prefix;\n  }\n\n  function updatePreview() {\n    if (!LISTS) return;\n    $('#preview').textContent = $('#contractor').value ? buildSubject(nextId || '…') : 'Выберите подрядчика — появится номер и тема';\n  }\n\n  let idSeq = 0;\n  function refreshId() {\n    const seq = ++idSeq;\n    nextId = '';\n    updatePreview();\n    const c = $('#contractor').value;\n    if (!c) return;\n    run('previewNextTaskId', c).then(id => { if (seq === idSeq) { nextId = id; updatePreview(); } })\n      .catch(e => setMsg($('#msg'), 'Не получилось узнать номер: ' + e.message, 'err'));\n  }\n\n  $('#contractor').addEventListener('change', refreshId);\n  ['subject', 'product'].forEach(id => { $('#' + id).addEventListener('input', updatePreview); $('#' + id).addEventListener('change', updatePreview); });\n  $('#langs').addEventListener('change', updatePreview);\n\n  /** «Новые строчки от 22.09» → «Новые строчки от <сегодня>». */\n  function withToday(title) {\n    const [, m, d] = $('#date').value.split('-');\n    // \\b не работает с русскими буквами — границу слова задаём явно\n    return d && m ? title.replace(/(^|\\s)(от\\s+)\\d{1,2}\\.\\d{1,2}(\\.\\d{2,4})?/i, '$1$2' + d + '.' + m) : title;\n  }\n\n  // «Повторить задачу»: подставляет всё из выбранной задачи, дата — сегодняшняя\n  $('#repeat').addEventListener('change', () => {\n    const t = RECENT[$('#repeat').value];\n    if (!t || !LISTS) return;\n    $('#contractor').value = t.contractor; refreshId();\n    $('#ticketNum').value = t.ticket.replace(/^LOCAL-/i, '');\n    $('#product').value = t.product;\n    $('#customer').value = t.customer;\n    $('#manager').value = t.manager;\n    $('#deadline').value = t.deadline;\n    $('#subject').value = withToday(t.title);\n    $('#link').value = '';\n    $$('#langs input').forEach(cb => { cb.checked = t.languages.includes(cb.value); });\n    setMsg($('#msg'), 'Заполнено по ' + (t.id || 'прошлой задаче') + '. Вставьте новую ссылку на Band и проверьте тему.');\n    updatePreview();\n  });\n\n  $('#copyBtn').addEventListener('click', () => {\n    copyText($('#preview').textContent).then(() => {\n      $('#copyBtn').textContent = 'Скопировано ✓';\n      setTimeout(() => { $('#copyBtn').textContent = 'Скопировать'; }, 1500);\n    });\n  });\n\n  $('#submitBtn').addEventListener('click', () => {\n    if (!$('#contractor').value) return setMsg($('#msg'), 'Выберите подрядчика', 'err');\n    if (!$('#subject').value.trim()) return setMsg($('#msg'), 'Впишите тему', 'err');\n    const ticket = $('#ticketNum').value.trim().replace(/^local-?\\s*/i, '');\n    if (ticket && !/^\\d+$/.test(ticket)) return setMsg($('#msg'), 'В тикете — только номер, например 1234', 'err');\n    const task = {\n      ticket: ticket ? 'LOCAL-' + ticket : '', contractor: $('#contractor').value, subject: $('#subject').value,\n      link: $('#link').value, link2: $('#link2').value, date: $('#date').value, product: $('#product').value,\n      customer: $('#customer').value, deadline: $('#deadline').value, exactDeadline: $('#exactDeadline').value,\n      status: $('#status').value, deliveryStatus: $('#deliveryStatus').value, estimateLink: $('#estimateLink').value,\n      total: $('#total').value, sp: $('#sp').value, manager: $('#manager').value, comment: $('#comment').value,\n      languages: checkedLangs()\n    };\n    const btn = $('#submitBtn');\n    btn.disabled = true; btn.textContent = 'Проверяю…';\n    run('findDuplicateTasks', task).then(dups => {\n      if (dups.length && !confirm('Похожая задача уже есть:\\n\\n' +\n          dups.map(d => `${d.id || '—'} · ${d.title} · ${d.date} · ${d.manager} (${d.why})`).join('\\n') +\n          '\\n\\nВсё равно добавить?')) {\n        throw new Error('Не добавлено — похожая задача уже есть.');\n      }\n      btn.textContent = 'Добавляю…';\n      return run('submitNewTaskFromDialog', task);\n    }).then(id => {\n      const subject = buildSubject(id);\n      copyText(subject);\n      setMsg($('#msg'), 'Добавлено: ' + id + '. Тема скопирована в буфер. Закрываю…', 'ok');\n      $('#preview').textContent = subject;\n      setTimeout(() => google.script.host.close(), 1600);\n    }).catch(e => {\n      setMsg($('#msg'), e.message.startsWith('Не добавлено') ? e.message : 'Не добавилось: ' + e.message, 'err');\n      btn.disabled = false; btn.textContent = 'Добавить задачу';\n    });\n  });\n</script>\n</body>\n</html>\n",
+  "SearchEditSidebar": "<!DOCTYPE html>\n<html>\n<head>\n<base target=\"_top\">\n<?!= include('Общее') ?>\n</head>\n<body class=\"has-foot\">\n  <div class=\"stack\">\n    <label class=\"field\">Найти<input type=\"text\" id=\"q\" placeholder=\"Номер, тема, тикет или ник\"></label>\n    <div class=\"small muted\" id=\"qHint\">Ваши задачи:</div>\n    <div class=\"results\" id=\"results\"></div>\n\n    <div id=\"editor\" class=\"stack\" hidden>\n      <div class=\"card\">\n        <div class=\"t\" id=\"cardTitle\"></div><div class=\"small muted\" id=\"cardMeta\"></div>\n        <button class=\"btn small\" id=\"copySubject\" type=\"button\" style=\"margin-top:6px\">Скопировать тему</button>\n      </div>\n\n      <div class=\"field\">Статус<div class=\"seg\" id=\"statusSeg\"></div></div>\n      <div class=\"two\">\n        <label class=\"field\">Срок сдачи<input type=\"date\" id=\"f_exactDeadline\"></label>\n        <label class=\"field\">SP<input type=\"number\" id=\"f_sp\" step=\"1\" min=\"0\"></label>\n      </div>\n      <div class=\"field\">Языки<div id=\"f_langs\"></div></div>\n\n      <details class=\"more\">\n        <summary>Задача: тема, ссылки, тикет, дата, продукт, ник</summary>\n        <div class=\"stack\">\n          <label class=\"field\">Тема письма<input type=\"text\" id=\"f_subject\"></label>\n          <label class=\"field\">Ссылка на Band<input type=\"url\" id=\"f_link\"></label>\n          <label class=\"field\">Доп. ссылка на Band<input type=\"url\" id=\"f_link2\"></label>\n          <div class=\"two\">\n            <label class=\"field\">Тикет<input type=\"text\" id=\"f_ticket\" placeholder=\"LOCAL-1234\"></label>\n            <label class=\"field\">Дата<input type=\"date\" id=\"f_date\"></label>\n          </div>\n          <label class=\"field\">Продукт<select id=\"f_product\"></select></label>\n          <label class=\"field\">Ник заказчика<input type=\"text\" id=\"f_customer\"></label>\n          <label class=\"field\">Дедлайн<select id=\"f_deadline\"></select></label>\n        </div>\n      </details>\n      <details class=\"more\">\n        <summary>Смета и деньги</summary>\n        <div class=\"stack\">\n          <label class=\"field\">Смета (ссылка)<input type=\"url\" id=\"f_estimateLink\"></label>\n          <div class=\"two\">\n            <label class=\"field\">Итого с НДС, ₽<input type=\"number\" id=\"f_total\" step=\"0.01\" min=\"0\"></label>\n            <label class=\"field\">Статус отдачи<select id=\"f_deliveryStatus\"></select></label>\n          </div>\n        </div>\n      </details>\n      <details class=\"more\">\n        <summary>Подрядчик, менеджер, комментарий</summary>\n        <div class=\"stack\">\n          <div class=\"two\">\n            <label class=\"field\">Подрядчик<select id=\"f_contractor\"></select></label>\n            <label class=\"field\">Менеджер<select id=\"f_manager\"></select></label>\n          </div>\n          <label class=\"field\">Комментарий<textarea id=\"f_comment\"></textarea></label>\n        </div>\n      </details>\n      <details class=\"more\" id=\"historyBox\">\n        <summary>История изменений</summary>\n        <div id=\"history\" class=\"small muted\"></div>\n      </details>\n    </div>\n    <div id=\"msg\" class=\"msg\"></div>\n  </div>\n\n  <div class=\"foot col\" id=\"foot\" hidden>\n    <button class=\"btn primary full\" id=\"saveBtn\" type=\"button\">Сохранить</button>\n    <button class=\"link-danger\" id=\"deleteBtn\" type=\"button\">Удалить задачу</button>\n  </div>\n\n<script>\n  const STATUS_COLORS = { 'Принято': '#EDEDED', 'В работе': '#D6E4F0', 'Отдано': '#D9EAD3', 'Отменено': '#F4CCCC', 'Холд': '#FFF2CC' };\n  let LISTS = null, current = null, status = '';\n\n  run('getAddTaskFormLists').then(d => {\n    LISTS = d;\n    fillSelect($('#f_product'), d.products, '—');\n    fillSelect($('#f_deadline'), d.deadlines, '—');\n    fillSelect($('#f_deliveryStatus'), d.deliveryStatuses, '—');\n    fillSelect($('#f_contractor'), d.contractors, '—');\n    fillSelect($('#f_manager'), d.managers, '—');\n    search('');\n  }).catch(e => setMsg($('#msg'), 'Не получилось загрузить списки: ' + e.message, 'err'));\n\n  // ---------- поиск ----------\n  let timer = null, seq = 0;\n  $('#q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => search($('#q').value), 350); });\n\n  function search(q) {\n    const my = ++seq;\n    $('#qHint').textContent = q.trim() ? 'Найдено:' : 'Ваши задачи (или последние, если вашей почты нет в «Списках»):';\n    run('searchTasks', q).then(list => {\n      if (my !== seq) return;\n      $('#results').innerHTML = list.length ? list.map(r =>\n        `<button type=\"button\" data-row=\"${r.row}\"${current && current.row === r.row ? ' class=\"on\"' : ''}>` +\n        `<b>${esc(r.id || '—')}</b>${esc(r.title)} <span class=\"d\">· ${esc(r.date)}${r.status ? ' · ' + esc(r.status) : ''}</span></button>`\n      ).join('') : '<div class=\"small muted\" style=\"padding:8px 10px\">Ничего не найдено</div>';\n    }).catch(e => setMsg($('#msg'), 'Поиск не сработал: ' + e.message, 'err'));\n  }\n\n  $('#results').addEventListener('click', e => {\n    const b = e.target.closest('button[data-row]');\n    if (!b) return;\n    $$('#results button').forEach(x => x.classList.toggle('on', x === b));\n    open(Number(b.dataset.row));\n  });\n\n  // ---------- карточка ----------\n  function open(row) {\n    setMsg($('#msg'), 'Открываю…');\n    run('getTaskForEdit', row).then(fill).catch(e => setMsg($('#msg'), 'Не открылась: ' + e.message, 'err'));\n  }\n\n  function renderStatus() {\n    $('#statusSeg').innerHTML = LISTS.statuses.map(s =>\n      `<button type=\"button\" data-s=\"${esc(s)}\" class=\"${s === status ? 'on' : ''}\" style=\"${s === status ? 'background:' + (STATUS_COLORS[s] || '#EEF3FE') : ''}\">${esc(s)}</button>`).join('');\n  }\n  $('#statusSeg').addEventListener('click', e => {\n    const b = e.target.closest('button[data-s]');\n    if (!b) return;\n    status = status === b.dataset.s ? '' : b.dataset.s;\n    renderStatus();\n  });\n\n  function fill(t) {\n    current = t;\n    status = t.status;\n    $('#cardTitle').textContent = (t.id || 'без номера') + (t.ticket ? ' · ' + t.ticket : '');\n    $('#cardMeta').textContent = [t.contractor, t.manager, t.product].filter(Boolean).join(' · ');\n    renderStatus();\n    const set = (id, v) => { $('#f_' + id).value = v == null ? '' : v; };\n    ['exactDeadline', 'sp', 'subject', 'link', 'link2', 'ticket', 'date', 'product', 'customer', 'deadline',\n     'estimateLink', 'total', 'deliveryStatus', 'contractor', 'manager', 'comment'].forEach(k => set(k, t[k]));\n\n    const langs = t.languages.split(',').map(s => s.trim()).filter(Boolean);\n    const known = [].concat(LISTS.languages.regular, LISTS.languages.shtat, LISTS.languages.rare);\n    renderChips($('#f_langs'), [\n      { title: '', items: LISTS.languages.regular },\n      { title: 'ШТАТ', items: LISTS.languages.shtat },\n      { title: 'Редкие', items: LISTS.languages.rare },\n      { title: 'Другие', items: langs.filter(l => !known.includes(l)) }\n    ], langs, v => v.replace(/^ШТАТ\\s+/i, ''));\n\n    $('#editor').hidden = false;\n    $('#foot').hidden = false;\n    setMsg($('#msg'), '');\n    $('#history').textContent = 'Загружаю…';\n    run('getTaskHistory', t.id).then(list => {\n      $('#history').innerHTML = list.length\n        ? list.map(h => `<div style=\"padding:3px 0;border-bottom:1px dashed #E2E5E9\"><b>${esc(h.date)}</b> — ${esc(h.who)} — ${esc(h.action)}${h.field ? ' (' + esc(h.field) + ')' : ''}</div>`).join('')\n        : 'Изменений пока не было.';\n    }).catch(() => { $('#history').textContent = 'Историю загрузить не получилось.'; });\n  }\n\n  $('#copySubject').addEventListener('click', () => {\n    if (!current) return;\n    copyText(current.subject).then(() => {\n      $('#copySubject').textContent = 'Скопировано ✓';\n      setTimeout(() => { $('#copySubject').textContent = 'Скопировать тему'; }, 1500);\n    });\n  });\n\n  // ---------- сохранить / удалить ----------\n  $('#saveBtn').addEventListener('click', () => {\n    if (!current) return;\n    const get = id => $('#f_' + id).value;\n    const task = {\n      row: current.row, id: current.id, origSubject: current.origSubject, status: status,\n      languages: chipValues($('#f_langs')).join(', ')\n    };\n    ['exactDeadline', 'sp', 'subject', 'link', 'link2', 'ticket', 'date', 'product', 'customer', 'deadline',\n     'estimateLink', 'total', 'deliveryStatus', 'contractor', 'manager', 'comment'].forEach(k => { task[k] = get(k); });\n    const btn = $('#saveBtn');\n    btn.disabled = true;\n    setMsg($('#msg'), 'Сохраняю…');\n    run('saveTaskEdits', task).then(r => {\n      setMsg($('#msg'), 'Сохранено ✓', 'ok');\n      return run('getTaskForEdit', r.row).then(fill).then(() => setMsg($('#msg'), 'Сохранено ✓', 'ok'));\n    }).catch(e => setMsg($('#msg'), 'Не сохранилось: ' + e.message, 'err'))\n      .finally(() => { btn.disabled = false; });\n  });\n\n  $('#deleteBtn').addEventListener('click', () => {\n    if (!current) return;\n    if (!confirm('Удалить задачу ' + (current.id || '') + '? Отменить будет нельзя.')) return;\n    run('deleteTask', current.row, current.id, current.origSubject).then(() => {\n      current = null;\n      $('#editor').hidden = true; $('#foot').hidden = true;\n      setMsg($('#msg'), 'Удалено.', 'ok');\n      search($('#q').value);\n    }).catch(e => setMsg($('#msg'), 'Не удалилось: ' + e.message, 'err'));\n  });\n</script>\n</body>\n</html>\n",
+  "DashboardSidebar": "<!DOCTYPE html>\n<html>\n<head>\n<base target=\"_top\">\n<?!= include('Общее') ?>\n<script src=\"https://www.gstatic.com/charts/loader.js\"></script>\n<style>\n  .row { display: flex; gap: 8px; align-items: end; }\n  .row .field { flex: 1; }\n  .chart { width: 100%; height: 240px; margin-bottom: 8px; }\n  .overdue .line { font-size: 12px; }\n</style>\n</head>\n<body>\n  <div class=\"row\">\n    <label class=\"field\">Год<select id=\"year\"></select></label>\n    <label class=\"field\">Месяц<select id=\"month\">\n      <option value=\"\">Весь год</option><option value=\"1\">Январь</option><option value=\"2\">Февраль</option><option value=\"3\">Март</option>\n      <option value=\"4\">Апрель</option><option value=\"5\">Май</option><option value=\"6\">Июнь</option><option value=\"7\">Июль</option>\n      <option value=\"8\">Август</option><option value=\"9\">Сентябрь</option><option value=\"10\">Октябрь</option>\n      <option value=\"11\">Ноябрь</option><option value=\"12\">Декабрь</option></select></label>\n    <button class=\"btn primary\" id=\"reload\" type=\"button\">Обновить</button>\n  </div>\n  <div id=\"msg\" class=\"msg\"></div>\n\n  <div class=\"tiles\" id=\"tiles\"></div>\n  <div id=\"overdueBox\" class=\"group overdue\" hidden><h4>Просрочено сейчас</h4><div id=\"overdue\"></div></div>\n\n  <h3>По менеджерам, SP</h3><div class=\"chart\" id=\"c_managers\"></div>\n  <h3>По менеджерам, ₽</h3><div class=\"chart\" id=\"c_managers_money\"></div>\n  <h3>По подрядчикам, ₽</h3><div class=\"chart\" id=\"c_contractors\"></div>\n  <h3>По продуктам, задач</h3><div class=\"chart\" id=\"c_products\"></div>\n  <h3>По языкам, упоминаний</h3><div class=\"chart\" id=\"c_langs\"></div>\n  <h3>По месяцам (последние 12): задачи и SP</h3><div class=\"chart\" id=\"c_months\"></div>\n  <h3>По годам: задачи и SP</h3><div class=\"chart\" id=\"c_years\"></div>\n\n<script>\n  const COLORS = ['#2563EB', '#94A3B8'];\n  run('getDashboardYears').then(years => {\n    fillSelect($('#year'), years.map(String), 'Всё время');\n  });\n  // Цифры показываем сразу; графики — когда загрузится библиотека Google Charts\n  let lastData = null, chartsReady = false;\n  if (window.google && google.charts) {\n    google.charts.load('current', { packages: ['corechart'] });\n    google.charts.setOnLoadCallback(() => { chartsReady = true; if (lastData) drawCharts(lastData); });\n  } else {\n    $$('.chart').forEach(el => { el.innerHTML = '<div class=\"small muted\">Графики не загрузились — проверьте интернет и нажмите «Обновить».</div>'; el.style.height = 'auto'; });\n  }\n  load();\n  $('#reload').addEventListener('click', load);\n  $('#year').addEventListener('change', load);\n  $('#month').addEventListener('change', () => { if ($('#year').value) load(); });\n\n  function load() {\n    setMsg($('#msg'), 'Считаю…');\n    run('getDashboardData', $('#year').value, $('#year').value ? $('#month').value : '')\n      .then(render).then(() => setMsg($('#msg'), ''))\n      .catch(e => setMsg($('#msg'), 'Не получилось посчитать: ' + e.message, 'err'));\n  }\n\n  function tile(num, lbl, bad) {\n    return `<div class=\"tile${bad ? ' bad' : ''}\"><div class=\"num\">${esc(num)}</div><div class=\"lbl\">${esc(lbl)}</div></div>`;\n  }\n\n  function render(d) {\n    $('#tiles').innerHTML = tile(d.totalTasks, 'задач') + tile(d.totalSp, 'SP') + tile(money(d.totalMoney), '₽ с НДС') +\n      tile(d.overdueCount, 'просрочено сейчас', d.overdueCount > 0);\n    $('#overdueBox').hidden = !d.overdue.length;\n    $('#overdue').innerHTML = d.overdue.map(o =>\n      `<div class=\"line\"><span><b>${esc(o.id)}</b> ${esc(o.title)}</span><span class=\"v\">${esc(o.due)} · ${esc(o.manager)}</span></div>`).join('');\n    lastData = d;\n    if (chartsReady) drawCharts(d);\n  }\n\n  function drawCharts(d) {\n    bar('c_managers', d.managers, 'Менеджер', 'SP');\n    bar('c_managers_money', d.managersMoney, 'Менеджер', '₽');\n    bar('c_contractors', d.contractorsMoney, 'Подрядчик', '₽');\n    bar('c_products', d.products, 'Продукт', 'Задачи');\n    bar('c_langs', d.languages, 'Язык', 'Упоминаний');\n    columns('c_months', d.byMonth, 'Месяц');\n    columns('c_years', d.byYear, 'Год');\n  }\n\n  function bar(id, rows, a, b) {\n    const dt = new google.visualization.DataTable();\n    dt.addColumn('string', a); dt.addColumn('number', b);\n    const data = rows.filter(r => r[1] > 0).sort((x, y) => y[1] - x[1]).slice(0, 10);\n    if (!data.length) { document.getElementById(id).innerHTML = '<div class=\"small muted\">Нет данных за период</div>'; return; }\n    data.forEach(r => dt.addRow(r));\n    new google.visualization.BarChart(document.getElementById(id)).draw(dt, {\n      legend: 'none', colors: [COLORS[0]], chartArea: { width: '58%', height: '82%' },\n      hAxis: { textStyle: { fontSize: 10 } }, vAxis: { textStyle: { fontSize: 10 } }\n    });\n  }\n\n  function columns(id, rows, a) {\n    const dt = new google.visualization.DataTable();\n    dt.addColumn('string', a); dt.addColumn('number', 'Задачи'); dt.addColumn('number', 'SP');\n    rows.forEach(r => dt.addRow(r));\n    new google.visualization.ColumnChart(document.getElementById(id)).draw(dt, {\n      legend: { position: 'top' }, colors: COLORS, chartArea: { width: '84%', height: '70%' },\n      hAxis: { textStyle: { fontSize: 9 } }, vAxis: { textStyle: { fontSize: 10 } }\n    });\n  }\n</script>\n</body>\n</html>\n",
+  "ManagerReportSidebar": "<!DOCTYPE html>\n<html>\n<head>\n<base target=\"_top\">\n<?!= include('Общее') ?>\n</head>\n<body>\n  <h2>Отчёт по менеджеру</h2>\n  <div class=\"stack\">\n    <div class=\"two\">\n      <label class=\"field\">Менеджер<select id=\"manager\"></select></label>\n      <label class=\"field\">Месяц<select id=\"month\"></select></label>\n    </div>\n    <button class=\"btn primary\" id=\"runBtn\" type=\"button\">Сформировать отчёт</button>\n  </div>\n  <div id=\"results\"></div>\n  <div class=\"two\" id=\"actions\" hidden style=\"margin-top:8px\">\n    <button class=\"btn\" id=\"copyBtn\" type=\"button\">Скопировать текстом</button>\n    <button class=\"btn\" id=\"exportBtn\" type=\"button\">📥 Скачать Excel</button>\n  </div>\n  <div id=\"msg\" class=\"msg\" style=\"margin-top:6px\"></div>\n\n  <hr class=\"sep\">\n  <h2>Отчёт для трекера</h2>\n  <div class=\"stack\">\n    <label class=\"field\">Тикет<select id=\"ticket\"></select></label>\n    <button class=\"btn primary\" id=\"trackerBtn\" type=\"button\">Сформировать</button>\n  </div>\n  <pre class=\"out\" id=\"trackerOut\" hidden></pre>\n  <button class=\"btn full\" id=\"trackerCopy\" type=\"button\" hidden>Скопировать</button>\n  <div id=\"trackerMsg\" class=\"msg\"></div>\n\n<script>\n  let report = null, trackerText = '';\n\n  Promise.all([run('getManagersList'), run('getMonthsList'), run('getTicketsForReport'), run('getAddTaskFormLists')])\n    .then(([managers, months, tickets, lists]) => {\n      fillSelect($('#manager'), managers, 'Выберите…', lists.currentManager);\n      $('#month').innerHTML = '<option value=\"\">Все месяцы</option>' + months.map(m => `<option value=\"${m.value}\">${esc(m.label)}</option>`).join('');\n      fillSelect($('#ticket'), tickets, 'Выберите тикет…');\n    }).catch(e => setMsg($('#msg'), 'Не получилось загрузить списки: ' + e.message, 'err'));\n\n  $('#runBtn').addEventListener('click', () => {\n    const manager = $('#manager').value;\n    if (!manager) return setMsg($('#msg'), 'Выберите менеджера', 'err');\n    $('#results').innerHTML = '<p class=\"muted\">Считаю…</p>';\n    $('#actions').hidden = true;\n    setMsg($('#msg'), '');\n    run('getManagerReport', manager, $('#month').value).then(render)\n      .catch(e => { $('#results').innerHTML = ''; setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'); });\n  });\n\n  function render(d) {\n    report = d;\n    if (!d.groups.length) { $('#results').innerHTML = '<p class=\"muted\">Ничего не найдено.</p>'; return; }\n    let html = `<div class=\"tiles\">\n      <div class=\"tile\"><div class=\"num\">${d.taskCount}</div><div class=\"lbl\">тикетов</div></div>\n      <div class=\"tile\"><div class=\"num\">${d.lineCount}</div><div class=\"lbl\">задач</div></div>\n      <div class=\"tile\"><div class=\"num\">${d.grandTotal}</div><div class=\"lbl\">SP</div></div>\n      <div class=\"tile\"><div class=\"num\">${money(d.grandMoney)}</div><div class=\"lbl\">₽ с НДС</div></div></div>`;\n    d.groups.forEach(g => {\n      html += `<div class=\"group\"><h4>${esc(g.ticket || '(без тикета)')}</h4>` +\n        g.lines.map(l => `<div class=\"line\"><span>${l.link ? `<a href=\"${esc(l.link)}\" target=\"_blank\">${esc(l.subject)}</a>` : esc(l.subject)}` +\n          (l.link2 ? ` <a href=\"${esc(l.link2)}\" target=\"_blank\" class=\"small\">(доп. ссылка)</a>` : '') + `</span><span class=\"v\">${l.sp} SP</span></div>`).join('') +\n        `<div class=\"line\"><span class=\"muted\">Итого по тикету</span><span class=\"v\">${g.ticketTotal} SP</span></div></div>`;\n    });\n    html += `<div class=\"total\">Общий итог по ${esc(d.manager)}${d.monthLabel ? ' за ' + esc(d.monthLabel) : ''}: ${d.grandTotal} SP</div>`;\n    $('#results').innerHTML = html;\n    $('#actions').hidden = false;\n  }\n\n  $('#copyBtn').addEventListener('click', () => {\n    if (!report) return;\n    let html = '';\n    report.groups.forEach(g => g.lines.forEach(l => {\n      html += `<div>${l.link ? `<a href=\"${esc(l.link)}\">${esc(l.subject)}</a>` : esc(l.subject)} — ${l.sp} SP</div>`;\n    }));\n    html += `<div><b>Общий итог по ${esc(report.manager)}: ${report.grandTotal} SP</b></div>`;\n    copyHtml(html);\n    setMsg($('#msg'), 'Скопировано — ссылки кликабельны при вставке в Doc, почту, Band', 'ok');\n  });\n\n  $('#exportBtn').addEventListener('click', () => {\n    setMsg($('#msg'), 'Готовлю файл…');\n    run('exportReportToDoc', $('#manager').value, $('#month').value).then(url => {\n      setMsg($('#msg'), 'Готово — файл скачивается', 'ok');\n      window.open(url, '_blank');\n    }).catch(e => setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'));\n  });\n\n  $('#trackerBtn').addEventListener('click', () => {\n    const ticket = $('#ticket').value;\n    if (!ticket) return setMsg($('#trackerMsg'), 'Выберите тикет', 'err');\n    setMsg($('#trackerMsg'), 'Считаю…');\n    run('getTrackerReportText', ticket).then(r => {\n      trackerText = r.text;\n      $('#trackerOut').hidden = !r.count;\n      $('#trackerCopy').hidden = !r.count;\n      $('#trackerOut').textContent = r.text;\n      setMsg($('#trackerMsg'), r.count ? '' : 'По этому тикету задач нет');\n    }).catch(e => setMsg($('#trackerMsg'), 'Не получилось: ' + e.message, 'err'));\n  });\n  $('#trackerCopy').addEventListener('click', () => copyText(trackerText).then(() => setMsg($('#trackerMsg'), 'Скопировано', 'ok')));\n</script>\n</body>\n</html>\n",
+  "CustomReportSidebar": "<!DOCTYPE html>\n<html>\n<head>\n<base target=\"_top\">\n<?!= include('Общее') ?>\n</head>\n<body>\n  <h2>Кастомный отчёт</h2>\n  <div class=\"stack\">\n    <div class=\"two\">\n      <label class=\"field\">Год<select id=\"year\"></select></label>\n      <label class=\"field\">Месяц<select id=\"month\">\n        <option value=\"\">Весь год</option><option value=\"1\">Январь</option><option value=\"2\">Февраль</option><option value=\"3\">Март</option>\n        <option value=\"4\">Апрель</option><option value=\"5\">Май</option><option value=\"6\">Июнь</option><option value=\"7\">Июль</option>\n        <option value=\"8\">Август</option><option value=\"9\">Сентябрь</option><option value=\"10\">Октябрь</option>\n        <option value=\"11\">Ноябрь</option><option value=\"12\">Декабрь</option></select></label>\n    </div>\n    <button class=\"btn primary\" id=\"runBtn\" type=\"button\">Сформировать</button>\n  </div>\n  <div id=\"results\"></div>\n  <div class=\"two\" id=\"actions\" hidden style=\"margin-top:8px\">\n    <button class=\"btn\" id=\"excelBtn\" type=\"button\">📥 Скачать Excel</button>\n    <button class=\"btn\" id=\"docBtn\" type=\"button\">📄 Открыть в Google Doc</button>\n  </div>\n  <div id=\"msg\" class=\"msg\" style=\"margin-top:6px\"></div>\n\n<script>\n  run('getDashboardYears').then(years => fillSelect($('#year'), years.map(String), 'Всё время'))\n    .catch(e => setMsg($('#msg'), 'Не получилось загрузить годы: ' + e.message, 'err'));\n\n  const period = () => [$('#year').value, $('#year').value ? $('#month').value : ''];\n\n  function table(rows, fmt) {\n    if (!rows.length) return '<p class=\"small muted\">Нет данных</p>';\n    return '<table class=\"kv\">' + rows.map(r => `<tr><td>${esc(r[0])}</td><td>${esc(fmt ? fmt(r) : r[1])}</td></tr>`).join('') + '</table>';\n  }\n\n  $('#runBtn').addEventListener('click', () => {\n    $('#results').innerHTML = '<p class=\"muted\">Считаю…</p>';\n    $('#actions').hidden = true;\n    setMsg($('#msg'), '');\n    run('getCustomReport', ...period()).then(d => {\n      let html = `<p class=\"small muted\">Период: <b>${esc(d.periodLabel)}</b></p><div class=\"tiles\">\n        <div class=\"tile\"><div class=\"num\">${d.totalTasks}</div><div class=\"lbl\">задач</div></div>\n        <div class=\"tile\"><div class=\"num\">${d.totalSp}</div><div class=\"lbl\">SP</div></div>\n        <div class=\"tile\"><div class=\"num\">${d.avgSp}</div><div class=\"lbl\">SP на задачу</div></div>\n        <div class=\"tile\"><div class=\"num\">${money(d.totalMoney)}</div><div class=\"lbl\">₽ с НДС</div></div></div>`;\n      html += '<h3>Продукты по числу задач</h3>' + table(d.topProducts);\n      html += '<h3>Языки по частоте</h3>' + table(d.languages);\n      html += '<h3>Статус отдачи заказчику</h3>' + table(d.deliveryStatus, r => r[1] + ' (' + r[2] + '%)');\n      html += '<h3>Топ-5 менеджеров по SP</h3>' + table(d.topManagers, r => r[2] + ' SP · ' + r[1] + ' задач');\n      html += '<h3>Топ-5 подрядчиков</h3>' + table(d.topContractors);\n      html += '<h3>Топ-10 самых трудоёмких задач</h3>' + (d.topTasksBySP.length ? d.topTasksBySP.map(t =>\n        `<div class=\"line\"><span>${t.link ? `<a href=\"${esc(t.link)}\" target=\"_blank\">${esc(t.subject)}</a>` : esc(t.subject)}</span><span class=\"v\">${t.sp} SP</span></div>`).join('')\n        : '<p class=\"small muted\">Нет задач с SP</p>');\n      $('#results').innerHTML = html;\n      $('#actions').hidden = false;\n    }).catch(e => { $('#results').innerHTML = ''; setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'); });\n  });\n\n  $('#excelBtn').addEventListener('click', () => {\n    setMsg($('#msg'), 'Готовлю файл…');\n    run('exportCustomReportToExcel', ...period()).then(url => { setMsg($('#msg'), 'Готово — файл скачивается', 'ok'); window.open(url, '_blank'); })\n      .catch(e => setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'));\n  });\n  $('#docBtn').addEventListener('click', () => {\n    setMsg($('#msg'), 'Создаю документ…');\n    run('exportCustomReportToDoc', ...period()).then(url => {\n      $('#msg').className = 'msg ok';\n      $('#msg').innerHTML = `<a href=\"${esc(url)}\" target=\"_blank\">Открыть документ →</a>`;\n    }).catch(e => setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'));\n  });\n</script>\n</body>\n</html>\n",
+  "AddTranslatorTaskDialog": "<!DOCTYPE html>\n<html>\n<head>\n<base target=\"_top\">\n<?!= include('Общее') ?>\n</head>\n<body class=\"has-foot\">\n  <div class=\"stack\">\n    <div class=\"two\">\n      <label class=\"field\">Дата<input type=\"date\" id=\"date\"></label>\n      <label class=\"field\"><span>Сторона <span class=\"req\">*</span></span><select id=\"side\"></select></label>\n    </div>\n    <label class=\"field\">Раздел<select id=\"razdel\"><option value=\"\">Сначала выберите сторону</option></select></label>\n    <label class=\"field\"><span>Задача <span class=\"req\">*</span></span><input type=\"text\" id=\"task\" placeholder=\"Например: перевести баннер главной страницы\"></label>\n    <div class=\"two\">\n      <label class=\"field\">Заказчик<input type=\"text\" id=\"customer\" placeholder=\"@nick\"></label>\n      <label class=\"field\">Ссылка на Band<input type=\"url\" id=\"link\" placeholder=\"https://band.wb.ru/…\"></label>\n    </div>\n    <div class=\"field\">Переводчик<div id=\"translators\"></div></div>\n    <div class=\"field\">Редактор<div id=\"editors\"></div></div>\n    <div class=\"two\">\n      <label class=\"field\">Готовность<select id=\"readiness\">\n        <option>Не начато</option><option>В работе</option><option>Готово</option><option>На проверке</option></select></label>\n      <label class=\"field\">Комментарий<input type=\"text\" id=\"comment\"></label>\n    </div>\n    <div id=\"msg\" class=\"msg\"></div>\n  </div>\n  <div class=\"foot\"><button class=\"btn primary grow\" id=\"submitBtn\" type=\"button\">Добавить задачу</button></div>\n\n<script>\n  let CATEGORIES = {};\n  $('#date').value = todayIso();\n\n  run('getContentCategories').then(d => {\n    CATEGORIES = d;\n    fillSelect($('#side'), Object.keys(d), 'Выберите…');\n  }).catch(e => setMsg($('#msg'), 'Не получилось загрузить разделы: ' + e.message, 'err'));\n\n  run('getTranslatorNames').then(names => {\n    renderChips($('#translators'), [{ items: names }], []);\n    renderChips($('#editors'), [{ items: names }], []);\n  }).catch(e => setMsg($('#msg'), 'Не получилось загрузить людей: ' + e.message, 'err'));\n\n  $('#side').addEventListener('change', () => {\n    const items = CATEGORIES[$('#side').value] || [];\n    fillSelect($('#razdel'), items, items.length ? 'Выберите…' : '—', items.length === 1 ? items[0] : '');\n  });\n\n  $('#submitBtn').addEventListener('click', () => {\n    if (!$('#side').value) return setMsg($('#msg'), 'Выберите сторону', 'err');\n    if (!$('#task').value.trim()) return setMsg($('#msg'), 'Опишите задачу', 'err');\n    const task = {\n      date: $('#date').value, side: $('#side').value, razdel: $('#razdel').value, task: $('#task').value,\n      customer: $('#customer').value, link: $('#link').value,\n      translator: chipValues($('#translators')).join(', '), editor: chipValues($('#editors')).join(', '),\n      readiness: $('#readiness').value, comment: $('#comment').value\n    };\n    const btn = $('#submitBtn');\n    btn.disabled = true; btn.textContent = 'Добавляю…';\n    run('submitNewTranslatorTask', task).then(() => {\n      setMsg($('#msg'), 'Добавлено! Закрываю…', 'ok');\n      setTimeout(() => google.script.host.close(), 900);\n    }).catch(e => {\n      setMsg($('#msg'), 'Не добавилось: ' + e.message, 'err');\n      btn.disabled = false; btn.textContent = 'Добавить задачу';\n    });\n  });\n</script>\n</body>\n</html>\n",
+  "SearchEditTranslatorSidebar": "<!DOCTYPE html>\n<html>\n<head>\n<base target=\"_top\">\n<?!= include('Общее') ?>\n</head>\n<body class=\"has-foot\">\n  <div class=\"stack\">\n    <label class=\"field\">Найти<input type=\"text\" id=\"q\" placeholder=\"Задача, заказчик, раздел или имя\"></label>\n    <div class=\"small muted\" id=\"qHint\">Ваши задачи:</div>\n    <div class=\"results\" id=\"results\"></div>\n\n    <div id=\"editor\" class=\"stack\" hidden>\n      <div class=\"card\"><div class=\"t\" id=\"cardTitle\"></div><div class=\"small muted\" id=\"cardMeta\"></div></div>\n      <div class=\"field\">Готовность<div class=\"seg\" id=\"readySeg\"></div></div>\n      <label class=\"field\">Задача<input type=\"text\" id=\"f_task\"></label>\n      <label class=\"field\">Ссылка на Band<input type=\"url\" id=\"f_link\"></label>\n      <div class=\"field\">Переводчик<div id=\"f_translators\"></div></div>\n      <div class=\"field\">Редактор<div id=\"f_editors\"></div></div>\n      <details class=\"more\">\n        <summary>Дата, сторона, раздел, заказчик, комментарий</summary>\n        <div class=\"stack\">\n          <div class=\"two\">\n            <label class=\"field\">Дата<input type=\"date\" id=\"f_date\"></label>\n            <label class=\"field\">Сторона<select id=\"f_side\"></select></label>\n          </div>\n          <label class=\"field\">Раздел<select id=\"f_razdel\"></select></label>\n          <label class=\"field\">Заказчик<input type=\"text\" id=\"f_customer\"></label>\n          <label class=\"field\">Комментарий<textarea id=\"f_comment\"></textarea></label>\n        </div>\n      </details>\n    </div>\n    <div id=\"msg\" class=\"msg\"></div>\n  </div>\n\n  <div class=\"foot col\" id=\"foot\" hidden>\n    <button class=\"btn primary full\" id=\"saveBtn\" type=\"button\">Сохранить</button>\n    <button class=\"link-danger\" id=\"deleteBtn\" type=\"button\">Удалить задачу</button>\n  </div>\n\n<script>\n  const READY = ['Не начато', 'В работе', 'На проверке', 'Готово'];\n  const READY_COLORS = { 'Не начато': '#EFEFEF', 'В работе': '#D6E4F0', 'Готово': '#D9EAD3', 'На проверке': '#FFF2CC' };\n  let CATEGORIES = {}, PEOPLE = [], current = null, readiness = '';\n\n  Promise.all([run('getContentCategories'), run('getTranslatorNames')]).then(([cats, names]) => {\n    CATEGORIES = cats; PEOPLE = names;\n    fillSelect($('#f_side'), Object.keys(cats), '—');\n    search('');\n  }).catch(e => setMsg($('#msg'), 'Не получилось загрузить списки: ' + e.message, 'err'));\n\n  let timer = null, seq = 0;\n  $('#q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => search($('#q').value), 350); });\n\n  function search(q) {\n    const my = ++seq;\n    $('#qHint').textContent = q.trim() ? 'Найдено:' : 'Ваши задачи (или последние, если вашей почты нет в «Списках»):';\n    run('searchTranslatorTasks', q).then(list => {\n      if (my !== seq) return;\n      $('#results').innerHTML = list.length ? list.map(r =>\n        `<button type=\"button\" data-row=\"${r.row}\">${esc(r.title)} <span class=\"d\">· ${esc(r.side)} · ${esc(r.date)}${r.readiness ? ' · ' + esc(r.readiness) : ''}</span></button>`\n      ).join('') : '<div class=\"small muted\" style=\"padding:8px 10px\">Ничего не найдено</div>';\n    }).catch(e => setMsg($('#msg'), 'Поиск не сработал: ' + e.message, 'err'));\n  }\n\n  $('#results').addEventListener('click', e => {\n    const b = e.target.closest('button[data-row]');\n    if (!b) return;\n    $$('#results button').forEach(x => x.classList.toggle('on', x === b));\n    run('getTranslatorTaskForEdit', Number(b.dataset.row)).then(fill).catch(err => setMsg($('#msg'), 'Не открылась: ' + err.message, 'err'));\n  });\n\n  function renderReady() {\n    $('#readySeg').innerHTML = READY.map(s =>\n      `<button type=\"button\" data-s=\"${esc(s)}\" class=\"${s === readiness ? 'on' : ''}\" style=\"${s === readiness ? 'background:' + READY_COLORS[s] : ''}\">${esc(s)}</button>`).join('');\n  }\n  $('#readySeg').addEventListener('click', e => {\n    const b = e.target.closest('button[data-s]');\n    if (b) { readiness = b.dataset.s; renderReady(); }\n  });\n\n  function peopleChips(el, chosen) {\n    renderChips(el, [{ items: PEOPLE }, { title: 'Другие', items: chosen.filter(n => !PEOPLE.includes(n)) }], chosen);\n  }\n\n  function updateRazdel(selected) {\n    const items = CATEGORIES[$('#f_side').value] || [];\n    fillSelect($('#f_razdel'), items.includes(selected) || !selected ? items : items.concat([selected]), '—', selected);\n  }\n  $('#f_side').addEventListener('change', () => updateRazdel(''));\n\n  function fill(t) {\n    current = t;\n    readiness = t.readiness || 'Не начато';\n    $('#cardTitle').textContent = t.task || '(задача не заполнена)';\n    $('#cardMeta').textContent = [t.side, t.razdel, t.customer].filter(Boolean).join(' · ');\n    renderReady();\n    $('#f_task').value = t.task; $('#f_link').value = t.link; $('#f_date').value = t.date;\n    $('#f_side').value = t.side; updateRazdel(t.razdel);\n    $('#f_customer').value = t.customer; $('#f_comment').value = t.comment;\n    peopleChips($('#f_translators'), t.translatorNames);\n    peopleChips($('#f_editors'), t.editorNames);\n    $('#editor').hidden = false; $('#foot').hidden = false;\n    setMsg($('#msg'), '');\n  }\n\n  $('#saveBtn').addEventListener('click', () => {\n    if (!current) return;\n    const task = {\n      row: current.row, origKey: current.origKey, readiness: readiness,\n      task: $('#f_task').value, link: $('#f_link').value, date: $('#f_date').value, side: $('#f_side').value,\n      razdel: $('#f_razdel').value, customer: $('#f_customer').value, comment: $('#f_comment').value,\n      translator: chipValues($('#f_translators')).join(', '), editor: chipValues($('#f_editors')).join(', ')\n    };\n    const btn = $('#saveBtn');\n    btn.disabled = true;\n    setMsg($('#msg'), 'Сохраняю…');\n    run('saveTranslatorTaskEdits', task)\n      .then(r => run('getTranslatorTaskForEdit', r.row)).then(fill)\n      .then(() => { setMsg($('#msg'), 'Сохранено ✓', 'ok'); search($('#q').value); })\n      .catch(e => setMsg($('#msg'), 'Не сохранилось: ' + e.message, 'err'))\n      .finally(() => { btn.disabled = false; });\n  });\n\n  $('#deleteBtn').addEventListener('click', () => {\n    if (!current) return;\n    if (!confirm('Удалить задачу «' + (current.task || '') + '»? Отменить будет нельзя.')) return;\n    run('deleteTranslatorTask', current.row, current.origKey).then(() => {\n      current = null;\n      $('#editor').hidden = true; $('#foot').hidden = true;\n      setMsg($('#msg'), 'Удалено.', 'ok');\n      search($('#q').value);\n    }).catch(e => setMsg($('#msg'), 'Не удалилось: ' + e.message, 'err'));\n  });\n</script>\n</body>\n</html>\n",
+  "TranslatorReportSidebar": "<!DOCTYPE html>\n<html>\n<head>\n<base target=\"_top\">\n<?!= include('Общее') ?>\n</head>\n<body>\n  <h2>Отчёт по переводчику</h2>\n  <div class=\"stack\">\n    <div class=\"two\">\n      <label class=\"field\">Переводчик<select id=\"translator\"></select></label>\n      <label class=\"field\">Месяц<select id=\"month\"></select></label>\n    </div>\n    <div class=\"two\">\n      <button class=\"btn primary\" id=\"runBtn\" type=\"button\">Сформировать отчёт</button>\n      <button class=\"btn\" id=\"trackerBtn\" type=\"button\">Список для трекера</button>\n    </div>\n  </div>\n  <div id=\"results\"></div>\n  <pre class=\"out\" id=\"trackerOut\" hidden></pre>\n  <div class=\"two\" style=\"margin-top:8px\">\n    <button class=\"btn\" id=\"exportBtn\" type=\"button\" hidden>📥 Скачать Excel</button>\n    <button class=\"btn\" id=\"trackerCopy\" type=\"button\" hidden>Скопировать список</button>\n  </div>\n  <div id=\"msg\" class=\"msg\" style=\"margin-top:6px\"></div>\n\n<script>\n  let trackerText = '';\n  const badge = r => r === 'Готово' ? 'b-done' : r === 'В работе' ? 'b-progress' : r === 'На проверке' ? 'b-review' : '';\n\n  Promise.all([run('getTranslatorNames'), run('getMonthsList')]).then(([names, months]) => {\n    fillSelect($('#translator'), names, 'Выберите…');\n    $('#month').innerHTML = '<option value=\"\">Все месяцы</option>' + months.map(m => `<option value=\"${m.value}\">${esc(m.label)}</option>`).join('');\n  }).catch(e => setMsg($('#msg'), 'Не получилось загрузить списки: ' + e.message, 'err'));\n\n  function need() {\n    if ($('#translator').value) return true;\n    setMsg($('#msg'), 'Выберите переводчика', 'err');\n    return false;\n  }\n\n  $('#runBtn').addEventListener('click', () => {\n    if (!need()) return;\n    $('#trackerOut').hidden = true; $('#trackerCopy').hidden = true;\n    $('#results').innerHTML = '<p class=\"muted\">Считаю…</p>';\n    setMsg($('#msg'), '');\n    run('getTranslatorReport', $('#translator').value, $('#month').value).then(d => {\n      if (!d.total) { $('#results').innerHTML = '<p class=\"muted\">Ничего не найдено.</p>'; $('#exportBtn').hidden = true; return; }\n      let html = `<div class=\"tiles\">\n        <div class=\"tile\"><div class=\"num\">${d.total}</div><div class=\"lbl\">всего</div></div>\n        <div class=\"tile\"><div class=\"num\">${d.done}</div><div class=\"lbl\">готово</div></div>\n        <div class=\"tile\"><div class=\"num\">${d.inProgress}</div><div class=\"lbl\">в работе</div></div></div>`;\n      Object.keys(d.bySide).forEach(side => {\n        const tasks = d.bySide[side];\n        html += `<div class=\"group\"><h4>${esc(side)} (${tasks.length})</h4>` + tasks.map(t =>\n          `<div class=\"line\"><span>${t.link ? `<a href=\"${esc(t.link)}\" target=\"_blank\">${esc(t.task)}</a>` : esc(t.task)}</span>` +\n          `<span class=\"badge ${badge(t.readiness)}\">${esc(t.readiness)}</span></div>`).join('') + '</div>';\n      });\n      $('#results').innerHTML = html;\n      $('#exportBtn').hidden = false;\n    }).catch(e => { $('#results').innerHTML = ''; setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'); });\n  });\n\n  $('#exportBtn').addEventListener('click', () => {\n    setMsg($('#msg'), 'Готовлю файл…');\n    run('exportTranslatorReportToExcel', $('#translator').value, $('#month').value)\n      .then(url => { setMsg($('#msg'), 'Готово — файл скачивается', 'ok'); window.open(url, '_blank'); })\n      .catch(e => setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'));\n  });\n\n  $('#trackerBtn').addEventListener('click', () => {\n    if (!need()) return;\n    setMsg($('#msg'), 'Считаю…');\n    run('getTranslatorTrackerReportText', $('#translator').value).then(r => {\n      trackerText = r.text;\n      $('#trackerOut').textContent = r.text;\n      $('#trackerOut').hidden = !r.count; $('#trackerCopy').hidden = !r.count;\n      setMsg($('#msg'), r.count ? '' : 'Задач не найдено');\n    }).catch(e => setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'));\n  });\n  $('#trackerCopy').addEventListener('click', () => copyText(trackerText).then(() => setMsg($('#msg'), 'Скопировано', 'ok')));\n</script>\n</body>\n</html>\n"
+};

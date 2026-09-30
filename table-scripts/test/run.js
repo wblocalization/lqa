@@ -22,7 +22,9 @@ vm.createContext(ctx);
 const CDate = vm.runInContext('Date', ctx);
 [ss, ...Object.values(others)].forEach(book => book.getSheets().forEach(sh => sh.cells.forEach(row => row.forEach(c => { if (c.v instanceof Date) c.v = new CDate(c.v.getTime()); }))));
 const same = (a, b, m) => assert.equal(JSON.stringify(a), JSON.stringify(b), m);
-for (const f of ['table-scripts/Код.gs', 'table-scripts/Перенос.gs', 'smeta-extension/apps-script/Smeta.gs']) {
+// BUNDLE=1 — проверяем сборку «всё в одном файле» вместо отдельных файлов
+const FILES = process.env.BUNDLE ? ['table-scripts/ВсёВОдном.gs'] : ['table-scripts/Код.gs', 'table-scripts/Перенос.gs', 'smeta-extension/apps-script/Smeta.gs'];
+for (const f of FILES) {
   vm.runInContext(fs.readFileSync(`${REPO}/${f}`, 'utf8'), ctx, { filename: f });
 }
 const G = ctx;
@@ -50,6 +52,12 @@ test('onOpen строит меню', () => {
   same(calls.menus.map(m => m.name), ['📋 Менеджеры', '👥 Переводчики EN', '📈 Отчёты', '⚙️ Настройки']);
   const fnNames = calls.menus.flatMap(m => m.items.flatMap(i => Array.isArray(i[1]) ? i[1].map(x => x[1]) : [i[1]]));
   fnNames.forEach(f => assert.equal(typeof G[f], 'function', 'нет функции ' + f));
+});
+
+test('Окна открываются', { skip: !process.env.BUNDLE }, () => {
+  assert.match(G.include('Общее'), /<style>/);
+  ['showAddTaskDialog', 'showSearchEditSidebar', 'showDashboard', 'showManagerReportSidebar', 'showCustomReportSidebar',
+   'showAddTranslatorTaskDialog', 'showSearchEditTranslatorSidebar', 'showTranslatorReportSidebar'].forEach(f => G[f]());
 });
 
 test('До оформления (в «Списках» ещё нет колонки O) справочники читаются', () => {

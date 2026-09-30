@@ -259,7 +259,7 @@ function makeContext(fixture, opts = {}) {
     PropertiesService: { getScriptProperties: () => ({ getProperty: () => 'T', setProperty() {} }) },
     MailApp: { sendEmail: m => calls.mail.push(m) },
     ScriptApp: { getProjectTriggers: () => [], deleteTrigger() {}, newTrigger: h => chain({ timeBased() { return this; }, create() { calls.triggers.push(h); } }), WeekDay: { MONDAY: 1 } },
-    HtmlService: { createHtmlOutputFromFile: () => chain({ getContent: () => '' }), createTemplateFromFile: () => ({ evaluate: () => chain({}) }) },
+    HtmlService: { createHtmlOutputFromFile: n => { throw new Error('нет HTML-файла ' + n); }, createTemplateFromFile: n => { throw new Error('нет HTML-файла ' + n); }, createTemplate: src => ({ src, evaluate: () => chain({}) }) },
     ContentService: { MimeType: { JSON: 1 }, createTextOutput: s => ({ setMimeType: () => s }) },
     Logger: console,
     __setEmail: e => { userEmail = e; }
