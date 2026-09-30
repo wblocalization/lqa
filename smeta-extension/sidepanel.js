@@ -231,8 +231,7 @@ els.form.addEventListener('submit', async (e) => {
 });
 
 function normTask(s) {
-  const m = String(s).trim().match(/^([A-Za-z]+)[-_ ]?(\d+)(?:[-_ ](\d+))?$/);
-  return m ? [m[1].toUpperCase(), m[2], m[3]].filter(Boolean).join('-') : '';
+  return String(s).trim().replace(/\s+/g, ' ').toUpperCase();
 }
 
 function esc(s) {

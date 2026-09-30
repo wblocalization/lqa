@@ -91,7 +91,7 @@ function smetaWrite_(req) {
 
 function smetaFindTask_(task) {
   const taskId = String(task || '').trim().toUpperCase();
-  if (!/^[A-Z]+-\d+(-\d+)?$/.test(taskId)) throw new Error('Номер должен быть вида LIT-26-2203');
+  if (!taskId || taskId.length > 100) throw new Error('Пустой номер задачи');
 
   const sheet = smetaSpreadsheet_().getSheetByName(SMETA_TASKS_SHEET);
   if (!sheet) throw new Error('Нет листа «' + SMETA_TASKS_SHEET + '»');
