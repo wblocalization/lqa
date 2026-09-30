@@ -25,9 +25,6 @@
     <label>Ваше имя <span class="opt">для «Журнала»</span>
       <input id="setUser" type="text" placeholder="Анастасия Лисовая">
     </label>
-    <label>Коды подрядчиков <span class="opt">через запятую</span>
-      <input id="setPrefixes" type="text" placeholder="LIT">
-    </label>
     <div class="row-btns">
       <button id="closeSettings" class="btn ghost" type="button">Отмена</button>
       <button id="saveSettings" class="btn" type="button">Сохранить</button>
@@ -43,7 +40,7 @@
       <strong>Перетащите PDF сметы</strong>
       <span>или нажмите, чтобы выбрать</span>
     </label>
-    <p class="muted center">Номер задачи и сумма с НДС найдутся сами</p>
+    <p class="muted center">Номер задачи возьмётся из имени файла (LIT-26-2203 → LIT-26), сумма с НДС — из сметы</p>
   </section>
 
   <form id="form" hidden>

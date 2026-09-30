@@ -2,18 +2,26 @@
 // Опционально: SMETA_PDF=/путь/к/смете.pdf — прогнать разбор на настоящем PDF (нужен pdfjs-dist).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseEstimate, findTaskId, extractAmounts, findTotalWithVat, parseMoney } from '../parser.js';
+import { parseEstimate, taskFromFileName, taskFromTexts, extractAmounts, findTotalWithVat, parseMoney } from '../parser.js';
 
 test('parseMoney понимает пробелы и запятую', () => {
   assert.equal(parseMoney('110 929,150'), 110929.15);
   assert.equal(parseMoney('5 937,50'), 5937.5);
 });
 
-test('номер задачи из номера сметы и из имени файла', () => {
-  assert.equal(findTaskId(['1LIT-26-2217']), 'LIT-26');
-  assert.equal(findTaskId(['WB-2063_AZ_AM', 'нет номера']), null);
-  assert.equal(findTaskId(['lit_7 смета']), 'LIT-7');
-  assert.equal(findTaskId(['GLB-12-1'], ['LIT', 'GLB']), 'GLB-12');
+test('номер задачи берётся из имени файла', () => {
+  assert.equal(taskFromFileName('LIT-26-2203.pdf'), 'LIT-26');
+  assert.equal(taskFromFileName('419cc3c8-LIT-26-2217-___.pdf'), 'LIT-26');
+  assert.equal(taskFromFileName('Смета GLB-5-100 финал.pdf'), 'GLB-5');
+  assert.equal(taskFromFileName('lit_7.pdf'), 'LIT-7');
+  assert.equal(taskFromFileName('смета от 22.09.pdf'), null);
+});
+
+test('если в имени файла номера нет — берётся номер сметы из текста, а не чужой код', () => {
+  assert.equal(taskFromTexts(['WB-2063_AZ_AM_HY', '1LIT-26-2217']), 'LIT-26');
+  assert.equal(taskFromTexts(['WB-2063_AZ_AM_HY']), null);
+  assert.equal(parseEstimate(['1LIT-26-2217'], 'LIT-30-1.pdf').task, 'LIT-30');
+  assert.equal(parseEstimate(['1LIT-26-2217'], 'смета.pdf').task, 'LIT-26');
 });
 
 test('итог с НДС находится по арифметике, а не по подписям', () => {

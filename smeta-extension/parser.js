@@ -1,8 +1,6 @@
 // Разбор текста сметы: номер задачи и итоговая сумма с НДС.
 // Модуль без зависимостей от браузера — его же гоняют тесты в Node.
 
-export const DEFAULT_PREFIXES = ['LIT'];
-
 // Ставки НДС, которые встречаются в сметах (доли от суммы без НДС).
 const VAT_RATES = [0.22, 0.2, 0.1, 0.07, 0.05];
 
@@ -50,24 +48,35 @@ export function findTotalWithVat(amountsCents) {
   return { net: best.net / 100, vat: best.vat / 100, gross: best.gross / 100, rate: best.rate };
 }
 
-/** Номер задачи вида LIT-26 (из «LIT-26-2217» тоже берётся LIT-26). */
-export function findTaskId(texts, prefixes = DEFAULT_PREFIXES) {
-  const alt = prefixes.map((p) => p.replace(/[^A-Za-z0-9]/g, '')).filter(Boolean).join('|');
-  if (!alt) return null;
-  const re = new RegExp(`(?<![A-Za-z])(${alt})[-_ ]?(\\d+)`, 'i');
+// Код подрядчика — 2–6 латинских букв перед номером: LIT-26, GLB-5.
+// Номер сметы «LIT-26-2203» (код-задача-смета) надёжнее всего, поэтому ищем его первым.
+const ESTIMATE_NO_RE = /(?<![A-Za-z])([A-Za-z]{2,6})[-_](\d+)[-_]\d+/;
+const TASK_RE = /(?<![A-Za-z0-9])([A-Za-z]{2,6})[-_](\d+)(?!\d)/;
+
+const toTask = (m) => `${m[1].toUpperCase()}-${Number(m[2])}`;
+
+/** Номер задачи из имени файла: «LIT-26-2203.pdf» → LIT-26. */
+export function taskFromFileName(fileName) {
+  const name = String(fileName).replace(/\.pdf$/i, '');
+  const m = name.match(ESTIMATE_NO_RE) || name.match(TASK_RE);
+  return m ? toTask(m) : null;
+}
+
+/** Запасной вариант — номер сметы в тексте PDF (там же есть чужие коды вроде WB-2063, поэтому только трёхчастный). */
+export function taskFromTexts(texts) {
   for (const t of texts) {
-    const m = String(t).match(re);
-    if (m) return `${m[1].toUpperCase()}-${Number(m[2])}`;
+    const m = String(t).match(ESTIMATE_NO_RE);
+    if (m) return toTask(m);
   }
   return null;
 }
 
 /**
  * Главная функция: принимает куски текста PDF и имя файла.
- * Номер ищем сначала в тексте (там он надёжнее), потом в имени файла.
+ * Номер задачи берём из имени файла, а если его там нет — из номера сметы в тексте.
  */
-export function parseEstimate(texts, fileName = '', prefixes = DEFAULT_PREFIXES) {
-  const task = findTaskId(texts, prefixes) || findTaskId([fileName], prefixes);
+export function parseEstimate(texts, fileName = '') {
+  const task = taskFromFileName(fileName) || taskFromTexts(texts);
   const total = findTotalWithVat(extractAmounts(texts));
   return { task, total };
 }

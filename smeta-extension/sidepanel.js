@@ -1,12 +1,12 @@
 import * as pdfjs from './vendor/pdf.min.mjs';
-import { parseEstimate, formatMoney, DEFAULT_PREFIXES } from './parser.js';
+import { parseEstimate, formatMoney } from './parser.js';
 
 pdfjs.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('vendor/pdf.worker.min.mjs');
 
 const $ = (s) => document.querySelector(s);
 const els = {
   settings: $('#settings'), setUrl: $('#setUrl'), setToken: $('#setToken'), setUser: $('#setUser'),
-  setPrefixes: $('#setPrefixes'), saveSettings: $('#saveSettings'),
+  saveSettings: $('#saveSettings'),
   openSettings: $('#openSettings'), closeSettings: $('#closeSettings'),
   empty: $('#empty'), drop: $('#drop'), file: $('#file'), form: $('#form'), fileName: $('#fileName'),
   reset: $('#reset'), done: $('#done'), doneText: $('#doneText'), again: $('#again'),
@@ -14,7 +14,7 @@ const els = {
   link: $('#link'), pasteLink: $('#pasteLink'), submit: $('#submit'), status: $('#status'),
 };
 
-let settings = { url: '', token: '', user: '', prefixes: DEFAULT_PREFIXES.join(', ') };
+let settings = { url: '', token: '', user: '' };
 let current = null; // { fileName } — смета, которая сейчас в форме
 
 // ---------- Настройки ----------
@@ -29,7 +29,6 @@ function fillSettings() {
   els.setUrl.value = settings.url;
   els.setToken.value = settings.token;
   els.setUser.value = settings.user;
-  els.setPrefixes.value = settings.prefixes;
 }
 
 els.openSettings.addEventListener('click', () => {
@@ -43,15 +42,12 @@ els.saveSettings.addEventListener('click', async () => {
     url: els.setUrl.value.trim(),
     token: els.setToken.value.trim(),
     user: els.setUser.value.trim(),
-    prefixes: els.setPrefixes.value.trim() || DEFAULT_PREFIXES.join(', '),
   };
   await chrome.storage.local.set({ settings });
   els.settings.hidden = true;
   setStatus('Настройки сохранены', 'ok');
   if (els.task.value) lookup();
 });
-
-const prefixes = () => settings.prefixes.split(/[,\s]+/).filter(Boolean);
 
 // ---------- Статус ----------
 function setStatus(text, kind = 'info') {
@@ -96,7 +92,7 @@ async function handleFile(file) {
   setStatus('Читаю PDF…');
   let parsed;
   try {
-    parsed = parseEstimate(await readPdfTexts(file), file.name, prefixes());
+    parsed = parseEstimate(await readPdfTexts(file), file.name);
   } catch (e) {
     console.error(e);
     setStatus(`Не получилось прочитать PDF: ${e.message}`, 'err');
