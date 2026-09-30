@@ -201,9 +201,17 @@ form { display: flex; flex-direction: column; gap: 16px; }
 .more[open] { display: flex; flex-direction: column; gap: 12px; }
 .more[open] summary { margin-bottom: 0; }
 
-.preview-box { padding: 10px 12px; border-radius: 8px; background: var(--soft); }
-.preview-box .eyebrow { margin-bottom: 4px; }
-.preview { margin: 0 0 8px; font-size: 13px; word-break: break-word; }
+/* Тема письма и «Скопировать» всегда видны — прилипают под шапкой при прокрутке */
+.preview-box {
+  position: sticky; top: var(--head-h, 57px); z-index: 1;
+  display: flex; gap: 10px; align-items: flex-start;
+  margin: -16px -16px 0; padding: 10px 16px; background: var(--soft);
+  border-bottom: 1px solid var(--line); box-shadow: 0 2px 6px rgb(0 0 0 / .05);
+}
+.preview-txt { flex: 1; min-width: 0; }
+.preview-box .eyebrow { margin-bottom: 2px; }
+.preview { margin: 0; font-size: 13px; word-break: break-word; }
+.preview-box .btn { flex: none; }
 .btn.small { padding: 5px 10px; font-size: 12.5px; }
 .done-subject { word-break: break-word; font-size: 13px; }
 .done .btn + .btn { margin-top: 0; }

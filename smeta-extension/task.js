@@ -189,7 +189,11 @@ async function copyText(text, okMsg) {
     setMsg('Не получилось скопировать', 'err');
   }
 }
-els.copyPreview.addEventListener('click', () => copyText(els.preview.textContent, 'Тема скопирована'));
+els.copyPreview.addEventListener('click', async () => {
+  await copyText(els.preview.textContent, 'Тема скопирована');
+  els.copyPreview.textContent = 'Скопировано ✓';
+  setTimeout(() => { els.copyPreview.textContent = 'Скопировать'; }, 1500);
+});
 
 els.pasteLink.addEventListener('click', async () => {
   try {

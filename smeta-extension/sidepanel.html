@@ -38,6 +38,10 @@
     <p id="taskLoading" class="muted center" hidden></p>
 
     <form id="taskForm" class="task-form" hidden>
+      <div class="preview-box">
+        <div class="preview-txt"><span class="eyebrow">Тема письма</span><p id="tPreview" class="preview"></p></div>
+        <button id="tCopyPreview" class="btn ghost small" type="button">Скопировать</button>
+      </div>
       <div class="two">
         <label><span>Подрядчик <span class="req">*</span></span>
           <select id="tContractor" required></select>
@@ -98,11 +102,7 @@
         <label>Комментарий <input id="tComment" type="text"></label>
       </details>
 
-      <div class="preview-box">
-        <span class="eyebrow">Тема письма</span>
-        <p id="tPreview" class="preview"></p>
-        <button id="tCopyPreview" class="btn ghost small" type="button">Скопировать</button>
-      </div>
+
 
       <button id="tSubmit" class="btn primary" type="submit">Добавить задачу</button>
     </form>

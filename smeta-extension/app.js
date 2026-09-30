@@ -41,6 +41,12 @@ els.saveSettings.addEventListener('click', async () => {
   task.onSettingsSaved();
 });
 
+// Высота шапки — чтобы тема письма прилипала точно под ней
+const head = document.querySelector('.top');
+const setHeadH = () => document.documentElement.style.setProperty('--head-h', head.offsetHeight + 'px');
+setHeadH();
+window.addEventListener('resize', setHeadH);
+
 await loadSettings();
 fillSettings();
 if (!isConfigured()) els.settings.hidden = false;

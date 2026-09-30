@@ -4,8 +4,10 @@
 <base target="_top">
 <?!= include('Общее') ?>
 <style>
-  .preview { position: sticky; top: -14px; z-index: 2; margin: -14px -16px 0; border-radius: 0; border-width: 0 0 1px; padding: 10px 16px;
-    display: flex; gap: 10px; align-items: flex-start; }
+  /* Тема письма и «Скопировать» всегда видны сверху, даже при прокрутке */
+  .preview { position: sticky; top: 0; z-index: 5; margin: -14px -16px 0; border-radius: 0; border-width: 0 0 1px; padding: 10px 16px;
+    display: flex; gap: 10px; align-items: flex-start; box-shadow: 0 2px 6px rgb(0 0 0 / .06); }
+  .preview .btn { flex: none; }
   .preview .txt { flex: 1; min-width: 0; }
 </style>
 </head>
