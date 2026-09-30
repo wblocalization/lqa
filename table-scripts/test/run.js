@@ -75,12 +75,15 @@ test('setupDesign: оформление без ошибок', () => {
   assert.ok(sh.cf.length > 30, 'правил цветов: ' + sh.cf.length);
   assert.ok(sh.cf.every(r => /!.1:/.test(r.ranges[0])), 'правила должны начинаться с 1-й строки');
   assert.ok(sh.groups[11] && sh.groups[15], 'группы колонок');
+  assert.ok(!sh.groups['11:collapsed'] && !sh.groups['15:collapsed'], 'колонки не свёрнуты — «Смета» видна');
+  assert.equal(sh.cell(2, 3).f.bold, true, 'тема письма жирная');
+  assert.ok(ss.getSheetByName('📋 Инструкция (менеджеры)').cards.length >= 6, 'карточки в шпаргалке');
   assert.ok(sh.getRange(2, 5).getDataValidation(), 'список в строке задачи');
   assert.equal(sh.getRange(sh.getLastRow() + 3, 5).getDataValidation(), null, 'в пустых строках списков нет');
   const l = ss.getSheetByName('Списки');
   assert.equal(l.getRange('O2').getValue(), 'Префикс подрядчика');
   assert.equal(l.getRange('O3').getValue(), 'LIT');
-  const guide = ss.getSheetByName('📋 Инструкция (менеджеры)').getRange('C1').getValue();
+  const guide = ss.getSheetByName('📋 Инструкция (менеджеры)').getRange('B1').getValue();
   assert.match(guide, /Шпаргалка/);
   assert.ok(tr().cf.length > 10);
   // повторный запуск не ломается и не плодит группы
@@ -371,6 +374,10 @@ test('Перенос истории из старой таблицы', { skip: !
   const next = G.generateNextTaskId(tasks(), 'LogrusIT');
   assert.ok(Number(next.split('-')[2]) > 2231 && !rows.some(r => r[0] === next), next);
   console.log('      окно подтверждения:', calls.alerts.length ? '' : '', migrationAlert.replace(/\n/g, ' | '));
+  // Старая таблица запомнилась: новые номера сверяются с ней
+  others[OLD_ID].getSheetByName('Localization Misc').appendRow(['LIT-26-9999']);
+  ctx.__clearCache();
+  assert.equal(G.generateNextTaskId(tasks(), 'LogrusIT'), 'LIT-26-10000');
   const d = G.getDashboardData('2025');
   assert.ok(d.totalTasks > 800, 'дашборд видит историю: ' + d.totalTasks);
 });
@@ -382,4 +389,27 @@ test('colorizeRowDirectly: на оформленном листе не крас�
   G.colorizeRowDirectly(tasks(), 2);
 });
 
+// Картинка шпаргалки: GUIDE_HTML=путь — сохранить лист инструкции как HTML
+if (process.env.GUIDE_HTML) {
+  const g = ss.getSheetByName(process.env.GUIDE_SHEET || '📋 Инструкция (менеджеры)');
+  const covered = {};
+  (g.mergeList || []).forEach(([r, c, nr, nc]) => { for (let i = 0; i < nr; i++) for (let j = 0; j < nc; j++) if (i || j) covered[(r + i) + ':' + (c + j)] = true; });
+  const span = (r, c) => { const m = (g.mergeList || []).find(x => x[0] === r && x[1] === c); return m ? m[3] : 1; };
+  let html = '<table style="border-collapse:collapse;font:10pt Arial;table-layout:fixed">';
+  html += '<colgroup>' + [1, 2, 3, 4, 5, 6, 7].map(c => `<col style="width:${(g.colW || {})[c] || 100}px">`).join('') + '</colgroup>';
+  for (let r = 1; r <= g.getLastRow() + 1; r++) {
+    html += `<tr style="height:${(g.rowH || {})[r] || 21}px">`;
+    for (let c = 1; c <= 7; c++) {
+      if (covered[r + ':' + c]) continue;
+      const cell = g.peek(r, c), f = cell.f || {};
+      let text = String(cell.v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+      if (cell.rt && cell.rt.styles.length) text = text; // цвета легенды — упрощённо
+      const inCard = (g.cards || []).find(([cr, cc, nr, nc]) => r >= cr && r < cr + nr && c >= cc && c < cc + nc);
+      const b = inCard ? `border-left:${c === inCard[1] ? '1px solid #DADDE2' : '0'};border-right:${c + span(r, c) - 1 === inCard[1] + inCard[3] - 1 ? '1px solid #DADDE2' : '0'};border-top:${r === inCard[0] ? '1px solid #DADDE2' : '0'};border-bottom:${r === inCard[0] + inCard[2] - 1 || f.underline ? '1px solid #DADDE2' : '0'};` : '';
+      html += `<td colspan="${span(r, c)}" style="padding:2px 8px;overflow:hidden;background:${f.bg || '#fff'};color:${f.color || '#1F2328'};font-weight:${f.bold ? 700 : 400};font-size:${f.size || 10}pt;text-align:${f.align || 'left'};${b}">${text}</td>`;
+    }
+    html += '</tr>';
+  }
+  fs.writeFileSync(process.env.GUIDE_HTML, html + '</table>');
+}
 console.log(`\n${passed} проверок пройдено`);

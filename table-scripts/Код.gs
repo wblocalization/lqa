@@ -590,6 +590,7 @@ function insertTopRow_(sh, ncols, fallback) {
   } else {
     sh.getRange(2, 1, 1, ncols).setBackground(null).setFontColor(INK).setFontWeight('normal')
       .setFontFamily('Arial').setFontSize(10).setVerticalAlignment('top').setWrap(true);
+    if (sh.getName() === TASKS_SHEET) sh.getRange(2, COL.SUBJECT).setFontWeight('bold');
     fallback();
   }
   return 2;
@@ -658,12 +659,42 @@ function showMyTasks() {
 // Берётся больший из двух: это число или последний номер на листе.
 const TASK_ID_START = { 'LIT-26': 2231, 'BP-26': 366, 'LoG-26': 75, 'JWW-26': 29, 'AWT-26': 1 };
 
+// Старая таблица, в которой тоже заводят задачи. Её запоминает перенос истории,
+// и новые номера сверяются с ней — чтобы две таблицы не выдали один и тот же номер.
+const OLD_SHEET_NAME = 'Localization Misc';
+const OLD_TABLE_PROP = 'OLD_TABLE_ID';
+
+/** Последний номер вида base-N в старой таблице (запоминается на минуту, чтобы не открывать её каждый раз). */
+function oldTableMaxSeq_(base) {
+  let id = '';
+  try { id = PropertiesService.getDocumentProperties().getProperty(OLD_TABLE_PROP) || ''; } catch (e) {}
+  if (!id) return 0;
+  let cache = null;
+  try { cache = CacheService.getDocumentCache(); } catch (e) {}
+  const key = 'oldmax:' + base;
+  const cached = cache && cache.get(key);
+  if (cached) return Number(cached);
+  let max = 0;
+  try {
+    const old = SpreadsheetApp.openById(id).getSheetByName(OLD_SHEET_NAME);
+    const re = new RegExp('^' + base + '-(\\d+)$');
+    old.getRange(1, 1, Math.max(old.getLastRow(), 1), 1).getValues().forEach(r => {
+      const m = String(r[0]).trim().match(re);
+      if (m) max = Math.max(max, Number(m[1]));
+    });
+    if (cache) cache.put(key, String(max), 60);
+  } catch (e) {
+    // старая таблица недоступна (или правка прямо в листе, где её открывать нельзя) — считаем только по новой
+  }
+  return max;
+}
+
 /** Номер вида ПОДРЯДЧИК-ГГ-N (LIT-26-2232), как в старой таблице и в именах смет. */
 function generateNextTaskId(sh, contractor) {
   const base = contractorPrefix_(contractor) + '-' + Utilities.formatDate(new Date(), tz_(), 'yy');
   const n = dataRowCount_(sh);
   const values = n ? sh.getRange(2, COL.ID, n, 1).getValues() : [];
-  let maxSeq = TASK_ID_START[base] || 0;
+  let maxSeq = Math.max(TASK_ID_START[base] || 0, oldTableMaxSeq_(base));
   const re = new RegExp('^' + base + '-(\\d+)$');
   values.forEach(r => {
     const m = String(r[0]).trim().match(re);
@@ -1868,10 +1899,13 @@ function styleHeader_(sh, ncols) {
   sh.setRowHeight(1, 36);
 }
 
-/** Сворачиваемая группа колонок (кнопка «+» над ними). */
-function collapseColumns_(sh, from, count) {
+/**
+ * Группа колонок: над ними появляется «–», которым их можно свернуть, и «+», чтобы развернуть.
+ * Сами не сворачиваем — иначе колонки «пропадают» и их не найти.
+ */
+function groupColumns_(sh, from, count) {
   if (sh.getColumnGroupDepth(from) === 0) sh.getRange(1, from, 1, count).shiftColumnGroupDepth(1);
-  try { sh.getColumnGroup(from, 1).collapse(); } catch (e) {}
+  try { sh.getColumnGroup(from, 1).expand(); } catch (e) {}
 }
 
 function designTasksSheet_(sh) {
@@ -1894,7 +1928,7 @@ function designTasksSheet_(sh) {
     sh.getRange(2, c, maxRows - 1, 1).setFontColor(INK).setFontWeight('normal');
   });
   sh.getRange(2, COL.ID, maxRows - 1, 1).setFontWeight('bold');
-  sh.getRange(2, COL.SUBJECT, maxRows - 1, 1).setFontLine('none');
+  sh.getRange(2, COL.SUBJECT, maxRows - 1, 1).setFontLine('none').setFontWeight('bold'); // тема письма — жирным
   sh.getRange(2, COL.ESTIMATE, maxRows - 1, 1).setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
   sh.getRange(2, COL.DATE, maxRows - 1, 1).setNumberFormat('dd.mm.yyyy');
   sh.getRange(2, COL.DUE, maxRows - 1, 1).setNumberFormat('dd.mm.yyyy');
@@ -1916,8 +1950,8 @@ function designTasksSheet_(sh) {
   }
 
   sh.setConditionalFormatRules(taskColorRules_(sh, lists));
-  collapseColumns_(sh, COL.ESTIMATE, 2);   // Смета, Итого
-  collapseColumns_(sh, COL.DELIVERY, 3);   // Статус отдачи, SP, Комментарий
+  groupColumns_(sh, COL.ESTIMATE, 2);   // Смета, Итого
+  groupColumns_(sh, COL.DELIVERY, 3);   // Статус отдачи, SP, Комментарий
   sh.autoResizeRows(2, n);
   if (!sh.getFilter()) sh.getDataRange().createFilter();
 }
@@ -1953,9 +1987,14 @@ function designTranslatorsSheet_(sh) {
 // ==================== ИНСТРУКЦИИ ====================
 
 /**
- * Инструкция — шпаргалка блоками. blocks: [{ icon, title, steps: [...], rows: [[термин, пояснение]], hint, legend }]
- * Колонки: A — поле, B — номер шага / термин, C — текст.
+ * Инструкция — шпаргалка карточками в две колонки на сером фоне.
+ * blocks: [{ icon, title, steps: [...], rows: [[термин, пояснение]], legend: [...], hint, wide }]
+ * Колонки: A — поле, B — номер шага, C — текст, D — промежуток, E/F — вторая колонка карточек, G — поле.
  */
+const GUIDE_BG = '#F3F4F6';
+const GUIDE_TEXT_W = 380;       // ширина текстовой колонки карточки, px
+const GUIDE_CHARS_PER_LINE = 58; // сколько символов влезает в строку — чтобы задать высоту строк
+
 function writeGuide_(sheetName, title, lead, blocks) {
   const ss = SpreadsheetApp.getActive();
   const sh = ss.getSheetByName(sheetName) || ss.insertSheet(sheetName, 0);
@@ -1964,63 +2003,121 @@ function writeGuide_(sheetName, title, lead, blocks) {
   sh.getRange(1, 1, sh.getMaxRows(), sh.getMaxColumns()).breakApart();
   sh.setHiddenGridlines(true);
   sh.setFrozenRows(0);
-  sh.setColumnWidth(1, 24);
-  sh.setColumnWidth(2, 170);
-  sh.setColumnWidth(3, 620);
+  if (sh.getMaxColumns() < 7) sh.insertColumnsAfter(sh.getMaxColumns(), 7 - sh.getMaxColumns());
+  [20, 30, GUIDE_TEXT_W, 22, 30, GUIDE_TEXT_W, 20].forEach((w, i) => sh.setColumnWidth(i + 1, w));
 
-  const rows = [];   // [B, C, тип]
-  rows.push(['', title, 'title']);
-  rows.push(['', lead, 'lead']);
-  rows.push(['', '', 'gap']);
+  // Каждая карточка — список строк: { kind, num, text, rich }
+  function cardLines(b) {
+    const lines = [{ kind: 'head', text: b.icon + '  ' + b.title }];
+    (b.steps || []).forEach((t, i) => lines.push({ kind: 'step', num: String(i + 1), text: t }));
+    (b.rows || []).forEach(r => lines.push({ kind: 'kv', text: r[0] + ' — ' + r[1], bold: r[0].length }));
+    if (b.legend) lines.push({ kind: 'legend', text: b.legend.join('   ·   '), legend: b.legend });
+    if (b.hint) lines.push({ kind: 'hint', text: '💡 ' + b.hint });
+    lines.push({ kind: 'pad', text: '' });
+    return lines;
+  }
+
+  // Раскладка: широкие карточки — на всю ширину, остальные — парами
+  const layout = [];   // { left, right, wide }
+  let pending = null;
   blocks.forEach(b => {
-    rows.push(['', b.icon + '  ' + b.title, 'block']);
-    (b.steps || []).forEach((s, i) => rows.push([String(i + 1), s, 'step']));
-    (b.rows || []).forEach(r => rows.push([r[0], r[1], 'row']));
-    (b.legend || []).forEach(l => rows.push([l, '', 'legend']));
-    if (b.hint) rows.push(['', '💡 ' + b.hint, 'hint']);
-    rows.push(['', '', 'gap']);
+    if (b.wide) { if (pending) { layout.push({ left: pending }); pending = null; } layout.push({ wide: b }); }
+    else if (pending) { layout.push({ left: pending, right: b }); pending = null; }
+    else pending = b;
+  });
+  if (pending) layout.push({ left: pending });
+
+  const cells = [];   // [row, col, numCols, line]
+  const heights = {};
+  let row = 1;
+  cells.push([row, 2, 5, { kind: 'title', text: title }]); heights[row] = 48; row++;
+  cells.push([row, 2, 5, { kind: 'lead', text: lead }]); heights[row] = 34; row++;
+  heights[row] = 14; row++;
+
+  const cards = []; // [row, col, numRows, numCols]
+  layout.forEach(item => {
+    const parts = item.wide ? [[item.wide, 2, 5]] : [[item.left, 2, 2]].concat(item.right ? [[item.right, 5, 2]] : []);
+    let maxLen = 0;
+    parts.forEach(([b, col, width]) => {
+      const lines = cardLines(b);
+      maxLen = Math.max(maxLen, lines.length);
+      lines.forEach((ln, i) => {
+        const r = row + i;
+        const textWidth = width === 5 ? GUIDE_TEXT_W * 2 + 80 : GUIDE_TEXT_W;
+        const perLine = Math.floor(GUIDE_CHARS_PER_LINE * textWidth / GUIDE_TEXT_W);
+        const nLines = Math.max(1, Math.ceil(ln.text.length / perLine));
+        const h = ln.kind === 'head' ? 34 : ln.kind === 'pad' ? 8 : 8 + 18 * nLines;
+        heights[r] = Math.max(heights[r] || 0, h);
+        if (ln.kind === 'step') {
+          cells.push([r, col, 1, { kind: 'num', text: ln.num }]);
+          cells.push([r, col + 1, width - 1, ln]);
+        } else {
+          cells.push([r, col, width, ln]);
+        }
+      });
+      cards.push([row, col, lines.length, width]);
+    });
+    row += maxLen;
+    heights[row] = 16; row++; // промежуток между рядами карточек
+  });
+  const lastRow = row;
+
+  // Фон страницы и белые карточки
+  if (sh.getMaxRows() < lastRow + 2) sh.insertRowsAfter(sh.getMaxRows(), lastRow + 2 - sh.getMaxRows());
+  sh.getRange(1, 1, lastRow + 2, 7).setBackground(GUIDE_BG).setFontFamily('Arial').setFontSize(10)
+    .setFontColor(INK).setVerticalAlignment('middle').setWrap(true);
+  cards.forEach(([r, c, nr, nc]) => {
+    sh.getRange(r, c, nr, nc).setBackground('#FFFFFF')
+      .setBorder(true, true, true, true, false, false, '#DADDE2', SpreadsheetApp.BorderStyle.SOLID);
   });
 
-  sh.getRange(1, 2, rows.length, 2).setValues(rows.map(r => [r[0], r[1]]));
-  const all = sh.getRange(1, 1, rows.length, 3);
-  all.setFontFamily('Arial').setFontSize(11).setFontColor(INK).setVerticalAlignment('top').setWrap(true);
-
-  rows.forEach((r, i) => {
-    const row = i + 1;
-    const bc = sh.getRange(row, 2, 1, 2);
-    switch (r[2]) {
+  cells.forEach(([r, c, nc, ln]) => {
+    const range = sh.getRange(r, c, 1, nc);
+    if (nc > 1) range.merge();
+    const cell = sh.getRange(r, c);
+    switch (ln.kind) {
       case 'title':
-        bc.merge().setFontSize(18).setFontWeight('bold').setVerticalAlignment('middle');
-        sh.setRowHeight(row, 44);
+        cell.setValue(ln.text).setFontSize(18).setFontWeight('bold');
         break;
       case 'lead':
-        bc.merge().setFontColor('#5F6B7A');
+        cell.setValue(ln.text).setFontColor('#5F6B7A').setFontSize(10.5);
         break;
-      case 'block':
-        bc.merge().setBackground('#EEF1F5').setFontWeight('bold').setFontSize(12).setVerticalAlignment('middle');
-        sh.setRowHeight(row, 32);
+      case 'head':
+        cell.setValue(ln.text).setFontSize(12).setFontWeight('bold');
+        range.setBorder(null, null, true, null, null, null, '#E6E8EB', SpreadsheetApp.BorderStyle.SOLID);
+        break;
+      case 'num':
+        cell.setValue(ln.text).setFontWeight('bold').setFontColor('#FFFFFF').setBackground(HEAD_BG)
+          .setHorizontalAlignment('center');
         break;
       case 'step':
-        sh.getRange(row, 2).setHorizontalAlignment('right').setFontWeight('bold').setFontColor('#5F6B7A');
+        cell.setValue(ln.text);
         break;
-      case 'row':
-        sh.getRange(row, 2).setFontWeight('bold');
+      case 'kv':
+        cell.setRichTextValue(SpreadsheetApp.newRichTextValue().setText(ln.text)
+          .setTextStyle(0, ln.bold, SpreadsheetApp.newTextStyle().setBold(true).build()).build());
         break;
       case 'legend': {
-        const pair = STATUS_COLORS[r[0]] || READINESS_COLORS[r[0]];
-        if (pair) sh.getRange(row, 2).setBackground(pair[0]).setFontColor(pair[1]).setFontWeight('bold').setHorizontalAlignment('center');
+        const b = SpreadsheetApp.newRichTextValue().setText(ln.text);
+        let pos = 0;
+        ln.legend.forEach(name => {
+          const pair = STATUS_COLORS[name] || READINESS_COLORS[name] || ['#FFFFFF', INK];
+          b.setTextStyle(pos, pos + name.length, SpreadsheetApp.newTextStyle().setBold(true).setForegroundColor(pair[1]).build());
+          pos += name.length + 7;
+        });
+        cell.setRichTextValue(b.build());
         break;
       }
       case 'hint':
-        bc.merge().setBackground('#FFF8E6').setFontColor('#6B5100');
-        break;
-      case 'gap':
-        sh.setRowHeight(row, 14);
+        range.setBackground('#FFF8E6');
+        cell.setValue(ln.text).setFontColor('#6B5100');
         break;
     }
   });
-  if (sh.getMaxRows() > rows.length + 5) sh.deleteRows(rows.length + 6, sh.getMaxRows() - rows.length - 5);
-  if (sh.getMaxColumns() > 4) sh.deleteColumns(5, sh.getMaxColumns() - 4);
+
+  Object.keys(heights).forEach(r => sh.setRowHeight(Number(r), heights[r]));
+  if (sh.getMaxRows() > lastRow + 2) sh.deleteRows(lastRow + 3, sh.getMaxRows() - lastRow - 2);
+  if (sh.getMaxColumns() > 7) sh.deleteColumns(8, sh.getMaxColumns() - 7);
 }
 
 function writeManagerGuide_() {
@@ -2057,8 +2154,8 @@ function writeManagerGuide_() {
         ['Одного менеджера', 'Впишите имя — покажутся только его задачи.'],
         ['Скрыть закрытые', 'Прячет «Отдано» и «Отменено».'],
         ['Показать все', 'Сбрасывает любой фильтр.']],
-        hint: 'Скрытые колонки «Смета, Итого» и «Статус отдачи, SP, Комментарий» раскрываются кнопкой «+» над колонками. Языки выбираются в самой ячейке — можно несколько.' },
-      { icon: '✉️', title: 'Письма, которые приходят сами', rows: [
+        hint: 'Колонки «Смета, Итого» и «Статус отдачи, SP, Комментарий» можно свернуть кнопкой «–» над ними и развернуть «+». Языки выбираются в самой ячейке — можно несколько.' },
+      { icon: '✉️', title: 'Письма, которые приходят сами', wide: true, rows: [
         ['Понедельник, 9:00', 'Сводка ваших открытых задач.'],
         ['Каждый день, 9:00', 'Просроченные и со сроком сегодня или завтра.'],
         ['26 числа, 10:00', 'Задачи месяца, где не хватает данных для отчёта.']],

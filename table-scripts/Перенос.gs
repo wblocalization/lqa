@@ -8,7 +8,7 @@
  * После переноса файл можно удалить.
  *************************************************************/
 
-const OLD_SHEET_NAME = 'Localization Misc';
+// OLD_SHEET_NAME и OLD_TABLE_PROP — в Код.gs (нужны и после удаления этого файла).
 
 // Колонки старого листа (A..S)
 const OLD = {
@@ -52,6 +52,8 @@ function migrateFromOldTable() {
   if (!m) { ui.alert('Не похоже на ссылку на Google Таблицу.'); return; }
 
   const plan = planMigration_(SpreadsheetApp.openById(m[1]));
+  // Запоминаем старую таблицу: новые номера будут сверяться с ней
+  PropertiesService.getDocumentProperties().setProperty(OLD_TABLE_PROP, m[1]);
   if (!plan.rows.length) {
     ui.alert('Переносить нечего: ' + plan.skippedExisting + ' задач уже есть в новой таблице, ' + plan.skippedEmpty + ' строк пустые.');
     return;
@@ -64,7 +66,8 @@ function migrateFromOldTable() {
   if (ok !== ui.Button.YES) return;
 
   applyMigration_(plan);
-  ui.alert('Готово: перенесено ' + plan.rows.length + ' задач. Цвета и выпадающие списки обновлены.');
+  ui.alert('Готово: перенесено ' + plan.rows.length + ' задач. Цвета и выпадающие списки обновлены.\n\n' +
+    'Новые номера теперь сверяются со старой таблицей. Если там появятся новые задачи — запустите перенос ещё раз, он добавит только новые.');
 }
 
 function isUrl_(s) {

@@ -137,7 +137,9 @@ class Sheet {
   setFrozenColumns(n) { this.frozenCols = n; }
   getColumnGroupDepth(c) { return this.groups[c] ? 1 : 0; }
   getColumnGroup(c) { return chain({ collapse: () => { this.groups[c + ':collapsed'] = true; } }); }
-  setColumnWidth() { return this; } setRowHeight() { return this; } autoResizeRows() { return this; }
+  setColumnWidth(c, w) { (this.colW = this.colW || {})[c] = w; return this; }
+  setRowHeight(r, h) { (this.rowH = this.rowH || {})[r] = h; return this; }
+  autoResizeRows() { return this; }
   autoResizeColumns() { return this; } setHiddenGridlines() { return this; }
 }
 
@@ -192,7 +194,18 @@ class Range {
   }
   createFilter() { this.sh.filter = chain({ criteria: {}, remove: () => { this.sh.filter = null; }, setColumnFilterCriteria: (col, cr) => { this.sh.filter.criteria[col] = cr; } }); return this.sh.filter; }
   protect() { return chain({}); }
-  merge() { this.sh.merges.push(this.a1()); return this; }
+  merge() { this.sh.merges.push(this.a1()); (this.sh.mergeList = this.sh.mergeList || []).push([this.r, this.c, this.nr, this.nc]); return this; }
+  fmt(k, v) { this.each((r, c) => { const cell = this.sh.cell(r, c); (cell.f = cell.f || {})[k] = v; }); return this; }
+  setBackground(v) { return this.fmt('bg', v); }
+  setFontColor(v) { return this.fmt('color', v); }
+  setFontWeight(v) { return this.fmt('bold', v === 'bold'); }
+  setFontSize(v) { return this.fmt('size', v); }
+  setHorizontalAlignment(v) { return this.fmt('align', v); }
+  setBorder(t, l, b, rr, v, h, color) {
+    if (t && l) { this.fmt('card', true); (this.sh.cards = this.sh.cards || []).push([this.r, this.c, this.nr, this.nc]); }
+    else if (b) this.fmt('underline', true);
+    return this;
+  }
   breakApart() { this.sh.merges = []; return this; }
   shiftColumnGroupDepth() { this.sh.groups[this.c] = true; return this; }
 }
@@ -231,6 +244,7 @@ function makeContext(fixture, opts = {}) {
   const others = {};
   Object.entries(opts.others || {}).forEach(([id, fx]) => { others[id] = new Spreadsheet(reviveFixture(fx), id); });
   let userEmail = opts.email || '';
+  const docProps = {}, cache = {};
   const ui = {
     createMenu: name => { const m = { name, items: [], addItem(l, f) { this.items.push([l, f]); return this; }, addSeparator() { return this; }, addSubMenu(s) { this.items.push(['sub:' + s.name, s.items]); return this; }, addToUi() { calls.menus.push(this); } }; return m; },
     alert: (...a) => { calls.alerts.push(a.length > 1 ? a[1] : a[0]); return 'YES'; },
@@ -250,19 +264,22 @@ function makeContext(fixture, opts = {}) {
       newConditionalFormatRule: () => new CfBuilder(),
       newFilterCriteria: () => chain({ setHiddenValues(v) { this.hidden = v; return this; }, whenTextContains(v) { this.contains = v; return this; }, build() { return this; } }),
       CopyPasteType: { PASTE_FORMAT: 'PASTE_FORMAT', PASTE_DATA_VALIDATION: 'PASTE_DATA_VALIDATION' },
-      WrapStrategy: { CLIP: 'CLIP' }
+      WrapStrategy: { CLIP: 'CLIP' }, BorderStyle: { SOLID: 'SOLID' }
     },
     DocumentApp: { create: () => { throw new Error('DocumentApp not mocked'); }, ParagraphHeading: {} },
     Session: { getScriptTimeZone: () => 'Europe/Moscow', getActiveUser: () => ({ getEmail: () => userEmail }) },
     Utilities: { formatDate, getUuid: () => 'uuid-1234' },
     LockService: { getScriptLock: () => ({ waitLock() { if (ctx.__lockHeld) throw new Error('deadlock: lock already held'); ctx.__lockHeld = true; }, releaseLock() { ctx.__lockHeld = false; } }) },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: () => 'T', setProperty() {} }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: () => 'T', setProperty() {} }),
+      getDocumentProperties: () => ({ getProperty: k => docProps[k] || null, setProperty: (k, v) => { docProps[k] = v; } }) },
+    CacheService: { getDocumentCache: () => ({ get: k => cache[k] || null, put: (k, v) => { cache[k] = v; } }) },
     MailApp: { sendEmail: m => calls.mail.push(m) },
     ScriptApp: { getProjectTriggers: () => [], deleteTrigger() {}, newTrigger: h => chain({ timeBased() { return this; }, create() { calls.triggers.push(h); } }), WeekDay: { MONDAY: 1 } },
     HtmlService: { createHtmlOutputFromFile: n => { throw new Error('нет HTML-файла ' + n); }, createTemplateFromFile: n => { throw new Error('нет HTML-файла ' + n); }, createTemplate: src => ({ src, evaluate: () => chain({}) }) },
     ContentService: { MimeType: { JSON: 1 }, createTextOutput: s => ({ setMimeType: () => s }) },
     Logger: console,
-    __setEmail: e => { userEmail = e; }
+    __setEmail: e => { userEmail = e; },
+    __clearCache: () => { Object.keys(cache).forEach(k => delete cache[k]); }
   };
   return { ctx, ss, calls, others };
 }
