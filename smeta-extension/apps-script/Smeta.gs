@@ -3,6 +3,9 @@
  * Принимает номер задачи, итог с НДС и ссылку на смету и пишет их в лист задач менеджеров,
  * а в «📝 Журнал» — что поменялось.
  *
+ * Ещё умеет добавлять задачи менеджеров из расширения (вкладка «Задача»). Для этого файл должен
+ * лежать в проекте самой таблицы: он вызывает те же функции, что и окно «➕ Добавить задачу».
+ *
  * Лучше ставить ОТДЕЛЬНЫМ проектом Apps Script (script.google.com → «Создать проект»),
  * чтобы не трогать основной скрипт таблицы: тогда впишите ID таблицы ниже.
  * Если всё-таки кладёте в скрипт самой таблицы — ID можно оставить пустым,
@@ -45,6 +48,9 @@ function doPost(e) {
   try {
     if (req.action === 'lookup') return smetaJson_(smetaLookup_(req));
     if (req.action === 'write') return smetaJson_(smetaWrite_(req));
+    if (req.action === 'taskForm') return smetaJson_(taskForm_());
+    if (req.action === 'previewTaskId') return smetaJson_(previewTaskId_(req));
+    if (req.action === 'addTask') return smetaJson_(addTask_(req));
     return smetaJson_({ ok: false, error: 'Неизвестное действие' });
   } catch (err) {
     return smetaJson_({ ok: false, error: String(err && err.message || err) });
@@ -141,4 +147,59 @@ function smetaSpreadsheet_() {
 
 function smetaJson_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+/* ============================================================
+ *  ДОБАВЛЕНИЕ ЗАДАЧИ ИЗ РАСШИРЕНИЯ
+ *  Использует функции окна «➕ Добавить задачу» из Код.gs.
+ * ============================================================ */
+
+function requireTableScript_() {
+  if (typeof submitNewTaskFromDialog !== 'function' || typeof getAddTaskFormLists !== 'function') {
+    throw new Error('Добавление задач работает, только когда Smeta.gs лежит в проекте самой таблицы');
+  }
+}
+
+/** Справочники для формы: подрядчики, продукты, языки и т. д. — те же, что в окне в таблице. */
+function taskForm_() {
+  requireTableScript_();
+  return { ok: true, lists: getAddTaskFormLists() };
+}
+
+/** Какой номер получит задача у этого подрядчика (подсказка; настоящий выдаётся при добавлении). */
+function previewTaskId_(req) {
+  requireTableScript_();
+  const contractor = String(req.contractor || '').trim();
+  if (!contractor) return { ok: true, id: '' };
+  return { ok: true, id: generateNextTaskId(getTasksSheet(), contractor) };
+}
+
+function addTask_(req) {
+  requireTableScript_();
+  const t = req.task || {};
+  const str = function (v) { return String(v == null ? '' : v).trim(); };
+
+  const task = {
+    ticket: str(t.ticket), contractor: str(t.contractor), subject: str(t.subject),
+    link: str(t.link), link2: str(t.link2), date: str(t.date), product: str(t.product),
+    customer: str(t.customer), deadline: str(t.deadline), exactDeadline: str(t.exactDeadline),
+    status: str(t.status), deliveryStatus: str(t.deliveryStatus), estimateLink: str(t.estimateLink),
+    total: str(t.total), sp: str(t.sp), manager: str(t.manager), comment: str(t.comment),
+    languages: (Array.isArray(t.languages) ? t.languages : []).map(str).filter(Boolean),
+  };
+  if (!task.contractor) return { ok: false, error: 'Выберите подрядчика' };
+  if (!task.subject) return { ok: false, error: 'Впишите тему' };
+  if (task.ticket && !/^LOCAL-\d+$/.test(task.ticket)) return { ok: false, error: 'Тикет должен быть вида LOCAL-1234' };
+  ['link', 'link2', 'estimateLink'].forEach(function (k) {
+    if (task[k] && !/^https?:\/\//i.test(task[k])) throw new Error('Ссылка должна начинаться с http: ' + task[k]);
+  });
+
+  // В «Журнал» пишем, что задачу добавили из расширения и кто.
+  LOG_ACTOR = 'Расширение' + (req.user ? ' (' + req.user + ')' : '');
+  try {
+    const id = submitNewTaskFromDialog(task);
+    return { ok: true, id: id };
+  } finally {
+    LOG_ACTOR = '';
+  }
 }

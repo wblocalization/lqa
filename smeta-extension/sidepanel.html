@@ -2,12 +2,15 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Сметы → таблица</title>
+<title>Задачи и сметы</title>
 <link rel="stylesheet" href="sidepanel.css">
 </head>
 <body>
 <header class="top">
-  <h1>Сметы</h1>
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" data-tab="task" aria-controls="tabTask" aria-selected="true" type="button">Задача</button>
+    <button class="tab" role="tab" data-tab="smeta" aria-controls="tabSmeta" aria-selected="false" type="button">Смета</button>
+  </nav>
   <button id="openSettings" class="icon-btn" type="button" title="Настройки" aria-label="Настройки">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.09a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
   </button>
@@ -31,62 +34,150 @@
     </div>
   </section>
 
-  <section id="empty">
-    <label id="drop" class="drop">
-      <input id="file" type="file" accept="application/pdf,.pdf" hidden>
-      <span class="drop-icon" aria-hidden="true">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="m9 15 3-3 3 3"/></svg>
+  <section id="tabTask" role="tabpanel">
+    <p id="taskLoading" class="muted center" hidden></p>
+
+    <form id="taskForm" class="task-form" hidden>
+      <div class="two">
+        <label><span>Подрядчик <span class="req">*</span></span>
+          <select id="tContractor" required></select>
+        </label>
+        <label>Тикет
+          <span class="prefixed"><span>LOCAL-</span><input id="tTicketNum" type="text" inputmode="numeric" placeholder="1234"></span>
+        </label>
+      </div>
+
+      <label>Шаблон
+        <select id="tTemplate"></select>
+      </label>
+
+      <label><span>Тема письма <span class="req">*</span></span>
+        <input id="tSubject" type="text" required placeholder="Только суть, номер добавится сам">
+      </label>
+
+      <label>Ссылка на Band
+        <span class="with-btn">
+          <input id="tLink" type="url" placeholder="https://band.wb.ru/…">
+          <button id="tPasteLink" class="btn ghost" type="button">Вставить</button>
+        </span>
+      </label>
+
+      <div class="two">
+        <label>Продукт <select id="tProduct"></select></label>
+        <label>Дата <input id="tDate" type="date"></label>
+      </div>
+
+      <div class="two">
+        <label>Дедлайн <select id="tDeadline"></select></label>
+        <label>Срок сдачи <input id="tExactDeadline" type="date"></label>
+      </div>
+
+      <label>Ник заказчика
+        <input id="tCustomer" type="text" placeholder="@nick">
+      </label>
+
+      <fieldset class="langs">
+        <legend>Языки</legend>
+        <div id="tLangs"></div>
+      </fieldset>
+
+      <div class="two">
+        <label>Менеджер <select id="tManager"></select></label>
+        <label>Статус <select id="tStatus"></select></label>
+      </div>
+
+      <details class="more">
+        <summary>Ещё поля</summary>
+        <label>Доп. ссылка на Band <input id="tLink2" type="url" placeholder="если задача из двух переписок"></label>
+        <label>Статус отдачи <select id="tDeliveryStatus"></select></label>
+        <label>Смета (ссылка) <input id="tEstimateLink" type="url"></label>
+        <div class="two">
+          <label>Итого с НДС, ₽ <input id="tTotal" type="number" step="0.01" min="0"></label>
+          <label>SP <input id="tSp" type="number" step="1" min="0"></label>
+        </div>
+        <label>Комментарий <input id="tComment" type="text"></label>
+      </details>
+
+      <div class="preview-box">
+        <span class="eyebrow">Тема письма</span>
+        <p id="tPreview" class="preview"></p>
+        <button id="tCopyPreview" class="btn ghost small" type="button">Скопировать</button>
+      </div>
+
+      <button id="tSubmit" class="btn primary" type="submit">Добавить задачу</button>
+    </form>
+
+    <section id="taskDone" class="done" hidden>
+      <span class="done-check" aria-hidden="true">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
       </span>
-      <strong>Перетащите PDF сметы</strong>
-      <span>или нажмите, чтобы выбрать</span>
-    </label>
-    <p class="muted center">Номер возьмётся из имени файла (всё до «-РВБ»), сумма с НДС — из сметы</p>
+      <h2>Добавлено: <span id="taskDoneId"></span></h2>
+      <p id="taskDoneSubject" class="done-subject"></p>
+      <button id="taskCopyDone" class="btn ghost" type="button">Скопировать тему</button>
+      <button id="taskAgain" class="btn primary" type="button">Ещё задача</button>
+    </section>
+
+    <p id="tMsg" class="status" role="status"></p>
   </section>
 
-  <form id="form" hidden>
-    <div class="file-chip">
-      <span class="pdf-badge">PDF</span>
-      <span id="fileName" class="file-name"></span>
-      <button id="reset" class="icon-btn small" type="button" title="Другая смета" aria-label="Другая смета">✕</button>
-    </div>
+  <section id="tabSmeta" role="tabpanel" hidden>
+    <section id="empty">
+      <label id="drop" class="drop">
+        <input id="file" type="file" accept="application/pdf,.pdf" hidden>
+        <span class="drop-icon" aria-hidden="true">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="m9 15 3-3 3 3"/></svg>
+        </span>
+        <strong>Перетащите PDF сметы</strong>
+        <span>или нажмите, чтобы выбрать</span>
+      </label>
+      <p class="muted center">Номер возьмётся из имени файла (всё до «-РВБ»), сумма с НДС — из сметы</p>
+    </section>
 
-    <div class="card amount">
-      <label for="total" class="eyebrow">Итого с НДС</label>
-      <div class="amount-line">
-        <input id="total" type="text" inputmode="decimal" required>
-        <span class="cur">₽</span>
+    <form id="form" hidden>
+      <div class="file-chip">
+        <span class="pdf-badge">PDF</span>
+        <span id="fileName" class="file-name"></span>
+        <button id="reset" class="icon-btn small" type="button" title="Другая смета" aria-label="Другая смета">✕</button>
       </div>
-      <p id="totalHint" class="hint"></p>
-    </div>
 
-    <div class="card">
-      <label for="task" class="eyebrow">Задача</label>
-      <input id="task" class="task-input" type="text" required placeholder="Номер из имени файла" autocomplete="off">
-      <div id="rowInfo" class="rowinfo" hidden></div>
-    </div>
-
-    <div class="card">
-      <label for="link" class="eyebrow">Ссылка на ВБ Диск</label>
-      <div class="with-btn">
-        <input id="link" type="url" required placeholder="https://…">
-        <button id="pasteLink" class="btn ghost" type="button" title="Вставить из буфера">Вставить</button>
+      <div class="card amount">
+        <label for="total" class="eyebrow">Итого с НДС</label>
+        <div class="amount-line">
+          <input id="total" type="text" inputmode="decimal" required>
+          <span class="cur">₽</span>
+        </div>
+        <p id="totalHint" class="hint"></p>
       </div>
-    </div>
 
-    <button id="submit" class="btn primary" type="submit">Записать в таблицу</button>
-  </form>
+      <div class="card">
+        <label for="task" class="eyebrow">Задача</label>
+        <input id="task" class="task-input" type="text" required placeholder="Номер из имени файла" autocomplete="off">
+        <div id="rowInfo" class="rowinfo" hidden></div>
+      </div>
 
-  <section id="done" class="done" hidden>
-    <span class="done-check" aria-hidden="true">
-      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-    </span>
-    <h2>Записано</h2>
-    <p id="doneText"></p>
-    <button id="again" class="btn primary" type="button">Ещё одна смета</button>
+      <div class="card">
+        <label for="link" class="eyebrow">Ссылка на ВБ Диск</label>
+        <div class="with-btn">
+          <input id="link" type="url" required placeholder="https://…">
+          <button id="pasteLink" class="btn ghost" type="button" title="Вставить из буфера">Вставить</button>
+        </div>
+      </div>
+
+      <button id="submit" class="btn primary" type="submit">Записать в таблицу</button>
+    </form>
+
+    <section id="done" class="done" hidden>
+      <span class="done-check" aria-hidden="true">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      </span>
+      <h2>Записано</h2>
+      <p id="doneText"></p>
+      <button id="again" class="btn primary" type="button">Ещё одна смета</button>
+    </section>
+
+    <p id="status" class="status" role="status"></p>
   </section>
-
-  <p id="status" class="status" role="status"></p>
 </main>
-<script type="module" src="sidepanel.js"></script>
+<script type="module" src="app.js"></script>
 </body>
 </html>

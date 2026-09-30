@@ -1,53 +1,18 @@
 import * as pdfjs from './vendor/pdf.min.mjs';
 import { parseEstimate, formatMoney } from './parser.js';
+import { isConfigured, api, esc, readClipboard } from './core.js';
 
 pdfjs.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('vendor/pdf.worker.min.mjs');
 
 const $ = (s) => document.querySelector(s);
 const els = {
-  settings: $('#settings'), setUrl: $('#setUrl'), setToken: $('#setToken'), setUser: $('#setUser'),
-  saveSettings: $('#saveSettings'),
-  openSettings: $('#openSettings'), closeSettings: $('#closeSettings'),
   empty: $('#empty'), drop: $('#drop'), file: $('#file'), form: $('#form'), fileName: $('#fileName'),
   reset: $('#reset'), done: $('#done'), doneText: $('#doneText'), again: $('#again'),
   task: $('#task'), rowInfo: $('#rowInfo'), total: $('#total'), totalHint: $('#totalHint'),
   link: $('#link'), pasteLink: $('#pasteLink'), submit: $('#submit'), status: $('#status'),
 };
 
-let settings = { url: '', token: '', user: '' };
 let current = null; // { fileName } — смета, которая сейчас в форме
-
-// ---------- Настройки ----------
-async function loadSettings() {
-  const saved = await chrome.storage.local.get('settings');
-  settings = { ...settings, ...(saved.settings || {}) };
-  fillSettings();
-  if (!settings.url || !settings.token) els.settings.hidden = false;
-}
-
-function fillSettings() {
-  els.setUrl.value = settings.url;
-  els.setToken.value = settings.token;
-  els.setUser.value = settings.user;
-}
-
-els.openSettings.addEventListener('click', () => {
-  fillSettings();
-  els.settings.hidden = !els.settings.hidden;
-});
-els.closeSettings.addEventListener('click', () => { els.settings.hidden = true; });
-
-els.saveSettings.addEventListener('click', async () => {
-  settings = {
-    url: els.setUrl.value.trim(),
-    token: els.setToken.value.trim(),
-    user: els.setUser.value.trim(),
-  };
-  await chrome.storage.local.set({ settings });
-  els.settings.hidden = true;
-  setStatus('Настройки сохранены', 'ok');
-  if (els.task.value) lookup();
-});
 
 // ---------- Статус ----------
 function setStatus(text, kind = 'info') {
@@ -131,26 +96,12 @@ window.addEventListener('dragover', (e) => e.preventDefault());
 window.addEventListener('drop', (e) => e.preventDefault());
 
 // ---------- Связь с таблицей ----------
-async function api(payload) {
-  if (!settings.url || !settings.token) throw new Error('Заполните адрес и токен в настройках');
-  const res = await fetch(settings.url, {
-    method: 'POST',
-    body: JSON.stringify({ ...payload, token: settings.token, user: settings.user }),
-  });
-  const text = await res.text();
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new Error('Скрипт ответил не JSON — проверьте адрес и что доступ открыт «Всем»');
-  }
-}
-
 let lookupSeq = 0;
 async function lookup() {
   const task = normTask(els.task.value);
   const seq = ++lookupSeq;
   if (!task) { showRow(null); return; }
-  if (!settings.url || !settings.token) {
+  if (!isConfigured()) {
     showRow({ kind: 'warn', html: 'Настройки не заполнены — строку в таблице не проверить.' });
     return;
   }
@@ -190,7 +141,7 @@ els.task.addEventListener('input', () => {
 
 els.pasteLink.addEventListener('click', async () => {
   try {
-    els.link.value = (await navigator.clipboard.readText()).trim();
+    els.link.value = await readClipboard();
   } catch {
     setStatus('Нет доступа к буферу — вставьте ссылку вручную (Ctrl+V)', 'err');
   }
@@ -234,8 +185,7 @@ function normTask(s) {
   return String(s).trim().replace(/\s+/g, ' ').toUpperCase();
 }
 
-function esc(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+/** Настройки поменялись — перепроверить строку, если смета открыта. */
+export function onSettingsSaved() {
+  if (els.task.value) lookup();
 }
-
-loadSettings();
