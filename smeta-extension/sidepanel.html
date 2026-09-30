@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Сметы → таблица</title>
+<link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+<main>
+  <header>
+    <p class="eyebrow">Сметы → таблица</p>
+    <h1>Новая смета</h1>
+  </header>
+
+  <details id="settings">
+    <summary>⚙️ Настройки</summary>
+    <label>Адрес веб-приложения Apps Script
+      <input id="setUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec">
+    </label>
+    <label>Токен
+      <input id="setToken" type="password" autocomplete="off">
+    </label>
+    <label>Ваше имя (для «Журнала»)
+      <input id="setUser" type="text" placeholder="Анастасия Лисовая">
+    </label>
+    <label>Коды подрядчиков через запятую
+      <input id="setPrefixes" type="text" placeholder="LIT">
+    </label>
+    <button id="saveSettings" class="btn ghost" type="button">Сохранить</button>
+  </details>
+
+  <label id="drop" class="drop">
+    <input id="file" type="file" accept="application/pdf,.pdf" hidden>
+    <strong>Перетащите PDF сметы сюда</strong>
+    <span>или нажмите, чтобы выбрать файл</span>
+  </label>
+
+  <form id="form" hidden>
+    <p id="fileName" class="muted mono"></p>
+
+    <label>Задача
+      <input id="task" type="text" required placeholder="LIT-26" autocomplete="off">
+    </label>
+    <div id="rowInfo" class="rowinfo" hidden></div>
+
+    <label>Итого с НДС, ₽
+      <input id="total" type="text" inputmode="decimal" required>
+    </label>
+    <p id="totalHint" class="muted"></p>
+
+    <label>Ссылка на смету на ВБ Диске
+      <span class="with-btn">
+        <input id="link" type="url" required placeholder="https://…">
+        <button id="pasteLink" class="btn ghost small" type="button" title="Вставить из буфера">📋</button>
+      </span>
+    </label>
+
+    <button id="submit" class="btn" type="submit">Записать в таблицу</button>
+  </form>
+
+  <p id="status" class="status" role="status"></p>
+</main>
+<script type="module" src="sidepanel.js"></script>
+</body>
+</html>

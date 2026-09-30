@@ -1,0 +1,78 @@
+// Разбор текста сметы: номер задачи и итоговая сумма с НДС.
+// Модуль без зависимостей от браузера — его же гоняют тесты в Node.
+
+export const DEFAULT_PREFIXES = ['LIT'];
+
+// Ставки НДС, которые встречаются в сметах (доли от суммы без НДС).
+const VAT_RATES = [0.22, 0.2, 0.1, 0.07, 0.05];
+
+// «110 929,150», «5 937,50», «90 925,53» — пробелы (в т.ч. неразрывные) между тысячами, запятая перед копейками.
+const MONEY_RE = /(?<![\d,])\d{1,3}(?:[   ]\d{3})*,\d{2,3}(?![\d,])/g;
+
+export function parseMoney(s) {
+  return Number(s.replace(/[   ]/g, '').replace(',', '.'));
+}
+
+const toCents = (x) => Math.round(x * 100);
+
+/** Все денежные суммы из кусков текста PDF (уникальные, в копейках). */
+export function extractAmounts(texts) {
+  const cents = new Set();
+  for (const t of texts) {
+    for (const m of String(t).matchAll(MONEY_RE)) cents.add(toCents(parseMoney(m[0])));
+  }
+  return [...cents].filter((c) => c > 0);
+}
+
+/**
+ * Ищет тройку «без НДС + НДС = с НДС», где НДС — одна из стандартных ставок.
+ * В текстовом слое PDF подписи оторваны от чисел, поэтому опираемся на арифметику,
+ * а не на соседство со словами. Если троек несколько — берём самую большую сумму.
+ */
+export function findTotalWithVat(amountsCents) {
+  const set = new Set(amountsCents);
+  let best = null;
+  for (const net of amountsCents) {
+    for (const rate of VAT_RATES) {
+      const expectedVat = net * rate;
+      for (const vat of amountsCents) {
+        if (Math.abs(vat - expectedVat) > 5) continue; // допуск 5 копеек на округления
+        for (const d of [0, -1, 1, -2, 2]) {
+          const gross = net + vat + d;
+          if (set.has(gross) && (!best || gross > best.gross)) {
+            best = { net, vat, gross, rate };
+          }
+        }
+      }
+    }
+  }
+  if (!best) return null;
+  return { net: best.net / 100, vat: best.vat / 100, gross: best.gross / 100, rate: best.rate };
+}
+
+/** Номер задачи вида LIT-26 (из «LIT-26-2217» тоже берётся LIT-26). */
+export function findTaskId(texts, prefixes = DEFAULT_PREFIXES) {
+  const alt = prefixes.map((p) => p.replace(/[^A-Za-z0-9]/g, '')).filter(Boolean).join('|');
+  if (!alt) return null;
+  const re = new RegExp(`(?<![A-Za-z])(${alt})[-_ ]?(\\d+)`, 'i');
+  for (const t of texts) {
+    const m = String(t).match(re);
+    if (m) return `${m[1].toUpperCase()}-${Number(m[2])}`;
+  }
+  return null;
+}
+
+/**
+ * Главная функция: принимает куски текста PDF и имя файла.
+ * Номер ищем сначала в тексте (там он надёжнее), потом в имени файла.
+ */
+export function parseEstimate(texts, fileName = '', prefixes = DEFAULT_PREFIXES) {
+  const task = findTaskId(texts, prefixes) || findTaskId([fileName], prefixes);
+  const total = findTotalWithVat(extractAmounts(texts));
+  return { task, total };
+}
+
+/** 110929.15 → «110 929,15» */
+export function formatMoney(x) {
+  return x.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}

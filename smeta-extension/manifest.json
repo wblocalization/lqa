@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Сметы → таблица",
+  "version": "0.1.0",
+  "description": "Достаёт номер задачи и итог с НДС из PDF-сметы и записывает их вместе со ссылкой с ВБ Диска в таблицу задач.",
+  "action": { "default_title": "Сметы → таблица" },
+  "side_panel": { "default_path": "sidepanel.html" },
+  "background": { "service_worker": "background.js" },
+  "permissions": ["sidePanel", "storage", "clipboardRead"],
+  "host_permissions": [
+    "https://script.google.com/*",
+    "https://script.googleusercontent.com/*"
+  ]
+}
