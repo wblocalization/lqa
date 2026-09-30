@@ -358,7 +358,11 @@ test('Перенос истории из старой таблицы', { skip: !
   assert.ok(g.every(r => r[4] === 'WBP'), 'сторона → продукт по памятке');
   const firstOld = rows.findIndex(r => r[0] === 'LIT-25-1') + 1;
   assert.equal(G.linksFromRich_(tasks().getRange(firstOld, 3).getRichTextValue()).link.slice(0, 26), 'https://band.wb.ru/wb/pl/g');
-  assert.equal(rows[rows.length - 1][0], 'LIT-25-1', 'самые старые — внизу');
+  // Весь лист по дате, свежие сверху (без дат — внизу)
+  const dates = rows.slice(1).map(r => r[3]).filter(d => d instanceof CDate).map(d => d.getTime());
+  assert.ok(dates.every((t, i) => i === 0 || dates[i - 1] >= t), 'даты по убыванию');
+  const oldest = rows.slice(1).filter(r => r[3] instanceof CDate).pop();
+  assert.equal(oldest[3].getTime(), Math.min(...dates), 'самая старая дата — внизу');
   // Повторный запуск ничего не задваивает
   calls.alerts.length = 0;
   G.migrateFromOldTable();

@@ -192,6 +192,23 @@ class Range {
       .filter(([r, c, nr, nc]) => r >= this.r && c >= this.c && r + nr <= this.r + this.nr && c + nc <= this.c + this.nc)
       .map(([r, c, nr, nc]) => new Range(this.sh, r, c, nr, nc));
   }
+  sort(spec) {
+    // Устойчивая сортировка строк диапазона по колонке (как в Таблицах): даты/числа, пустые — в конце
+    const col = spec.column - this.c, asc = spec.ascending !== false;
+    const rows = [];
+    for (let i = 0; i < this.nr; i++) rows.push(this.sh.cells[this.r - 1 + i] || []);
+    const key = row => { const v = row[col] ? row[col].v : ''; return v && typeof v.getTime === 'function' ? v.getTime() : (v === '' || v == null ? null : v); };
+    const sorted = rows.map((row, i) => ({ row, i })).sort((a, b) => {
+      const ka = key(a.row), kb = key(b.row);
+      if (ka === null && kb === null) return a.i - b.i;
+      if (ka === null) return 1;
+      if (kb === null) return -1;
+      if (typeof ka !== typeof kb) return typeof ka === 'number' ? -1 : 1;
+      return (ka < kb ? -1 : ka > kb ? 1 : 0) * (asc ? 1 : -1) || a.i - b.i;
+    });
+    sorted.forEach((x, i) => { this.sh.cells[this.r - 1 + i] = x.row; });
+    return this;
+  }
   createFilter() { this.sh.filter = chain({ criteria: {}, remove: () => { this.sh.filter = null; }, setColumnFilterCriteria: (col, cr) => { this.sh.filter.criteria[col] = cr; } }); return this.sh.filter; }
   protect() { return chain({}); }
   merge() { this.sh.merges.push(this.a1()); (this.sh.mergeList = this.sh.mergeList || []).push([this.r, this.c, this.nr, this.nc]); return this; }

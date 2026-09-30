@@ -62,7 +62,7 @@ function migrateFromOldTable() {
     'Будет добавлено задач: ' + plan.rows.length + ' (с ' + plan.from + ' по ' + plan.to + ').\n' +
     'Уже есть в новой таблице — пропущу: ' + plan.skippedExisting + '.\n' +
     'Пустые строки и повторы шапки — пропущу: ' + plan.skippedEmpty + '.\n\n' +
-    'Задачи встанут под текущими, свежие выше. Продолжить?', ui.ButtonSet.YES_NO);
+    'После переноса весь лист отсортируется по дате: свежие сверху. Продолжить?', ui.ButtonSet.YES_NO);
   if (ok !== ui.Button.YES) return;
 
   applyMigration_(plan);
@@ -175,6 +175,11 @@ function applyMigration_(plan) {
         .setRichTextValues(part.map(p => [buildSubjectRich_(String(p.values[COL.SUBJECT - 1]), p.link, '')]));
     }
     logChange('Перенос истории', '', '', '', n + ' задач из старой таблицы');
+
+    // Весь лист — по дате, свежие сверху. Сортировка устойчивая: строки одной задачи
+    // (одна дата) остаются рядом и в прежнем порядке. Строки без даты уходят вниз.
+    SpreadsheetApp.flush();
+    sh.getRange(2, 1, sh.getLastRow() - 1, TASK_COLS).sort({ column: COL.DATE, ascending: false });
   });
   designTasksSheet_(getTasksSheet());
 }
