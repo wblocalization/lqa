@@ -11,7 +11,10 @@
     <div class="results" id="results"></div>
 
     <div id="editor" class="stack" hidden>
-      <div class="card"><div class="t" id="cardTitle"></div><div class="small muted" id="cardMeta"></div></div>
+      <div class="card">
+        <div class="t" id="cardTitle"></div><div class="small muted" id="cardMeta"></div>
+        <button class="btn small" id="copySubject" type="button" style="margin-top:6px">Скопировать тему</button>
+      </div>
 
       <div class="field">Статус<div class="seg" id="statusSeg"></div></div>
       <div class="two">
@@ -151,6 +154,14 @@
         : 'Изменений пока не было.';
     }).catch(() => { $('#history').textContent = 'Историю загрузить не получилось.'; });
   }
+
+  $('#copySubject').addEventListener('click', () => {
+    if (!current) return;
+    copyText(current.subject).then(() => {
+      $('#copySubject').textContent = 'Скопировано ✓';
+      setTimeout(() => { $('#copySubject').textContent = 'Скопировать тему'; }, 1500);
+    });
+  });
 
   // ---------- сохранить / удалить ----------
   $('#saveBtn').addEventListener('click', () => {

@@ -4,12 +4,17 @@
 <base target="_top">
 <?!= include('Общее') ?>
 <style>
-  .preview { position: sticky; top: -14px; z-index: 2; margin: -14px -16px 0; border-radius: 0; border-width: 0 0 1px; padding: 12px 16px; }
+  .preview { position: sticky; top: -14px; z-index: 2; margin: -14px -16px 0; border-radius: 0; border-width: 0 0 1px; padding: 10px 16px;
+    display: flex; gap: 10px; align-items: flex-start; }
+  .preview .txt { flex: 1; min-width: 0; }
 </style>
 </head>
 <body class="has-foot">
   <div class="stack">
-    <div class="preview"><span class="lbl">ТЕМА ПИСЬМА</span><p id="preview">Выберите подрядчика — появится номер и тема</p></div>
+    <div class="preview">
+      <div class="txt"><span class="lbl">ТЕМА ПИСЬМА</span><p id="preview">Выберите подрядчика — появится номер и тема</p></div>
+      <button class="btn small" id="copyBtn" type="button">Скопировать</button>
+    </div>
 
     <div class="two">
       <label class="field"><span>Подрядчик <span class="req">*</span></span><select id="contractor"></select></label>
@@ -56,7 +61,6 @@
   </div>
 
   <div class="foot">
-    <button class="btn" id="copyBtn" type="button">Скопировать тему</button>
     <button class="btn primary grow" id="submitBtn" type="button">Добавить задачу</button>
   </div>
 
@@ -144,7 +148,12 @@
     updatePreview();
   });
 
-  $('#copyBtn').addEventListener('click', () => copyText($('#preview').textContent).then(() => setMsg($('#msg'), 'Тема скопирована', 'ok')));
+  $('#copyBtn').addEventListener('click', () => {
+    copyText($('#preview').textContent).then(() => {
+      $('#copyBtn').textContent = 'Скопировано ✓';
+      setTimeout(() => { $('#copyBtn').textContent = 'Скопировать'; }, 1500);
+    });
+  });
 
   $('#submitBtn').addEventListener('click', () => {
     if (!$('#contractor').value) return setMsg($('#msg'), 'Выберите подрядчика', 'err');
