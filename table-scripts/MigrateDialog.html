@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<?!= include('Общее') ?>
+<style>
+  .drop { display: block; border: 2px dashed var(--field); border-radius: 10px; padding: 22px 14px; text-align: center;
+    cursor: pointer; font-size: 13px; font-weight: 400; color: var(--soft); }
+  .drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  .drop b { color: var(--ink); }
+  .drop input { display: none; }
+  .or { text-align: center; font-size: 12px; color: var(--soft); }
+</style>
+</head>
+<body class="has-foot">
+  <div class="stack">
+    <label class="drop" id="drop">
+      <input type="file" id="file" accept=".xlsx">
+      <b id="fileName">Выберите файл Excel старой таблицы</b><br>
+      или перетащите его сюда
+      <div class="small" style="margin-top:6px">В старой таблице: Файл → Скачать → Microsoft Excel (.xlsx)</div>
+    </label>
+    <div class="or">— или —</div>
+    <label class="field">Ссылка на старую таблицу
+      <input type="url" id="link" placeholder="https://docs.google.com/spreadsheets/d/…"></label>
+    <div id="plan" class="preview" hidden></div>
+    <div id="msg" class="msg"></div>
+  </div>
+  <div class="foot">
+    <button class="btn" id="checkBtn" type="button">Проверить</button>
+    <button class="btn primary grow" id="goBtn" type="button" disabled>Перенести</button>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+// xlsx-parse:start
+  /** Лист «Localization Misc» из файла Excel → { values, links, merges } для migrationPreviewFromData. */
+  function oldSheetFromWorkbook(XLSX, wb) {
+    const COLS = 19, BAND = 5;
+    const name = wb.SheetNames.find(n => n.trim() === 'Localization Misc');
+    if (!name) throw new Error('В файле нет листа «Localization Misc». Это точно старая таблица?');
+    const ws = wb.Sheets[name];
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+    const values = [], links = [];
+    let last = 0;
+    for (let r = 0; r <= range.e.r; r++) {
+      const row = [];
+      let link = '';
+      for (let c = 0; c < COLS; c++) {
+        const cell = ws[XLSX.utils.encode_cell({ r: r, c: c })];
+        row.push(xlsxCellValue(XLSX, cell));
+        if (c === BAND && cell && cell.l && /^https?:\/\//i.test(cell.l.Target || '')) link = cell.l.Target;
+      }
+      if (link || row.some(v => v !== '')) last = r + 1;
+      values.push(row);
+      links.push(link);
+    }
+    values.length = last;
+    links.length = last;
+    const merges = (ws['!merges'] || [])
+      .filter(m => m.s.c < COLS && m.s.r < last)
+      .map(m => [m.s.r + 1, m.s.c + 1, m.e.r - m.s.r + 1, m.e.c - m.s.c + 1]);
+    return { values: values, links: links, merges: merges };
+  }
+
+  /** Как getValues(): число, строка, логическое; дата — { d: 'yyyy-MM-dd' } (Date через google.script.run не пройдёт). */
+  function xlsxCellValue(XLSX, cell) {
+    if (!cell || cell.v == null || cell.t === 'e' || cell.t === 'z') return '';
+    if (cell.t === 'n' && cell.z && XLSX.SSF.is_date(cell.z)) {
+      const p = XLSX.SSF.parse_date_code(cell.v);
+      const pad = n => String(n).padStart(2, '0');
+      return { d: p.y + '-' + pad(p.m) + '-' + pad(p.d) };
+    }
+    return typeof cell.v === 'string' ? cell.v.replace(/\r\n?/g, '\n') : cell.v;
+  }
+// xlsx-parse:end
+
+  let source = null;   // данные из файла
+  let mode = '';       // 'file' | 'link'
+
+  function resetPlan() {
+    $('#plan').hidden = true;
+    $('#goBtn').disabled = true;
+  }
+
+  function readFile(file) {
+    resetPlan();
+    source = null;
+    if (!file) return;
+    if (!/\.xlsx$/i.test(file.name)) return setMsg($('#msg'), 'Нужен файл .xlsx', 'err');
+    $('#fileName').textContent = file.name;
+    $('#link').value = '';
+    setMsg($('#msg'), 'Читаю файл…');
+    if (typeof XLSX === 'undefined') return setMsg($('#msg'), 'Не загрузилась читалка Excel. Проверьте интернет или вставьте ссылку.', 'err');
+    file.arrayBuffer().then(buf => {
+      const wb = XLSX.read(new Uint8Array(buf), { type: 'array', cellNF: true, cellDates: false });
+      source = oldSheetFromWorkbook(XLSX, wb);
+      mode = 'file';
+      check();
+    }).catch(e => setMsg($('#msg'), 'Не получилось прочитать файл: ' + e.message, 'err'));
+  }
+
+  function check() {
+    resetPlan();
+    if (!source && $('#link').value.trim()) mode = 'link';
+    if (!mode || (mode === 'file' && !source)) return setMsg($('#msg'), 'Выберите файл или вставьте ссылку', 'err');
+    setMsg($('#msg'), 'Считаю, что перенести…');
+    const call = mode === 'file' ? run('migrationPreviewFromData', source) : run('migrationPreviewFromLink', $('#link').value);
+    call.then(p => {
+      $('#plan').hidden = false;
+      if (!p.count) {
+        $('#plan').innerHTML = 'Переносить нечего: ' + p.skippedExisting + ' задач уже есть в новой таблице.';
+        return setMsg($('#msg'), '');
+      }
+      $('#plan').innerHTML =
+        '<b>Будет добавлено задач: ' + p.count + '</b> (с ' + esc(p.from) + ' по ' + esc(p.to) + ')<br>' +
+        '<span class="small">Уже есть в новой таблице — пропущу: ' + p.skippedExisting +
+        '. Пустые строки — пропущу: ' + p.skippedEmpty + '.</span><br>' +
+        '<span class="small">После переноса весь лист отсортируется по дате: свежие сверху.</span>';
+      $('#goBtn').disabled = false;
+      setMsg($('#msg'), '');
+    }).catch(e => setMsg($('#msg'), e.message, 'err'));
+  }
+
+  $('#file').addEventListener('change', e => readFile(e.target.files[0]));
+  const drop = $('#drop');
+  ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => readFile(e.dataTransfer.files[0]));
+  $('#link').addEventListener('input', () => {
+    source = null; mode = ''; resetPlan();
+    $('#fileName').textContent = 'Выберите файл Excel старой таблицы';
+  });
+  $('#checkBtn').addEventListener('click', check);
+
+  $('#goBtn').addEventListener('click', () => {
+    const btn = $('#goBtn');
+    btn.disabled = true; $('#checkBtn').disabled = true;
+    btn.textContent = 'Переношу… (до пары минут)';
+    const call = mode === 'file' ? run('migrationApplyFromData', source) : run('migrationApplyFromLink', $('#link').value);
+    call.then(r => {
+      btn.textContent = 'Готово';
+      $('#plan').innerHTML = '<b>Перенесено задач: ' + r.added + '.</b> Лист отсортирован по дате, цвета и списки обновлены.' +
+        (mode === 'link' ? '<br><span class="small">Новые номера теперь сверяются со старой таблицей. Появятся там новые задачи — запустите перенос ещё раз, он добавит только новые.</span>'
+                         : '<br><span class="small">Появятся в старой таблице новые задачи — скачайте файл заново и перенесите ещё раз: добавятся только новые.</span>');
+      setMsg($('#msg'), '');
+    }).catch(e => {
+      setMsg($('#msg'), 'Не перенеслось: ' + e.message, 'err');
+      btn.disabled = false; $('#checkBtn').disabled = false; btn.textContent = 'Перенести';
+    });
+  });
+</script>
+</body>
+</html>

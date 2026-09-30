@@ -57,7 +57,7 @@ test('onOpen строит меню', () => {
 test('Окна открываются', { skip: !process.env.BUNDLE }, () => {
   assert.match(G.include('Общее'), /<style>/);
   ['showAddTaskDialog', 'showSearchEditSidebar', 'showDashboard', 'showManagerReportSidebar', 'showCustomReportSidebar',
-   'showAddTranslatorTaskDialog', 'showSearchEditTranslatorSidebar', 'showTranslatorReportSidebar'].forEach(f => G[f]());
+   'showAddTranslatorTaskDialog', 'showSearchEditTranslatorSidebar', 'showTranslatorReportSidebar', 'migrateFromOldTable'].forEach(f => G[f]());
 });
 
 test('До оформления (в «Списках» ещё нет колонки O) справочники читаются', () => {
@@ -339,15 +339,38 @@ test('Мои задачи и статус из расширения', () => {
   assert.equal(dup.duplicates.length, 1);
 });
 
+// Файл Excel старой таблицы: OLD_XLSX=путь, XLSX_MODULE=путь к пакету xlsx (SheetJS), как в окне переноса
+function xlsxSource() {
+  const XLSX = require(process.env.XLSX_MODULE || 'xlsx');
+  const html = fs.readFileSync(__dirname + '/../MigrateDialog.html', 'utf8');
+  const code = html.split('// xlsx-parse:start')[1].split('// xlsx-parse:end')[0];
+  const parse = new Function('XLSX', 'wb', code + '\nreturn oldSheetFromWorkbook(XLSX, wb);');
+  const wb = XLSX.read(new Uint8Array(fs.readFileSync(process.env.OLD_XLSX)), { type: 'array', cellNF: true, cellDates: false });
+  // Как через google.script.run: только простые данные
+  return JSON.parse(JSON.stringify(parse(XLSX, wb)));
+}
+
+test('Перенос из файла Excel даёт то же, что по ссылке', { skip: !oldFixture || !process.env.OLD_XLSX }, () => {
+  const byLink = G.planMigration_(others[OLD_ID]);
+  const byFile = G.planFromSource_(G.sourceFromUpload_(xlsxSource()));
+  // В выгрузке для теста вместо значения формулы — её текст (=29440+…); Google и Excel дают число
+  const formulas = byLink.rows.map(r => r.values.map(v => /^=/.test(v)));
+  const norm = plan => plan.rows.map((r, i) => JSON.stringify([r.link, r.link2, r.values.map((v, j) =>
+    formulas[i] && formulas[i][j] ? '=' : v instanceof CDate ? 'D' + v.getFullYear() + '-' + v.getMonth() + '-' + v.getDate() : String(v))]));
+  const a = norm(byLink), b = norm(byFile);
+  assert.equal(b.length, a.length, 'строк: ' + b.length + ' против ' + a.length);
+  const diff = a.map((x, i) => x === b[i] ? null : i).filter(i => i !== null);
+  assert.equal(diff.length, 0, diff.length + ' различий, первое:\n' + a[diff[0]] + '\n' + b[diff[0]]);
+  same(G.migrationPreviewFromData(xlsxSource()).count, byLink.rows.length);
+});
+
 test('Перенос истории из старой таблицы', { skip: !oldFixture }, () => {
   const before = tasks().getLastRow();
-  ctx.__prompt = 'https://docs.google.com/spreadsheets/d/' + OLD_ID + '/edit#gid=0';
-  calls.alerts.length = 0;
-  G.migrateFromOldTable();
+  const url = 'https://docs.google.com/spreadsheets/d/' + OLD_ID + '/edit#gid=0';
+  const preview = G.migrationPreviewFromLink(url);
+  const res = G.migrationApplyFromLink(url);
   const added = tasks().getLastRow() - before;
-  assert.ok(added > 3700, 'перенесено ' + added + '; ' + calls.alerts.join(' // '));
-  assert.match(calls.alerts[0], /Будет добавлено задач: \d+/);
-  const migrationAlert = calls.alerts[0];
+  assert.ok(added > 3700 && res.added === added && preview.count === added, 'перенесено ' + added + '; ' + JSON.stringify(preview));
   const rows = tasks().getRange(1, 1, tasks().getLastRow(), 17).getValues();
   // Одна задача подрядчику на три строки (разные запросы из Band): номер и тема у всех, сумма — только у первой
   const g = rows.filter(r => r[0] === 'LIT-26-1953');
@@ -356,6 +379,11 @@ test('Перенос истории из старой таблицы', { skip: !
   assert.equal(g.filter(r => r[11] !== '').length, 1, 'сумма не задвоилась');
   assert.ok(g.every(r => r[1] === 'LOCAL-493'), 'тикет из колонки «Задача»');
   assert.ok(g.every(r => r[4] === 'WBP'), 'сторона → продукт по памятке');
+  // Три ссылки в одной ячейке: первая — на тему, вторая — «(доп. ссылка)», третья — в комментарий
+  const multi = rows.findIndex(r => r[0] === 'LIT-26-2188') + 1;
+  same(G.linksFromRich_(tasks().getRange(multi, 3).getRichTextValue()),
+    { link: 'https://band.wb.ru/wb/pl/tpw8mh66tpd7ung4siq9g96hoh', link2: 'https://band.wb.ru/wb/pl/tjfa9pqwnprk3eorhzjinzkhjy' });
+  assert.match(tasks().getRange(multi, 17).getValue(), /Ещё ссылки: https:\/\/band.wb.ru\/wb\/pl\/mytom1ojftg3789opd3c7ioe1o/);
   const firstOld = rows.findIndex(r => r[0] === 'LIT-25-1') + 1;
   assert.equal(G.linksFromRich_(tasks().getRange(firstOld, 3).getRichTextValue()).link.slice(0, 26), 'https://band.wb.ru/wb/pl/g');
   // Весь лист по дате, свежие сверху (без дат — внизу)
@@ -364,10 +392,9 @@ test('Перенос истории из старой таблицы', { skip: !
   const oldest = rows.slice(1).filter(r => r[3] instanceof CDate).pop();
   assert.equal(oldest[3].getTime(), Math.min(...dates), 'самая старая дата — внизу');
   // Повторный запуск ничего не задваивает
-  calls.alerts.length = 0;
-  G.migrateFromOldTable();
+  assert.equal(G.migrationPreviewFromLink(url).count, 0);
+  assert.equal(G.migrationApplyFromLink(url).added, 0);
   assert.equal(tasks().getLastRow() - before, added);
-  assert.match(calls.alerts[0], /Переносить нечего/);
   // Правка второй строки общего номера попадает во вторую, а не в первую
   const second = rows.findIndex((r, i) => r[0] === 'LIT-26-1953' && i > rows.findIndex(x => x[0] === 'LIT-26-1953')) + 1;
   const t = G.getTaskForEdit(second);
@@ -377,7 +404,7 @@ test('Перенос истории из старой таблицы', { skip: !
   // Номера новых задач продолжаются после перенесённых
   const next = G.generateNextTaskId(tasks(), 'LogrusIT');
   assert.ok(Number(next.split('-')[2]) > 2231 && !rows.some(r => r[0] === next), next);
-  console.log('      окно подтверждения:', calls.alerts.length ? '' : '', migrationAlert.replace(/\n/g, ' | '));
+  console.log('      предпросмотр:', JSON.stringify(preview));
   // Старая таблица запомнилась: новые номера сверяются с ней
   others[OLD_ID].getSheetByName('Localization Misc').appendRow(['LIT-26-9999']);
   ctx.__clearCache();

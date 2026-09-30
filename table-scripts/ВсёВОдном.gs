@@ -2204,8 +2204,9 @@ function writeTranslatorGuide_() {
  * Перенос.gs — разовый перенос истории из старой таблицы
  * (лист «Localization Misc») в «📌 Задачи (менеджеры)».
  *
- * Меню: «⚙️ Настройки → 📥 Перенести историю из старой таблицы».
- * Сначала показывает, сколько задач перенесёт и сколько пропустит, и переносит только после подтверждения.
+ * Меню: «⚙️ Настройки → 📥 Перенести историю из старой таблицы». В окне — файл .xlsx старой таблицы
+ * (Файл → Скачать → Microsoft Excel) или ссылка на неё. Сначала показывает, сколько задач перенесёт
+ * и сколько пропустит, и переносит только после подтверждения.
  * Задачи, номера которых уже есть в новой таблице, пропускаются — запускать повторно безопасно.
  * После переноса файл можно удалить.
  *************************************************************/
@@ -2245,35 +2246,65 @@ const OLD_SIDE_TO_PRODUCT = {
   'ДРУГОЕ': 'Межнар'
 };
 
+/** Меню: окно переноса — файл Excel (.xlsx) или ссылка на старую таблицу. */
 function migrateFromOldTable() {
-  const ui = SpreadsheetApp.getUi();
-  const resp = ui.prompt('Перенос истории',
-    'Вставьте ссылку на старую таблицу (где лист «' + OLD_SHEET_NAME + '»):', ui.ButtonSet.OK_CANCEL);
-  if (resp.getSelectedButton() !== ui.Button.OK) return;
-  const m = resp.getResponseText().match(/\/d\/([a-zA-Z0-9_-]{20,})/) || resp.getResponseText().trim().match(/^([a-zA-Z0-9_-]{20,})$/);
-  if (!m) { ui.alert('Не похоже на ссылку на Google Таблицу.'); return; }
-
-  const plan = planMigration_(SpreadsheetApp.openById(m[1]));
-  // Запоминаем старую таблицу: новые номера будут сверяться с ней
-  PropertiesService.getDocumentProperties().setProperty(OLD_TABLE_PROP, m[1]);
-  if (!plan.rows.length) {
-    ui.alert('Переносить нечего: ' + plan.skippedExisting + ' задач уже есть в новой таблице, ' + plan.skippedEmpty + ' строк пустые.');
-    return;
-  }
-  const ok = ui.alert('Перенос истории',
-    'Будет добавлено задач: ' + plan.rows.length + ' (с ' + plan.from + ' по ' + plan.to + ').\n' +
-    'Уже есть в новой таблице — пропущу: ' + plan.skippedExisting + '.\n' +
-    'Пустые строки и повторы шапки — пропущу: ' + plan.skippedEmpty + '.\n\n' +
-    'После переноса весь лист отсортируется по дате: свежие сверху. Продолжить?', ui.ButtonSet.YES_NO);
-  if (ok !== ui.Button.YES) return;
-
-  applyMigration_(plan);
-  ui.alert('Готово: перенесено ' + plan.rows.length + ' задач. Цвета и выпадающие списки обновлены.\n\n' +
-    'Новые номера теперь сверяются со старой таблицей. Если там появятся новые задачи — запустите перенос ещё раз, он добавит только новые.');
+  showDialog_('MigrateDialog', 'Перенос истории из старой таблицы', 520, 470);
 }
 
-function isUrl_(s) {
-  return /^https?:\/\//i.test(String(s || '').trim());
+function oldTableIdFromLink_(url) {
+  const t = String(url || '').trim();
+  const m = t.match(/\/d\/([a-zA-Z0-9_-]{20,})/) || t.match(/^([a-zA-Z0-9_-]{20,})$/);
+  if (!m) throw new Error('Не похоже на ссылку на Google Таблицу');
+  return m[1];
+}
+
+function planSummary_(plan) {
+  return {
+    count: plan.rows.length, skippedExisting: plan.skippedExisting, skippedEmpty: plan.skippedEmpty,
+    from: plan.from, to: plan.to
+  };
+}
+
+/** Окно переноса, способ «ссылка»: сначала сколько перенесётся, потом перенос. */
+function migrationPreviewFromLink(url) {
+  return planSummary_(planMigration_(SpreadsheetApp.openById(oldTableIdFromLink_(url))));
+}
+
+function migrationApplyFromLink(url) {
+  const id = oldTableIdFromLink_(url);
+  const plan = planMigration_(SpreadsheetApp.openById(id));
+  // Запоминаем старую таблицу: новые номера будут сверяться с ней
+  PropertiesService.getDocumentProperties().setProperty(OLD_TABLE_PROP, id);
+  if (plan.rows.length) applyMigration_(plan);
+  return { added: plan.rows.length };
+}
+
+/** Способ «файл»: окно само читает .xlsx и присылает лист «Localization Misc» (см. MigrateDialog). */
+function migrationPreviewFromData(src) {
+  return planSummary_(planFromSource_(sourceFromUpload_(src)));
+}
+
+function migrationApplyFromData(src) {
+  const plan = planFromSource_(sourceFromUpload_(src));
+  if (plan.rows.length) applyMigration_(plan);
+  return { added: plan.rows.length };
+}
+
+/** Даты из окна приходят как { d: 'yyyy-MM-dd' }: google.script.run не передаёт Date. */
+function sourceFromUpload_(src) {
+  if (!src || !Array.isArray(src.values)) throw new Error('Файл не прочитался');
+  const values = src.values.map(row => {
+    const out = [];
+    for (let c = 0; c < OLD_COLS; c++) {
+      const v = row[c];
+      if (v && typeof v === 'object' && v.d) {
+        const p = String(v.d).split('-').map(Number);
+        out.push(new Date(p[0], p[1] - 1, p[2]));
+      } else out.push(v == null ? '' : v);
+    }
+    return out;
+  });
+  return { values: values, links: (src.links || []).map(l => l || ''), merges: src.merges || [] };
 }
 
 function numOrEmpty_(v) {
@@ -2282,24 +2313,41 @@ function numOrEmpty_(v) {
   return isFinite(n) ? n : v;
 }
 
-/** Читает старый лист и готовит строки для новой таблицы (ничего не записывает). */
-function planMigration_(oldSs) {
+/** Читает старый лист из Google Таблицы: значения, ссылки на Band и объединённые ячейки. */
+function readOldSheet_(oldSs) {
   const old = oldSs.getSheetByName(OLD_SHEET_NAME);
   if (!old) throw new Error('В старой таблице нет листа «' + OLD_SHEET_NAME + '»');
   const lastRow = old.getLastRow();
   const range = old.getRange(1, 1, lastRow, OLD_COLS);
-  const values = range.getValues();
-  const bandRich = old.getRange(1, OLD.BAND, lastRow, 1).getRichTextValues().map(r => r[0]);
+  return {
+    values: range.getValues(),
+    links: old.getRange(1, OLD.BAND, lastRow, 1).getRichTextValues().map(r => linksFromRich_(r[0]).link || ''),
+    merges: range.getMergedRanges().map(mr => [mr.getRow(), mr.getColumn(), mr.getNumRows(), mr.getNumColumns()])
+  };
+}
+
+/** Читает старый лист и готовит строки для новой таблицы (ничего не записывает). */
+function planMigration_(oldSs) {
+  return planFromSource_(readOldSheet_(oldSs));
+}
+
+/**
+ * source: { values: строки листа с шапкой (A..S), links: ссылка на Band для каждой строки,
+ *           merges: [[строка, колонка, строк, колонок], …] — с 1, как в таблице }.
+ */
+function planFromSource_(src) {
+  const values = src.values, links = src.links.slice();
+  const lastRow = values.length;
 
   // Раскопировать объединённые ячейки на все их строки
-  range.getMergedRanges().forEach(mr => {
-    const r0 = mr.getRow(), c0 = mr.getColumn();
-    for (let c = c0; c < c0 + mr.getNumColumns(); c++) {
+  src.merges.forEach(m => {
+    const r0 = m[0], c0 = m[1];
+    if (r0 > lastRow) return;
+    for (let c = c0; c < c0 + m[3] && c <= OLD_COLS; c++) {
       if (OLD_NO_FILL.indexOf(c) !== -1) continue;
-      const v = values[r0 - 1][c - 1];
-      for (let r = r0; r < r0 + mr.getNumRows(); r++) {
-        values[r - 1][c - 1] = v;
-        if (c === OLD.BAND) bandRich[r - 1] = bandRich[r0 - 1];
+      for (let r = r0 + 1; r < r0 + m[2] && r <= lastRow; r++) {
+        values[r - 1][c - 1] = values[r0 - 1][c - 1];
+        if (c === OLD.BAND) links[r - 1] = links[r0 - 1];
       }
     }
   });
@@ -2328,13 +2376,17 @@ function planMigration_(oldSs) {
     // «Задача» в старой таблице — чаще номер тикета (LOCAL-493), иначе описание
     const ticketMatch = taskText.match(/^LOCAL[-\s]?(\d+)$/i);
     const ticket = ticketMatch ? 'LOCAL-' + ticketMatch[1] : '';
+    // В одной ячейке бывает несколько ссылок на Band: первая — на тему, вторая — «(доп. ссылка)», остальные — в комментарий
+    const urls = get(OLD.BAND).match(/https?:\/\/[^\s,;]+/g) || [];
+    const band = urls[0] || links[i - 1] || ''; // ссылка ячейки — если в тексте вместо адреса подпись
+    const extra = urls.filter(u => u !== band);
     const comment = [
       get(OLD.COMMENT),
+      extra.length > 1 ? 'Ещё ссылки: ' + extra.slice(1).join(' ') : '',
       taskText && !ticketMatch && taskText !== subject ? 'Задача: ' + taskText : '',
       get(OLD.COMPLAINTS) ? 'Жалобы на заказчика: ' + get(OLD.COMPLAINTS) : ''
     ].filter(Boolean).join('\n');
 
-    const band = linksFromRich_(bandRich[i - 1]).link || (isUrl_(get(OLD.BAND)) ? get(OLD.BAND) : '');
     if (!id && existingKeys[keyOf(subject || taskText || '(без темы)', v[OLD.DATE - 1], band)]) { skippedExisting++; continue; }
     const deadline = get(OLD.DEADLINE) === 'Дедлайн (если есть)' ? '' : get(OLD.DEADLINE);
     const side = get(OLD.SIDE);
@@ -2342,6 +2394,7 @@ function planMigration_(oldSs) {
 
     rows.push({
       link: band,
+      link2: extra[0] || '',
       values: [
         id, ticket, subject || taskText || '(без темы)', date, OLD_SIDE_TO_PRODUCT[side] || side,
         get(OLD.CUSTOMER), get(OLD.LANGS), deadline, v[OLD.DUE - 1] instanceof Date ? v[OLD.DUE - 1] : get(OLD.DUE),
@@ -2374,7 +2427,7 @@ function applyMigration_(plan) {
       const part = plan.rows.slice(off, off + CHUNK);
       sh.getRange(start + off, 1, part.length, TASK_COLS).setValues(part.map(p => p.values));
       sh.getRange(start + off, COL.SUBJECT, part.length, 1)
-        .setRichTextValues(part.map(p => [buildSubjectRich_(String(p.values[COL.SUBJECT - 1]), p.link, '')]));
+        .setRichTextValues(part.map(p => [buildSubjectRich_(String(p.values[COL.SUBJECT - 1]), p.link, p.link2)]));
     }
     logChange('Перенос истории', '', '', '', n + ' задач из старой таблицы');
 
@@ -2623,5 +2676,6 @@ const HTML_FILES = {
   "CustomReportSidebar": "<!DOCTYPE html>\n<html>\n<head>\n<base target=\"_top\">\n<?!= include('Общее') ?>\n</head>\n<body>\n  <h2>Кастомный отчёт</h2>\n  <div class=\"stack\">\n    <div class=\"two\">\n      <label class=\"field\">Год<select id=\"year\"></select></label>\n      <label class=\"field\">Месяц<select id=\"month\">\n        <option value=\"\">Весь год</option><option value=\"1\">Январь</option><option value=\"2\">Февраль</option><option value=\"3\">Март</option>\n        <option value=\"4\">Апрель</option><option value=\"5\">Май</option><option value=\"6\">Июнь</option><option value=\"7\">Июль</option>\n        <option value=\"8\">Август</option><option value=\"9\">Сентябрь</option><option value=\"10\">Октябрь</option>\n        <option value=\"11\">Ноябрь</option><option value=\"12\">Декабрь</option></select></label>\n    </div>\n    <button class=\"btn primary\" id=\"runBtn\" type=\"button\">Сформировать</button>\n  </div>\n  <div id=\"results\"></div>\n  <div class=\"two\" id=\"actions\" hidden style=\"margin-top:8px\">\n    <button class=\"btn\" id=\"excelBtn\" type=\"button\">📥 Скачать Excel</button>\n    <button class=\"btn\" id=\"docBtn\" type=\"button\">📄 Открыть в Google Doc</button>\n  </div>\n  <div id=\"msg\" class=\"msg\" style=\"margin-top:6px\"></div>\n\n<script>\n  run('getDashboardYears').then(years => fillSelect($('#year'), years.map(String), 'Всё время'))\n    .catch(e => setMsg($('#msg'), 'Не получилось загрузить годы: ' + e.message, 'err'));\n\n  const period = () => [$('#year').value, $('#year').value ? $('#month').value : ''];\n\n  function table(rows, fmt) {\n    if (!rows.length) return '<p class=\"small muted\">Нет данных</p>';\n    return '<table class=\"kv\">' + rows.map(r => `<tr><td>${esc(r[0])}</td><td>${esc(fmt ? fmt(r) : r[1])}</td></tr>`).join('') + '</table>';\n  }\n\n  $('#runBtn').addEventListener('click', () => {\n    $('#results').innerHTML = '<p class=\"muted\">Считаю…</p>';\n    $('#actions').hidden = true;\n    setMsg($('#msg'), '');\n    run('getCustomReport', ...period()).then(d => {\n      let html = `<p class=\"small muted\">Период: <b>${esc(d.periodLabel)}</b></p><div class=\"tiles\">\n        <div class=\"tile\"><div class=\"num\">${d.totalTasks}</div><div class=\"lbl\">задач</div></div>\n        <div class=\"tile\"><div class=\"num\">${d.totalSp}</div><div class=\"lbl\">SP</div></div>\n        <div class=\"tile\"><div class=\"num\">${d.avgSp}</div><div class=\"lbl\">SP на задачу</div></div>\n        <div class=\"tile\"><div class=\"num\">${money(d.totalMoney)}</div><div class=\"lbl\">₽ с НДС</div></div></div>`;\n      html += '<h3>Продукты по числу задач</h3>' + table(d.topProducts);\n      html += '<h3>Языки по частоте</h3>' + table(d.languages);\n      html += '<h3>Статус отдачи заказчику</h3>' + table(d.deliveryStatus, r => r[1] + ' (' + r[2] + '%)');\n      html += '<h3>Топ-5 менеджеров по SP</h3>' + table(d.topManagers, r => r[2] + ' SP · ' + r[1] + ' задач');\n      html += '<h3>Топ-5 подрядчиков</h3>' + table(d.topContractors);\n      html += '<h3>Топ-10 самых трудоёмких задач</h3>' + (d.topTasksBySP.length ? d.topTasksBySP.map(t =>\n        `<div class=\"line\"><span>${t.link ? `<a href=\"${esc(t.link)}\" target=\"_blank\">${esc(t.subject)}</a>` : esc(t.subject)}</span><span class=\"v\">${t.sp} SP</span></div>`).join('')\n        : '<p class=\"small muted\">Нет задач с SP</p>');\n      $('#results').innerHTML = html;\n      $('#actions').hidden = false;\n    }).catch(e => { $('#results').innerHTML = ''; setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'); });\n  });\n\n  $('#excelBtn').addEventListener('click', () => {\n    setMsg($('#msg'), 'Готовлю файл…');\n    run('exportCustomReportToExcel', ...period()).then(url => { setMsg($('#msg'), 'Готово — файл скачивается', 'ok'); window.open(url, '_blank'); })\n      .catch(e => setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'));\n  });\n  $('#docBtn').addEventListener('click', () => {\n    setMsg($('#msg'), 'Создаю документ…');\n    run('exportCustomReportToDoc', ...period()).then(url => {\n      $('#msg').className = 'msg ok';\n      $('#msg').innerHTML = `<a href=\"${esc(url)}\" target=\"_blank\">Открыть документ →</a>`;\n    }).catch(e => setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'));\n  });\n</script>\n</body>\n</html>\n",
   "AddTranslatorTaskDialog": "<!DOCTYPE html>\n<html>\n<head>\n<base target=\"_top\">\n<?!= include('Общее') ?>\n</head>\n<body class=\"has-foot\">\n  <div class=\"stack\">\n    <div class=\"two\">\n      <label class=\"field\">Дата<input type=\"date\" id=\"date\"></label>\n      <label class=\"field\"><span>Сторона <span class=\"req\">*</span></span><select id=\"side\"></select></label>\n    </div>\n    <label class=\"field\">Раздел<select id=\"razdel\"><option value=\"\">Сначала выберите сторону</option></select></label>\n    <label class=\"field\"><span>Задача <span class=\"req\">*</span></span><input type=\"text\" id=\"task\" placeholder=\"Например: перевести баннер главной страницы\"></label>\n    <div class=\"two\">\n      <label class=\"field\">Заказчик<input type=\"text\" id=\"customer\" placeholder=\"@nick\"></label>\n      <label class=\"field\">Ссылка на Band<input type=\"url\" id=\"link\" placeholder=\"https://band.wb.ru/…\"></label>\n    </div>\n    <div class=\"field\">Переводчик<div id=\"translators\"></div></div>\n    <div class=\"field\">Редактор<div id=\"editors\"></div></div>\n    <div class=\"two\">\n      <label class=\"field\">Готовность<select id=\"readiness\">\n        <option>Не начато</option><option>В работе</option><option>Готово</option><option>На проверке</option></select></label>\n      <label class=\"field\">Комментарий<input type=\"text\" id=\"comment\"></label>\n    </div>\n    <div id=\"msg\" class=\"msg\"></div>\n  </div>\n  <div class=\"foot\"><button class=\"btn primary grow\" id=\"submitBtn\" type=\"button\">Добавить задачу</button></div>\n\n<script>\n  let CATEGORIES = {};\n  $('#date').value = todayIso();\n\n  run('getContentCategories').then(d => {\n    CATEGORIES = d;\n    fillSelect($('#side'), Object.keys(d), 'Выберите…');\n  }).catch(e => setMsg($('#msg'), 'Не получилось загрузить разделы: ' + e.message, 'err'));\n\n  run('getTranslatorNames').then(names => {\n    renderChips($('#translators'), [{ items: names }], []);\n    renderChips($('#editors'), [{ items: names }], []);\n  }).catch(e => setMsg($('#msg'), 'Не получилось загрузить людей: ' + e.message, 'err'));\n\n  $('#side').addEventListener('change', () => {\n    const items = CATEGORIES[$('#side').value] || [];\n    fillSelect($('#razdel'), items, items.length ? 'Выберите…' : '—', items.length === 1 ? items[0] : '');\n  });\n\n  $('#submitBtn').addEventListener('click', () => {\n    if (!$('#side').value) return setMsg($('#msg'), 'Выберите сторону', 'err');\n    if (!$('#task').value.trim()) return setMsg($('#msg'), 'Опишите задачу', 'err');\n    const task = {\n      date: $('#date').value, side: $('#side').value, razdel: $('#razdel').value, task: $('#task').value,\n      customer: $('#customer').value, link: $('#link').value,\n      translator: chipValues($('#translators')).join(', '), editor: chipValues($('#editors')).join(', '),\n      readiness: $('#readiness').value, comment: $('#comment').value\n    };\n    const btn = $('#submitBtn');\n    btn.disabled = true; btn.textContent = 'Добавляю…';\n    run('submitNewTranslatorTask', task).then(() => {\n      setMsg($('#msg'), 'Добавлено! Закрываю…', 'ok');\n      setTimeout(() => google.script.host.close(), 900);\n    }).catch(e => {\n      setMsg($('#msg'), 'Не добавилось: ' + e.message, 'err');\n      btn.disabled = false; btn.textContent = 'Добавить задачу';\n    });\n  });\n</script>\n</body>\n</html>\n",
   "SearchEditTranslatorSidebar": "<!DOCTYPE html>\n<html>\n<head>\n<base target=\"_top\">\n<?!= include('Общее') ?>\n</head>\n<body class=\"has-foot\">\n  <div class=\"stack\">\n    <label class=\"field\">Найти<input type=\"text\" id=\"q\" placeholder=\"Задача, заказчик, раздел или имя\"></label>\n    <div class=\"small muted\" id=\"qHint\">Ваши задачи:</div>\n    <div class=\"results\" id=\"results\"></div>\n\n    <div id=\"editor\" class=\"stack\" hidden>\n      <div class=\"card\"><div class=\"t\" id=\"cardTitle\"></div><div class=\"small muted\" id=\"cardMeta\"></div></div>\n      <div class=\"field\">Готовность<div class=\"seg\" id=\"readySeg\"></div></div>\n      <label class=\"field\">Задача<input type=\"text\" id=\"f_task\"></label>\n      <label class=\"field\">Ссылка на Band<input type=\"url\" id=\"f_link\"></label>\n      <div class=\"field\">Переводчик<div id=\"f_translators\"></div></div>\n      <div class=\"field\">Редактор<div id=\"f_editors\"></div></div>\n      <details class=\"more\">\n        <summary>Дата, сторона, раздел, заказчик, комментарий</summary>\n        <div class=\"stack\">\n          <div class=\"two\">\n            <label class=\"field\">Дата<input type=\"date\" id=\"f_date\"></label>\n            <label class=\"field\">Сторона<select id=\"f_side\"></select></label>\n          </div>\n          <label class=\"field\">Раздел<select id=\"f_razdel\"></select></label>\n          <label class=\"field\">Заказчик<input type=\"text\" id=\"f_customer\"></label>\n          <label class=\"field\">Комментарий<textarea id=\"f_comment\"></textarea></label>\n        </div>\n      </details>\n    </div>\n    <div id=\"msg\" class=\"msg\"></div>\n  </div>\n\n  <div class=\"foot col\" id=\"foot\" hidden>\n    <button class=\"btn primary full\" id=\"saveBtn\" type=\"button\">Сохранить</button>\n    <button class=\"link-danger\" id=\"deleteBtn\" type=\"button\">Удалить задачу</button>\n  </div>\n\n<script>\n  const READY = ['Не начато', 'В работе', 'На проверке', 'Готово'];\n  const READY_COLORS = { 'Не начато': '#EFEFEF', 'В работе': '#D6E4F0', 'Готово': '#D9EAD3', 'На проверке': '#FFF2CC' };\n  let CATEGORIES = {}, PEOPLE = [], current = null, readiness = '';\n\n  Promise.all([run('getContentCategories'), run('getTranslatorNames')]).then(([cats, names]) => {\n    CATEGORIES = cats; PEOPLE = names;\n    fillSelect($('#f_side'), Object.keys(cats), '—');\n    search('');\n  }).catch(e => setMsg($('#msg'), 'Не получилось загрузить списки: ' + e.message, 'err'));\n\n  let timer = null, seq = 0;\n  $('#q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => search($('#q').value), 350); });\n\n  function search(q) {\n    const my = ++seq;\n    $('#qHint').textContent = q.trim() ? 'Найдено:' : 'Ваши задачи (или последние, если вашей почты нет в «Списках»):';\n    run('searchTranslatorTasks', q).then(list => {\n      if (my !== seq) return;\n      $('#results').innerHTML = list.length ? list.map(r =>\n        `<button type=\"button\" data-row=\"${r.row}\">${esc(r.title)} <span class=\"d\">· ${esc(r.side)} · ${esc(r.date)}${r.readiness ? ' · ' + esc(r.readiness) : ''}</span></button>`\n      ).join('') : '<div class=\"small muted\" style=\"padding:8px 10px\">Ничего не найдено</div>';\n    }).catch(e => setMsg($('#msg'), 'Поиск не сработал: ' + e.message, 'err'));\n  }\n\n  $('#results').addEventListener('click', e => {\n    const b = e.target.closest('button[data-row]');\n    if (!b) return;\n    $$('#results button').forEach(x => x.classList.toggle('on', x === b));\n    run('getTranslatorTaskForEdit', Number(b.dataset.row)).then(fill).catch(err => setMsg($('#msg'), 'Не открылась: ' + err.message, 'err'));\n  });\n\n  function renderReady() {\n    $('#readySeg').innerHTML = READY.map(s =>\n      `<button type=\"button\" data-s=\"${esc(s)}\" class=\"${s === readiness ? 'on' : ''}\" style=\"${s === readiness ? 'background:' + READY_COLORS[s] : ''}\">${esc(s)}</button>`).join('');\n  }\n  $('#readySeg').addEventListener('click', e => {\n    const b = e.target.closest('button[data-s]');\n    if (b) { readiness = b.dataset.s; renderReady(); }\n  });\n\n  function peopleChips(el, chosen) {\n    renderChips(el, [{ items: PEOPLE }, { title: 'Другие', items: chosen.filter(n => !PEOPLE.includes(n)) }], chosen);\n  }\n\n  function updateRazdel(selected) {\n    const items = CATEGORIES[$('#f_side').value] || [];\n    fillSelect($('#f_razdel'), items.includes(selected) || !selected ? items : items.concat([selected]), '—', selected);\n  }\n  $('#f_side').addEventListener('change', () => updateRazdel(''));\n\n  function fill(t) {\n    current = t;\n    readiness = t.readiness || 'Не начато';\n    $('#cardTitle').textContent = t.task || '(задача не заполнена)';\n    $('#cardMeta').textContent = [t.side, t.razdel, t.customer].filter(Boolean).join(' · ');\n    renderReady();\n    $('#f_task').value = t.task; $('#f_link').value = t.link; $('#f_date').value = t.date;\n    $('#f_side').value = t.side; updateRazdel(t.razdel);\n    $('#f_customer').value = t.customer; $('#f_comment').value = t.comment;\n    peopleChips($('#f_translators'), t.translatorNames);\n    peopleChips($('#f_editors'), t.editorNames);\n    $('#editor').hidden = false; $('#foot').hidden = false;\n    setMsg($('#msg'), '');\n  }\n\n  $('#saveBtn').addEventListener('click', () => {\n    if (!current) return;\n    const task = {\n      row: current.row, origKey: current.origKey, readiness: readiness,\n      task: $('#f_task').value, link: $('#f_link').value, date: $('#f_date').value, side: $('#f_side').value,\n      razdel: $('#f_razdel').value, customer: $('#f_customer').value, comment: $('#f_comment').value,\n      translator: chipValues($('#f_translators')).join(', '), editor: chipValues($('#f_editors')).join(', ')\n    };\n    const btn = $('#saveBtn');\n    btn.disabled = true;\n    setMsg($('#msg'), 'Сохраняю…');\n    run('saveTranslatorTaskEdits', task)\n      .then(r => run('getTranslatorTaskForEdit', r.row)).then(fill)\n      .then(() => { setMsg($('#msg'), 'Сохранено ✓', 'ok'); search($('#q').value); })\n      .catch(e => setMsg($('#msg'), 'Не сохранилось: ' + e.message, 'err'))\n      .finally(() => { btn.disabled = false; });\n  });\n\n  $('#deleteBtn').addEventListener('click', () => {\n    if (!current) return;\n    if (!confirm('Удалить задачу «' + (current.task || '') + '»? Отменить будет нельзя.')) return;\n    run('deleteTranslatorTask', current.row, current.origKey).then(() => {\n      current = null;\n      $('#editor').hidden = true; $('#foot').hidden = true;\n      setMsg($('#msg'), 'Удалено.', 'ok');\n      search($('#q').value);\n    }).catch(e => setMsg($('#msg'), 'Не удалилось: ' + e.message, 'err'));\n  });\n</script>\n</body>\n</html>\n",
-  "TranslatorReportSidebar": "<!DOCTYPE html>\n<html>\n<head>\n<base target=\"_top\">\n<?!= include('Общее') ?>\n</head>\n<body>\n  <h2>Отчёт по переводчику</h2>\n  <div class=\"stack\">\n    <div class=\"two\">\n      <label class=\"field\">Переводчик<select id=\"translator\"></select></label>\n      <label class=\"field\">Месяц<select id=\"month\"></select></label>\n    </div>\n    <div class=\"two\">\n      <button class=\"btn primary\" id=\"runBtn\" type=\"button\">Сформировать отчёт</button>\n      <button class=\"btn\" id=\"trackerBtn\" type=\"button\">Список для трекера</button>\n    </div>\n  </div>\n  <div id=\"results\"></div>\n  <pre class=\"out\" id=\"trackerOut\" hidden></pre>\n  <div class=\"two\" style=\"margin-top:8px\">\n    <button class=\"btn\" id=\"exportBtn\" type=\"button\" hidden>📥 Скачать Excel</button>\n    <button class=\"btn\" id=\"trackerCopy\" type=\"button\" hidden>Скопировать список</button>\n  </div>\n  <div id=\"msg\" class=\"msg\" style=\"margin-top:6px\"></div>\n\n<script>\n  let trackerText = '';\n  const badge = r => r === 'Готово' ? 'b-done' : r === 'В работе' ? 'b-progress' : r === 'На проверке' ? 'b-review' : '';\n\n  Promise.all([run('getTranslatorNames'), run('getMonthsList')]).then(([names, months]) => {\n    fillSelect($('#translator'), names, 'Выберите…');\n    $('#month').innerHTML = '<option value=\"\">Все месяцы</option>' + months.map(m => `<option value=\"${m.value}\">${esc(m.label)}</option>`).join('');\n  }).catch(e => setMsg($('#msg'), 'Не получилось загрузить списки: ' + e.message, 'err'));\n\n  function need() {\n    if ($('#translator').value) return true;\n    setMsg($('#msg'), 'Выберите переводчика', 'err');\n    return false;\n  }\n\n  $('#runBtn').addEventListener('click', () => {\n    if (!need()) return;\n    $('#trackerOut').hidden = true; $('#trackerCopy').hidden = true;\n    $('#results').innerHTML = '<p class=\"muted\">Считаю…</p>';\n    setMsg($('#msg'), '');\n    run('getTranslatorReport', $('#translator').value, $('#month').value).then(d => {\n      if (!d.total) { $('#results').innerHTML = '<p class=\"muted\">Ничего не найдено.</p>'; $('#exportBtn').hidden = true; return; }\n      let html = `<div class=\"tiles\">\n        <div class=\"tile\"><div class=\"num\">${d.total}</div><div class=\"lbl\">всего</div></div>\n        <div class=\"tile\"><div class=\"num\">${d.done}</div><div class=\"lbl\">готово</div></div>\n        <div class=\"tile\"><div class=\"num\">${d.inProgress}</div><div class=\"lbl\">в работе</div></div></div>`;\n      Object.keys(d.bySide).forEach(side => {\n        const tasks = d.bySide[side];\n        html += `<div class=\"group\"><h4>${esc(side)} (${tasks.length})</h4>` + tasks.map(t =>\n          `<div class=\"line\"><span>${t.link ? `<a href=\"${esc(t.link)}\" target=\"_blank\">${esc(t.task)}</a>` : esc(t.task)}</span>` +\n          `<span class=\"badge ${badge(t.readiness)}\">${esc(t.readiness)}</span></div>`).join('') + '</div>';\n      });\n      $('#results').innerHTML = html;\n      $('#exportBtn').hidden = false;\n    }).catch(e => { $('#results').innerHTML = ''; setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'); });\n  });\n\n  $('#exportBtn').addEventListener('click', () => {\n    setMsg($('#msg'), 'Готовлю файл…');\n    run('exportTranslatorReportToExcel', $('#translator').value, $('#month').value)\n      .then(url => { setMsg($('#msg'), 'Готово — файл скачивается', 'ok'); window.open(url, '_blank'); })\n      .catch(e => setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'));\n  });\n\n  $('#trackerBtn').addEventListener('click', () => {\n    if (!need()) return;\n    setMsg($('#msg'), 'Считаю…');\n    run('getTranslatorTrackerReportText', $('#translator').value).then(r => {\n      trackerText = r.text;\n      $('#trackerOut').textContent = r.text;\n      $('#trackerOut').hidden = !r.count; $('#trackerCopy').hidden = !r.count;\n      setMsg($('#msg'), r.count ? '' : 'Задач не найдено');\n    }).catch(e => setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'));\n  });\n  $('#trackerCopy').addEventListener('click', () => copyText(trackerText).then(() => setMsg($('#msg'), 'Скопировано', 'ok')));\n</script>\n</body>\n</html>\n"
+  "TranslatorReportSidebar": "<!DOCTYPE html>\n<html>\n<head>\n<base target=\"_top\">\n<?!= include('Общее') ?>\n</head>\n<body>\n  <h2>Отчёт по переводчику</h2>\n  <div class=\"stack\">\n    <div class=\"two\">\n      <label class=\"field\">Переводчик<select id=\"translator\"></select></label>\n      <label class=\"field\">Месяц<select id=\"month\"></select></label>\n    </div>\n    <div class=\"two\">\n      <button class=\"btn primary\" id=\"runBtn\" type=\"button\">Сформировать отчёт</button>\n      <button class=\"btn\" id=\"trackerBtn\" type=\"button\">Список для трекера</button>\n    </div>\n  </div>\n  <div id=\"results\"></div>\n  <pre class=\"out\" id=\"trackerOut\" hidden></pre>\n  <div class=\"two\" style=\"margin-top:8px\">\n    <button class=\"btn\" id=\"exportBtn\" type=\"button\" hidden>📥 Скачать Excel</button>\n    <button class=\"btn\" id=\"trackerCopy\" type=\"button\" hidden>Скопировать список</button>\n  </div>\n  <div id=\"msg\" class=\"msg\" style=\"margin-top:6px\"></div>\n\n<script>\n  let trackerText = '';\n  const badge = r => r === 'Готово' ? 'b-done' : r === 'В работе' ? 'b-progress' : r === 'На проверке' ? 'b-review' : '';\n\n  Promise.all([run('getTranslatorNames'), run('getMonthsList')]).then(([names, months]) => {\n    fillSelect($('#translator'), names, 'Выберите…');\n    $('#month').innerHTML = '<option value=\"\">Все месяцы</option>' + months.map(m => `<option value=\"${m.value}\">${esc(m.label)}</option>`).join('');\n  }).catch(e => setMsg($('#msg'), 'Не получилось загрузить списки: ' + e.message, 'err'));\n\n  function need() {\n    if ($('#translator').value) return true;\n    setMsg($('#msg'), 'Выберите переводчика', 'err');\n    return false;\n  }\n\n  $('#runBtn').addEventListener('click', () => {\n    if (!need()) return;\n    $('#trackerOut').hidden = true; $('#trackerCopy').hidden = true;\n    $('#results').innerHTML = '<p class=\"muted\">Считаю…</p>';\n    setMsg($('#msg'), '');\n    run('getTranslatorReport', $('#translator').value, $('#month').value).then(d => {\n      if (!d.total) { $('#results').innerHTML = '<p class=\"muted\">Ничего не найдено.</p>'; $('#exportBtn').hidden = true; return; }\n      let html = `<div class=\"tiles\">\n        <div class=\"tile\"><div class=\"num\">${d.total}</div><div class=\"lbl\">всего</div></div>\n        <div class=\"tile\"><div class=\"num\">${d.done}</div><div class=\"lbl\">готово</div></div>\n        <div class=\"tile\"><div class=\"num\">${d.inProgress}</div><div class=\"lbl\">в работе</div></div></div>`;\n      Object.keys(d.bySide).forEach(side => {\n        const tasks = d.bySide[side];\n        html += `<div class=\"group\"><h4>${esc(side)} (${tasks.length})</h4>` + tasks.map(t =>\n          `<div class=\"line\"><span>${t.link ? `<a href=\"${esc(t.link)}\" target=\"_blank\">${esc(t.task)}</a>` : esc(t.task)}</span>` +\n          `<span class=\"badge ${badge(t.readiness)}\">${esc(t.readiness)}</span></div>`).join('') + '</div>';\n      });\n      $('#results').innerHTML = html;\n      $('#exportBtn').hidden = false;\n    }).catch(e => { $('#results').innerHTML = ''; setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'); });\n  });\n\n  $('#exportBtn').addEventListener('click', () => {\n    setMsg($('#msg'), 'Готовлю файл…');\n    run('exportTranslatorReportToExcel', $('#translator').value, $('#month').value)\n      .then(url => { setMsg($('#msg'), 'Готово — файл скачивается', 'ok'); window.open(url, '_blank'); })\n      .catch(e => setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'));\n  });\n\n  $('#trackerBtn').addEventListener('click', () => {\n    if (!need()) return;\n    setMsg($('#msg'), 'Считаю…');\n    run('getTranslatorTrackerReportText', $('#translator').value).then(r => {\n      trackerText = r.text;\n      $('#trackerOut').textContent = r.text;\n      $('#trackerOut').hidden = !r.count; $('#trackerCopy').hidden = !r.count;\n      setMsg($('#msg'), r.count ? '' : 'Задач не найдено');\n    }).catch(e => setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'));\n  });\n  $('#trackerCopy').addEventListener('click', () => copyText(trackerText).then(() => setMsg($('#msg'), 'Скопировано', 'ok')));\n</script>\n</body>\n</html>\n",
+  "MigrateDialog": "<!DOCTYPE html>\n<html>\n<head>\n<base target=\"_top\">\n<?!= include('Общее') ?>\n<style>\n  .drop { display: block; border: 2px dashed var(--field); border-radius: 10px; padding: 22px 14px; text-align: center;\n    cursor: pointer; font-size: 13px; font-weight: 400; color: var(--soft); }\n  .drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }\n  .drop b { color: var(--ink); }\n  .drop input { display: none; }\n  .or { text-align: center; font-size: 12px; color: var(--soft); }\n</style>\n</head>\n<body class=\"has-foot\">\n  <div class=\"stack\">\n    <label class=\"drop\" id=\"drop\">\n      <input type=\"file\" id=\"file\" accept=\".xlsx\">\n      <b id=\"fileName\">Выберите файл Excel старой таблицы</b><br>\n      или перетащите его сюда\n      <div class=\"small\" style=\"margin-top:6px\">В старой таблице: Файл → Скачать → Microsoft Excel (.xlsx)</div>\n    </label>\n    <div class=\"or\">— или —</div>\n    <label class=\"field\">Ссылка на старую таблицу\n      <input type=\"url\" id=\"link\" placeholder=\"https://docs.google.com/spreadsheets/d/…\"></label>\n    <div id=\"plan\" class=\"preview\" hidden></div>\n    <div id=\"msg\" class=\"msg\"></div>\n  </div>\n  <div class=\"foot\">\n    <button class=\"btn\" id=\"checkBtn\" type=\"button\">Проверить</button>\n    <button class=\"btn primary grow\" id=\"goBtn\" type=\"button\" disabled>Перенести</button>\n  </div>\n\n<script src=\"https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js\"></script>\n<script>\n// xlsx-parse:start\n  /** Лист «Localization Misc» из файла Excel → { values, links, merges } для migrationPreviewFromData. */\n  function oldSheetFromWorkbook(XLSX, wb) {\n    const COLS = 19, BAND = 5;\n    const name = wb.SheetNames.find(n => n.trim() === 'Localization Misc');\n    if (!name) throw new Error('В файле нет листа «Localization Misc». Это точно старая таблица?');\n    const ws = wb.Sheets[name];\n    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');\n    const values = [], links = [];\n    let last = 0;\n    for (let r = 0; r <= range.e.r; r++) {\n      const row = [];\n      let link = '';\n      for (let c = 0; c < COLS; c++) {\n        const cell = ws[XLSX.utils.encode_cell({ r: r, c: c })];\n        row.push(xlsxCellValue(XLSX, cell));\n        if (c === BAND && cell && cell.l && /^https?:\\/\\//i.test(cell.l.Target || '')) link = cell.l.Target;\n      }\n      if (link || row.some(v => v !== '')) last = r + 1;\n      values.push(row);\n      links.push(link);\n    }\n    values.length = last;\n    links.length = last;\n    const merges = (ws['!merges'] || [])\n      .filter(m => m.s.c < COLS && m.s.r < last)\n      .map(m => [m.s.r + 1, m.s.c + 1, m.e.r - m.s.r + 1, m.e.c - m.s.c + 1]);\n    return { values: values, links: links, merges: merges };\n  }\n\n  /** Как getValues(): число, строка, логическое; дата — { d: 'yyyy-MM-dd' } (Date через google.script.run не пройдёт). */\n  function xlsxCellValue(XLSX, cell) {\n    if (!cell || cell.v == null || cell.t === 'e' || cell.t === 'z') return '';\n    if (cell.t === 'n' && cell.z && XLSX.SSF.is_date(cell.z)) {\n      const p = XLSX.SSF.parse_date_code(cell.v);\n      const pad = n => String(n).padStart(2, '0');\n      return { d: p.y + '-' + pad(p.m) + '-' + pad(p.d) };\n    }\n    return typeof cell.v === 'string' ? cell.v.replace(/\\r\\n?/g, '\\n') : cell.v;\n  }\n// xlsx-parse:end\n\n  let source = null;   // данные из файла\n  let mode = '';       // 'file' | 'link'\n\n  function resetPlan() {\n    $('#plan').hidden = true;\n    $('#goBtn').disabled = true;\n  }\n\n  function readFile(file) {\n    resetPlan();\n    source = null;\n    if (!file) return;\n    if (!/\\.xlsx$/i.test(file.name)) return setMsg($('#msg'), 'Нужен файл .xlsx', 'err');\n    $('#fileName').textContent = file.name;\n    $('#link').value = '';\n    setMsg($('#msg'), 'Читаю файл…');\n    if (typeof XLSX === 'undefined') return setMsg($('#msg'), 'Не загрузилась читалка Excel. Проверьте интернет или вставьте ссылку.', 'err');\n    file.arrayBuffer().then(buf => {\n      const wb = XLSX.read(new Uint8Array(buf), { type: 'array', cellNF: true, cellDates: false });\n      source = oldSheetFromWorkbook(XLSX, wb);\n      mode = 'file';\n      check();\n    }).catch(e => setMsg($('#msg'), 'Не получилось прочитать файл: ' + e.message, 'err'));\n  }\n\n  function check() {\n    resetPlan();\n    if (!source && $('#link').value.trim()) mode = 'link';\n    if (!mode || (mode === 'file' && !source)) return setMsg($('#msg'), 'Выберите файл или вставьте ссылку', 'err');\n    setMsg($('#msg'), 'Считаю, что перенести…');\n    const call = mode === 'file' ? run('migrationPreviewFromData', source) : run('migrationPreviewFromLink', $('#link').value);\n    call.then(p => {\n      $('#plan').hidden = false;\n      if (!p.count) {\n        $('#plan').innerHTML = 'Переносить нечего: ' + p.skippedExisting + ' задач уже есть в новой таблице.';\n        return setMsg($('#msg'), '');\n      }\n      $('#plan').innerHTML =\n        '<b>Будет добавлено задач: ' + p.count + '</b> (с ' + esc(p.from) + ' по ' + esc(p.to) + ')<br>' +\n        '<span class=\"small\">Уже есть в новой таблице — пропущу: ' + p.skippedExisting +\n        '. Пустые строки — пропущу: ' + p.skippedEmpty + '.</span><br>' +\n        '<span class=\"small\">После переноса весь лист отсортируется по дате: свежие сверху.</span>';\n      $('#goBtn').disabled = false;\n      setMsg($('#msg'), '');\n    }).catch(e => setMsg($('#msg'), e.message, 'err'));\n  }\n\n  $('#file').addEventListener('change', e => readFile(e.target.files[0]));\n  const drop = $('#drop');\n  ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));\n  ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));\n  drop.addEventListener('drop', e => readFile(e.dataTransfer.files[0]));\n  $('#link').addEventListener('input', () => {\n    source = null; mode = ''; resetPlan();\n    $('#fileName').textContent = 'Выберите файл Excel старой таблицы';\n  });\n  $('#checkBtn').addEventListener('click', check);\n\n  $('#goBtn').addEventListener('click', () => {\n    const btn = $('#goBtn');\n    btn.disabled = true; $('#checkBtn').disabled = true;\n    btn.textContent = 'Переношу… (до пары минут)';\n    const call = mode === 'file' ? run('migrationApplyFromData', source) : run('migrationApplyFromLink', $('#link').value);\n    call.then(r => {\n      btn.textContent = 'Готово';\n      $('#plan').innerHTML = '<b>Перенесено задач: ' + r.added + '.</b> Лист отсортирован по дате, цвета и списки обновлены.' +\n        (mode === 'link' ? '<br><span class=\"small\">Новые номера теперь сверяются со старой таблицей. Появятся там новые задачи — запустите перенос ещё раз, он добавит только новые.</span>'\n                         : '<br><span class=\"small\">Появятся в старой таблице новые задачи — скачайте файл заново и перенесите ещё раз: добавятся только новые.</span>');\n      setMsg($('#msg'), '');\n    }).catch(e => {\n      setMsg($('#msg'), 'Не перенеслось: ' + e.message, 'err');\n      btn.disabled = false; $('#checkBtn').disabled = false; btn.textContent = 'Перенести';\n    });\n  });\n</script>\n</body>\n</html>\n"
 };

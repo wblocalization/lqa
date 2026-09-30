@@ -2,8 +2,9 @@
  * Перенос.gs — разовый перенос истории из старой таблицы
  * (лист «Localization Misc») в «📌 Задачи (менеджеры)».
  *
- * Меню: «⚙️ Настройки → 📥 Перенести историю из старой таблицы».
- * Сначала показывает, сколько задач перенесёт и сколько пропустит, и переносит только после подтверждения.
+ * Меню: «⚙️ Настройки → 📥 Перенести историю из старой таблицы». В окне — файл .xlsx старой таблицы
+ * (Файл → Скачать → Microsoft Excel) или ссылка на неё. Сначала показывает, сколько задач перенесёт
+ * и сколько пропустит, и переносит только после подтверждения.
  * Задачи, номера которых уже есть в новой таблице, пропускаются — запускать повторно безопасно.
  * После переноса файл можно удалить.
  *************************************************************/
@@ -43,35 +44,65 @@ const OLD_SIDE_TO_PRODUCT = {
   'ДРУГОЕ': 'Межнар'
 };
 
+/** Меню: окно переноса — файл Excel (.xlsx) или ссылка на старую таблицу. */
 function migrateFromOldTable() {
-  const ui = SpreadsheetApp.getUi();
-  const resp = ui.prompt('Перенос истории',
-    'Вставьте ссылку на старую таблицу (где лист «' + OLD_SHEET_NAME + '»):', ui.ButtonSet.OK_CANCEL);
-  if (resp.getSelectedButton() !== ui.Button.OK) return;
-  const m = resp.getResponseText().match(/\/d\/([a-zA-Z0-9_-]{20,})/) || resp.getResponseText().trim().match(/^([a-zA-Z0-9_-]{20,})$/);
-  if (!m) { ui.alert('Не похоже на ссылку на Google Таблицу.'); return; }
-
-  const plan = planMigration_(SpreadsheetApp.openById(m[1]));
-  // Запоминаем старую таблицу: новые номера будут сверяться с ней
-  PropertiesService.getDocumentProperties().setProperty(OLD_TABLE_PROP, m[1]);
-  if (!plan.rows.length) {
-    ui.alert('Переносить нечего: ' + plan.skippedExisting + ' задач уже есть в новой таблице, ' + plan.skippedEmpty + ' строк пустые.');
-    return;
-  }
-  const ok = ui.alert('Перенос истории',
-    'Будет добавлено задач: ' + plan.rows.length + ' (с ' + plan.from + ' по ' + plan.to + ').\n' +
-    'Уже есть в новой таблице — пропущу: ' + plan.skippedExisting + '.\n' +
-    'Пустые строки и повторы шапки — пропущу: ' + plan.skippedEmpty + '.\n\n' +
-    'После переноса весь лист отсортируется по дате: свежие сверху. Продолжить?', ui.ButtonSet.YES_NO);
-  if (ok !== ui.Button.YES) return;
-
-  applyMigration_(plan);
-  ui.alert('Готово: перенесено ' + plan.rows.length + ' задач. Цвета и выпадающие списки обновлены.\n\n' +
-    'Новые номера теперь сверяются со старой таблицей. Если там появятся новые задачи — запустите перенос ещё раз, он добавит только новые.');
+  showDialog_('MigrateDialog', 'Перенос истории из старой таблицы', 520, 470);
 }
 
-function isUrl_(s) {
-  return /^https?:\/\//i.test(String(s || '').trim());
+function oldTableIdFromLink_(url) {
+  const t = String(url || '').trim();
+  const m = t.match(/\/d\/([a-zA-Z0-9_-]{20,})/) || t.match(/^([a-zA-Z0-9_-]{20,})$/);
+  if (!m) throw new Error('Не похоже на ссылку на Google Таблицу');
+  return m[1];
+}
+
+function planSummary_(plan) {
+  return {
+    count: plan.rows.length, skippedExisting: plan.skippedExisting, skippedEmpty: plan.skippedEmpty,
+    from: plan.from, to: plan.to
+  };
+}
+
+/** Окно переноса, способ «ссылка»: сначала сколько перенесётся, потом перенос. */
+function migrationPreviewFromLink(url) {
+  return planSummary_(planMigration_(SpreadsheetApp.openById(oldTableIdFromLink_(url))));
+}
+
+function migrationApplyFromLink(url) {
+  const id = oldTableIdFromLink_(url);
+  const plan = planMigration_(SpreadsheetApp.openById(id));
+  // Запоминаем старую таблицу: новые номера будут сверяться с ней
+  PropertiesService.getDocumentProperties().setProperty(OLD_TABLE_PROP, id);
+  if (plan.rows.length) applyMigration_(plan);
+  return { added: plan.rows.length };
+}
+
+/** Способ «файл»: окно само читает .xlsx и присылает лист «Localization Misc» (см. MigrateDialog). */
+function migrationPreviewFromData(src) {
+  return planSummary_(planFromSource_(sourceFromUpload_(src)));
+}
+
+function migrationApplyFromData(src) {
+  const plan = planFromSource_(sourceFromUpload_(src));
+  if (plan.rows.length) applyMigration_(plan);
+  return { added: plan.rows.length };
+}
+
+/** Даты из окна приходят как { d: 'yyyy-MM-dd' }: google.script.run не передаёт Date. */
+function sourceFromUpload_(src) {
+  if (!src || !Array.isArray(src.values)) throw new Error('Файл не прочитался');
+  const values = src.values.map(row => {
+    const out = [];
+    for (let c = 0; c < OLD_COLS; c++) {
+      const v = row[c];
+      if (v && typeof v === 'object' && v.d) {
+        const p = String(v.d).split('-').map(Number);
+        out.push(new Date(p[0], p[1] - 1, p[2]));
+      } else out.push(v == null ? '' : v);
+    }
+    return out;
+  });
+  return { values: values, links: (src.links || []).map(l => l || ''), merges: src.merges || [] };
 }
 
 function numOrEmpty_(v) {
@@ -80,24 +111,41 @@ function numOrEmpty_(v) {
   return isFinite(n) ? n : v;
 }
 
-/** Читает старый лист и готовит строки для новой таблицы (ничего не записывает). */
-function planMigration_(oldSs) {
+/** Читает старый лист из Google Таблицы: значения, ссылки на Band и объединённые ячейки. */
+function readOldSheet_(oldSs) {
   const old = oldSs.getSheetByName(OLD_SHEET_NAME);
   if (!old) throw new Error('В старой таблице нет листа «' + OLD_SHEET_NAME + '»');
   const lastRow = old.getLastRow();
   const range = old.getRange(1, 1, lastRow, OLD_COLS);
-  const values = range.getValues();
-  const bandRich = old.getRange(1, OLD.BAND, lastRow, 1).getRichTextValues().map(r => r[0]);
+  return {
+    values: range.getValues(),
+    links: old.getRange(1, OLD.BAND, lastRow, 1).getRichTextValues().map(r => linksFromRich_(r[0]).link || ''),
+    merges: range.getMergedRanges().map(mr => [mr.getRow(), mr.getColumn(), mr.getNumRows(), mr.getNumColumns()])
+  };
+}
+
+/** Читает старый лист и готовит строки для новой таблицы (ничего не записывает). */
+function planMigration_(oldSs) {
+  return planFromSource_(readOldSheet_(oldSs));
+}
+
+/**
+ * source: { values: строки листа с шапкой (A..S), links: ссылка на Band для каждой строки,
+ *           merges: [[строка, колонка, строк, колонок], …] — с 1, как в таблице }.
+ */
+function planFromSource_(src) {
+  const values = src.values, links = src.links.slice();
+  const lastRow = values.length;
 
   // Раскопировать объединённые ячейки на все их строки
-  range.getMergedRanges().forEach(mr => {
-    const r0 = mr.getRow(), c0 = mr.getColumn();
-    for (let c = c0; c < c0 + mr.getNumColumns(); c++) {
+  src.merges.forEach(m => {
+    const r0 = m[0], c0 = m[1];
+    if (r0 > lastRow) return;
+    for (let c = c0; c < c0 + m[3] && c <= OLD_COLS; c++) {
       if (OLD_NO_FILL.indexOf(c) !== -1) continue;
-      const v = values[r0 - 1][c - 1];
-      for (let r = r0; r < r0 + mr.getNumRows(); r++) {
-        values[r - 1][c - 1] = v;
-        if (c === OLD.BAND) bandRich[r - 1] = bandRich[r0 - 1];
+      for (let r = r0 + 1; r < r0 + m[2] && r <= lastRow; r++) {
+        values[r - 1][c - 1] = values[r0 - 1][c - 1];
+        if (c === OLD.BAND) links[r - 1] = links[r0 - 1];
       }
     }
   });
@@ -126,13 +174,17 @@ function planMigration_(oldSs) {
     // «Задача» в старой таблице — чаще номер тикета (LOCAL-493), иначе описание
     const ticketMatch = taskText.match(/^LOCAL[-\s]?(\d+)$/i);
     const ticket = ticketMatch ? 'LOCAL-' + ticketMatch[1] : '';
+    // В одной ячейке бывает несколько ссылок на Band: первая — на тему, вторая — «(доп. ссылка)», остальные — в комментарий
+    const urls = get(OLD.BAND).match(/https?:\/\/[^\s,;]+/g) || [];
+    const band = urls[0] || links[i - 1] || ''; // ссылка ячейки — если в тексте вместо адреса подпись
+    const extra = urls.filter(u => u !== band);
     const comment = [
       get(OLD.COMMENT),
+      extra.length > 1 ? 'Ещё ссылки: ' + extra.slice(1).join(' ') : '',
       taskText && !ticketMatch && taskText !== subject ? 'Задача: ' + taskText : '',
       get(OLD.COMPLAINTS) ? 'Жалобы на заказчика: ' + get(OLD.COMPLAINTS) : ''
     ].filter(Boolean).join('\n');
 
-    const band = linksFromRich_(bandRich[i - 1]).link || (isUrl_(get(OLD.BAND)) ? get(OLD.BAND) : '');
     if (!id && existingKeys[keyOf(subject || taskText || '(без темы)', v[OLD.DATE - 1], band)]) { skippedExisting++; continue; }
     const deadline = get(OLD.DEADLINE) === 'Дедлайн (если есть)' ? '' : get(OLD.DEADLINE);
     const side = get(OLD.SIDE);
@@ -140,6 +192,7 @@ function planMigration_(oldSs) {
 
     rows.push({
       link: band,
+      link2: extra[0] || '',
       values: [
         id, ticket, subject || taskText || '(без темы)', date, OLD_SIDE_TO_PRODUCT[side] || side,
         get(OLD.CUSTOMER), get(OLD.LANGS), deadline, v[OLD.DUE - 1] instanceof Date ? v[OLD.DUE - 1] : get(OLD.DUE),
@@ -172,7 +225,7 @@ function applyMigration_(plan) {
       const part = plan.rows.slice(off, off + CHUNK);
       sh.getRange(start + off, 1, part.length, TASK_COLS).setValues(part.map(p => p.values));
       sh.getRange(start + off, COL.SUBJECT, part.length, 1)
-        .setRichTextValues(part.map(p => [buildSubjectRich_(String(p.values[COL.SUBJECT - 1]), p.link, '')]));
+        .setRichTextValues(part.map(p => [buildSubjectRich_(String(p.values[COL.SUBJECT - 1]), p.link, p.link2)]));
     }
     logChange('Перенос истории', '', '', '', n + ' задач из старой таблицы');
 
