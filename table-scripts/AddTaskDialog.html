@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<?!= include('Общее') ?>
+<style>
+  .preview { position: sticky; top: -14px; z-index: 2; margin: -14px -16px 0; border-radius: 0; border-width: 0 0 1px; padding: 12px 16px; }
+</style>
+</head>
+<body class="has-foot">
+  <div class="stack">
+    <div class="preview"><span class="lbl">ТЕМА ПИСЬМА</span><p id="preview">Выберите подрядчика — появится номер и тема</p></div>
+
+    <div class="two">
+      <label class="field"><span>Подрядчик <span class="req">*</span></span><select id="contractor"></select></label>
+      <label class="field">Тикет
+        <span class="prefixed"><span>LOCAL-</span><input type="text" id="ticketNum" inputmode="numeric" placeholder="1234"></span>
+      </label>
+    </div>
+
+    <label class="field">Шаблон<select id="template"></select></label>
+    <label class="field"><span>Тема <span class="req">*</span></span><input type="text" id="subject" placeholder="Только суть — номер и коды добавятся сами"></label>
+    <label class="field">Ссылка на Band<input type="url" id="link" placeholder="https://band.wb.ru/…"></label>
+
+    <div class="two">
+      <label class="field">Продукт<select id="product"></select></label>
+      <label class="field">Дата<input type="date" id="date"></label>
+    </div>
+    <div class="two">
+      <label class="field">Дедлайн<select id="deadline"></select></label>
+      <label class="field">Срок сдачи<input type="date" id="exactDeadline"></label>
+    </div>
+    <label class="field">Ник заказчика<input type="text" id="customer" placeholder="@nick"></label>
+
+    <div class="field">Языки<div id="langs"></div></div>
+
+    <div class="two">
+      <label class="field">Менеджер<select id="manager"></select></label>
+      <label class="field">Статус<select id="status"></select></label>
+    </div>
+
+    <details class="more">
+      <summary>Ещё поля: доп. ссылка, смета, итого, SP, статус отдачи, комментарий</summary>
+      <div class="stack">
+        <label class="field">Доп. ссылка на Band<input type="url" id="link2" placeholder="если задача из двух переписок"></label>
+        <label class="field">Смета (ссылка)<input type="url" id="estimateLink"></label>
+        <div class="three">
+          <label class="field">Итого с НДС, ₽<input type="number" id="total" step="0.01" min="0"></label>
+          <label class="field">SP<input type="number" id="sp" step="1" min="0"></label>
+          <label class="field">Статус отдачи<select id="deliveryStatus"></select></label>
+        </div>
+        <label class="field">Комментарий<input type="text" id="comment"></label>
+      </div>
+    </details>
+    <div id="msg" class="msg"></div>
+  </div>
+
+  <div class="foot">
+    <button class="btn" id="copyBtn" type="button">Скопировать тему</button>
+    <button class="btn primary grow" id="submitBtn" type="button">Добавить задачу</button>
+  </div>
+
+<script>
+  let LISTS = null;
+  let nextId = '';
+
+  // Быстрые шаблоны: предзаполняют обычный набор, дальше всё можно поменять
+  const TEMPLATES = {
+    push: { label: 'Пуш-рассылка (маркетинг)', product: 'Магазинка Пуши и коммуникации: Маркетинг',
+      langs: ['Армянский', 'Грузинский', 'Казахский', 'Кыргызский', 'Таджикский', 'Узбекский'] },
+    web: { label: 'Новые строки для веба', product: 'Магазинка', contractor: 'LogrusIT', customer: '@coy.elena3',
+      manager: 'Анастасия Лисовая', ticketNum: '1114', subject: 'Новые строчки для веба от {date}',
+      langs: ['Амхарский', 'Армянский', 'Грузинский', 'Казахский', 'Кыргызский', 'Таджикский', 'Узбекский', 'ШТАТ английский'] },
+    app: { label: 'Новые строки для приложения', product: 'Магазинка', contractor: 'LogrusIT', customer: '@syrcov.evgeniy, @arslanov.anton',
+      manager: 'Анастасия Лисовая', ticketNum: '1116', subject: 'Новые строчки для приложения от {date}',
+      langs: ['Азербайджанский', 'Армянский', 'Грузинский', 'Казахский', 'Кыргызский', 'Таджикский', 'Узбекский', 'ШТАТ английский'] },
+    seller: { label: 'Портал продавца (поставки/аналитика/FBS)', product: 'Портал продавца',
+      langs: ['ШТАТ английский', 'ШТАТ грузинский', 'ШТАТ китайский', 'ШТАТ узбекский', 'ШТАТ армянский', 'Казахский', 'Таджикский'] }
+  };
+
+  $('#date').value = todayIso();
+  fillSelect($('#template'), [], '— без шаблона —');
+  $('#template').innerHTML += Object.keys(TEMPLATES).map(k => `<option value="${k}">${esc(TEMPLATES[k].label)}</option>`).join('');
+
+  run('getAddTaskFormLists').then(d => {
+    LISTS = d;
+    fillSelect($('#contractor'), d.contractors, 'Выберите…');
+    fillSelect($('#product'), d.products, '—');
+    fillSelect($('#deadline'), d.deadlines, '—');
+    fillSelect($('#status'), d.statuses, '—', d.statuses.includes('Принято') ? 'Принято' : '');
+    fillSelect($('#deliveryStatus'), d.deliveryStatuses, '—');
+    fillSelect($('#manager'), d.managers, '—', d.currentManager);
+    renderChips($('#langs'), [
+      { title: '', items: d.languages.regular },
+      { title: 'ШТАТ', items: d.languages.shtat },
+      { title: 'Редкие', items: d.languages.rare }
+    ], [], v => v.replace(/^ШТАТ\s+/i, ''));
+    updatePreview();
+  }).catch(e => setMsg($('#msg'), 'Не получилось загрузить списки: ' + e.message, 'err'));
+
+  function checkedLangs() { return chipValues($('#langs')); }
+
+  function buildSubject(id) {
+    const contractor = $('#contractor').value, product = $('#product').value;
+    const codes = checkedLangs().map(l => LISTS.langCodes[l]).filter(Boolean);
+    const prefix = `[${id}]` + (contractor ? `[${contractor}]` : '') + codes.map(c => `[${c}]`).join('') + (product ? `[${product}]` : '');
+    const s = $('#subject').value.trim();
+    return s ? prefix + ' ' + s : prefix;
+  }
+
+  function updatePreview() {
+    if (!LISTS) return;
+    $('#preview').textContent = $('#contractor').value ? buildSubject(nextId || '…') : 'Выберите подрядчика — появится номер и тема';
+  }
+
+  let idSeq = 0;
+  function refreshId() {
+    const seq = ++idSeq;
+    nextId = '';
+    updatePreview();
+    const c = $('#contractor').value;
+    if (!c) return;
+    run('previewNextTaskId', c).then(id => { if (seq === idSeq) { nextId = id; updatePreview(); } })
+      .catch(e => setMsg($('#msg'), 'Не получилось узнать номер: ' + e.message, 'err'));
+  }
+
+  $('#contractor').addEventListener('change', refreshId);
+  ['subject', 'product'].forEach(id => { $('#' + id).addEventListener('input', updatePreview); $('#' + id).addEventListener('change', updatePreview); });
+  $('#langs').addEventListener('change', updatePreview);
+
+  $('#template').addEventListener('change', () => {
+    const t = TEMPLATES[$('#template').value];
+    if (!t || !LISTS) return;
+    $('#product').value = t.product || '';
+    $$('#langs input').forEach(cb => { cb.checked = t.langs.includes(cb.value); });
+    if (t.contractor) { $('#contractor').value = t.contractor; refreshId(); }
+    if (t.ticketNum) $('#ticketNum').value = t.ticketNum;
+    if (t.manager) $('#manager').value = t.manager;
+    if (t.customer) $('#customer').value = t.customer;
+    if (t.subject) {
+      const [, m, d] = $('#date').value.split('-');
+      $('#subject').value = t.subject.replace('{date}', d && m ? d + '.' + m : '');
+    }
+    updatePreview();
+  });
+
+  $('#copyBtn').addEventListener('click', () => copyText($('#preview').textContent).then(() => setMsg($('#msg'), 'Тема скопирована', 'ok')));
+
+  $('#submitBtn').addEventListener('click', () => {
+    if (!$('#contractor').value) return setMsg($('#msg'), 'Выберите подрядчика', 'err');
+    if (!$('#subject').value.trim()) return setMsg($('#msg'), 'Впишите тему', 'err');
+    const ticket = $('#ticketNum').value.trim().replace(/^local-?\s*/i, '');
+    if (ticket && !/^\d+$/.test(ticket)) return setMsg($('#msg'), 'В тикете — только номер, например 1234', 'err');
+    const task = {
+      ticket: ticket ? 'LOCAL-' + ticket : '', contractor: $('#contractor').value, subject: $('#subject').value,
+      link: $('#link').value, link2: $('#link2').value, date: $('#date').value, product: $('#product').value,
+      customer: $('#customer').value, deadline: $('#deadline').value, exactDeadline: $('#exactDeadline').value,
+      status: $('#status').value, deliveryStatus: $('#deliveryStatus').value, estimateLink: $('#estimateLink').value,
+      total: $('#total').value, sp: $('#sp').value, manager: $('#manager').value, comment: $('#comment').value,
+      languages: checkedLangs()
+    };
+    const btn = $('#submitBtn');
+    btn.disabled = true; btn.textContent = 'Добавляю…';
+    run('submitNewTaskFromDialog', task).then(id => {
+      const subject = buildSubject(id);
+      copyText(subject);
+      setMsg($('#msg'), 'Добавлено: ' + id + '. Тема скопирована в буфер. Закрываю…', 'ok');
+      $('#preview').textContent = subject;
+      setTimeout(() => google.script.host.close(), 1600);
+    }).catch(e => {
+      setMsg($('#msg'), 'Не добавилось: ' + e.message, 'err');
+      btn.disabled = false; btn.textContent = 'Добавить задачу';
+    });
+  });
+</script>
+</body>
+</html>

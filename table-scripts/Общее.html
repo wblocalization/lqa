@@ -1,0 +1,183 @@
+<style>
+  :root {
+    --ink: #1F2328; --soft: #5F6B7A; --line: #E2E5E9; --field: #D5D9DF; --bg: #FFFFFF; --panel: #F6F7F9;
+    --head: #2D3340; --accent: #2563EB; --accent-soft: #EEF3FE;
+    --ok: #15803D; --ok-soft: #ECF7EF; --warn: #7F6000; --warn-soft: #FFF8E6; --err: #B42318; --err-soft: #FDEDEA;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.45 Arial, sans-serif; }
+  body { padding: 14px 16px 16px; }
+  body.has-foot { padding-bottom: 76px; }
+  h2 { margin: 0 0 10px; font-size: 15px; }
+  h3 { margin: 16px 0 8px; font-size: 13.5px; }
+  .muted { color: var(--soft); }
+  .small { font-size: 12px; }
+
+  /* поля */
+  .stack { display: flex; flex-direction: column; gap: 11px; }
+  .field { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 12px; font-weight: 700; color: var(--soft); }
+  .req { color: #C0262D; }
+  input[type=text], input[type=url], input[type=date], input[type=number], select, textarea {
+    width: 100%; padding: 7px 10px; font: inherit; font-size: 13px; color: var(--ink); font-weight: 400;
+    border: 1px solid var(--field); border-radius: 7px; background: #fff; min-height: 34px;
+  }
+  textarea { resize: vertical; min-height: 60px; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .three { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .prefixed { display: flex; }
+  .prefixed span { display: grid; place-items: center; padding: 0 9px; border: 1px solid var(--field); border-right: none;
+    border-radius: 7px 0 0 7px; background: #F3F4F6; font-size: 12px; color: var(--soft); font-weight: 700; }
+  .prefixed input { border-radius: 0 7px 7px 0; }
+  .with-btn { display: flex; gap: 6px; }
+
+  /* таблетки-галочки (языки, люди) */
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .chip { position: relative; cursor: pointer; font-weight: 400; }
+  .chip input { position: absolute; opacity: 0; pointer-events: none; }
+  .chip span { display: inline-block; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--field); font-size: 12px; color: var(--ink); background: #fff; }
+  .chip input:checked + span { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .chip input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .chip-group-title { font-size: 11px; color: var(--soft); font-weight: 400; margin: 4px 0 2px; }
+
+  /* кнопки */
+  button { font: inherit; cursor: pointer; }
+  .btn { padding: 9px 14px; border-radius: 8px; border: 1px solid var(--field); background: #fff; color: var(--ink); font-weight: 700; font-size: 13px; }
+  .btn:hover { background: var(--panel); }
+  .btn:disabled { opacity: .55; cursor: default; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { filter: brightness(1.07); }
+  .btn.small { padding: 5px 10px; font-size: 12px; }
+  .btn.full { width: 100%; }
+  .link-danger { background: none; border: none; color: var(--err); font-size: 12px; padding: 6px; }
+  .foot { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 8px; align-items: center;
+    padding: 12px 16px; background: #fff; border-top: 1px solid var(--line); }
+  .foot .grow { flex: 1; }
+  .foot.col { flex-direction: column; align-items: stretch; gap: 2px; }
+
+  /* блоки */
+  .preview { padding: 10px 12px; border-radius: 8px; background: var(--accent-soft); border: 1px solid #D6E2FB; }
+  .preview .lbl { display: block; font-size: 11px; font-weight: 700; color: var(--soft); margin-bottom: 3px; }
+  .preview p { margin: 0; word-break: break-word; }
+  .card { padding: 10px 12px; border-radius: 8px; background: var(--panel); }
+  .card .t { font-weight: 700; }
+  details.more { border-top: 1px solid var(--line); padding-top: 8px; }
+  details.more > summary { cursor: pointer; font-weight: 700; color: var(--soft); font-size: 12.5px; }
+  details.more[open] > summary { margin-bottom: 10px; }
+  details.more > .stack { margin-bottom: 4px; }
+
+  /* выбор статуса одной кнопкой */
+  .seg { display: flex; flex-wrap: wrap; border: 1px solid var(--field); border-radius: 8px; overflow: hidden; }
+  .seg button { flex: 1 1 auto; padding: 7px 6px; border: none; border-right: 1px solid var(--field); background: #fff;
+    font-size: 12px; font-weight: 700; color: var(--soft); }
+  .seg button:last-child { border-right: none; }
+  .seg button.on { color: #111; }
+
+  /* результаты поиска */
+  .results { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; max-height: 260px; overflow-y: auto; }
+  .results button { display: block; width: 100%; text-align: left; padding: 7px 10px; border: none;
+    border-bottom: 1px solid var(--line); background: #fff; font-size: 12.5px; color: var(--ink); }
+  .results button:last-child { border-bottom: none; }
+  .results button:hover, .results button.on { background: var(--accent-soft); }
+  .results b { margin-right: 4px; }
+  .results .d { color: var(--soft); font-size: 11px; }
+
+  /* сообщения */
+  .msg { min-height: 1em; font-size: 12.5px; color: var(--soft); }
+  .msg.ok { color: var(--ok); }
+  .msg.err { color: var(--err); font-weight: 700; }
+  .hint { padding: 8px 10px; border-radius: 7px; background: var(--warn-soft); color: var(--warn); font-size: 12.5px; }
+
+  /* отчёты */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin: 10px 0; }
+  .tile { background: var(--panel); border-radius: 8px; padding: 10px; text-align: center; }
+  .tile .num { font-size: 20px; font-weight: 700; }
+  .tile .lbl { font-size: 11px; color: var(--soft); }
+  .tile.bad .num { color: var(--err); }
+  .group { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; }
+  .group h4 { margin: 0 0 6px; font-size: 13px; }
+  .line { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; border-bottom: 1px solid #F0F1F3; font-size: 12.5px; }
+  .line:last-child { border-bottom: none; }
+  .line a { color: var(--accent); text-decoration: none; }
+  .line .v { font-weight: 700; white-space: nowrap; }
+  .total { background: var(--panel); border-radius: 8px; padding: 10px; text-align: center; font-weight: 700; margin-top: 8px; }
+  pre.out { white-space: pre-wrap; background: var(--panel); border-radius: 8px; padding: 12px; font-size: 12px; margin: 8px 0; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 700; white-space: nowrap; background: #EFEFEF; color: #434343; }
+  .b-done { background: #D9EAD3; color: #274E13; } .b-progress { background: #D6E4F0; color: #0B5394; } .b-review { background: #FFF2CC; color: #7F6000; }
+  table.kv { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.kv td { padding: 5px 6px; border-bottom: 1px solid #F0F1F3; }
+  table.kv td:last-child { text-align: right; font-weight: 700; }
+  hr.sep { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
+</style>
+<script>
+  const $ = s => document.querySelector(s);
+  const $$ = s => [...document.querySelectorAll(s)];
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  /** Вызов функции из Код.gs как промис; ошибки не теряются. */
+  function run(fn, ...args) {
+    return new Promise((resolve, reject) => {
+      google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[fn](...args);
+    });
+  }
+
+  function fillSelect(el, items, placeholder, selected) {
+    el.innerHTML = (placeholder == null ? '' : `<option value="">${esc(placeholder)}</option>`) +
+      (items || []).map(v => `<option value="${esc(v)}"${v === selected ? ' selected' : ''}>${esc(v)}</option>`).join('');
+  }
+
+  /** Галочки-таблетки. groups: [{ title, items }]; label — как подписать пункт. */
+  function renderChips(container, groups, checked, label) {
+    checked = checked || [];
+    container.innerHTML = groups.filter(g => g.items && g.items.length).map(g =>
+      (g.title ? `<div class="chip-group-title">${esc(g.title)}</div>` : '') +
+      '<div class="chips">' + g.items.map(v =>
+        `<label class="chip"><input type="checkbox" value="${esc(v)}"${checked.includes(v) ? ' checked' : ''}><span>${esc(label ? label(v) : v)}</span></label>`
+      ).join('') + '</div>'
+    ).join('');
+  }
+
+  function chipValues(container) {
+    return [...container.querySelectorAll('input:checked')].map(cb => cb.value);
+  }
+
+  function setMsg(el, text, kind) {
+    el.textContent = text || '';
+    el.className = 'msg' + (kind ? ' ' + kind : '');
+  }
+
+  function todayIso() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  function money(x) {
+    return Number(x || 0).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
+  }
+
+  function copyText(text) {
+    return navigator.clipboard.writeText(text).catch(() => {
+      const t = document.createElement('textarea');
+      t.value = text; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove();
+    });
+  }
+
+  /** Копирует HTML со ссылками — при вставке в Doc/почту/Band ссылки остаются кликабельными. */
+  function copyHtml(html) {
+    const holder = document.createElement('div');
+    holder.contentEditable = true;
+    holder.style.cssText = 'position:fixed;left:-9999px';
+    holder.innerHTML = html;
+    document.body.appendChild(holder);
+    const range = document.createRange();
+    range.selectNodeContents(holder);
+    const sel = window.getSelection();
+    sel.removeAllRanges(); sel.addRange(range);
+    document.execCommand('copy');
+    sel.removeAllRanges(); holder.remove();
+  }
+</script>

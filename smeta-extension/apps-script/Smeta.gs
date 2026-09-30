@@ -45,6 +45,7 @@ function doPost(e) {
 
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
+  SCRIPT_LOCK_HELD = true; // Код.gs не будет брать блокировку второй раз
   try {
     if (req.action === 'lookup') return smetaJson_(smetaLookup_(req));
     if (req.action === 'write') return smetaJson_(smetaWrite_(req));
@@ -55,6 +56,7 @@ function doPost(e) {
   } catch (err) {
     return smetaJson_({ ok: false, error: String(err && err.message || err) });
   } finally {
+    SCRIPT_LOCK_HELD = false;
     lock.releaseLock();
   }
 }

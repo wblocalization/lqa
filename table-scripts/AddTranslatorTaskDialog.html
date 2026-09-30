@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<?!= include('Общее') ?>
+</head>
+<body class="has-foot">
+  <div class="stack">
+    <div class="two">
+      <label class="field">Дата<input type="date" id="date"></label>
+      <label class="field"><span>Сторона <span class="req">*</span></span><select id="side"></select></label>
+    </div>
+    <label class="field">Раздел<select id="razdel"><option value="">Сначала выберите сторону</option></select></label>
+    <label class="field"><span>Задача <span class="req">*</span></span><input type="text" id="task" placeholder="Например: перевести баннер главной страницы"></label>
+    <div class="two">
+      <label class="field">Заказчик<input type="text" id="customer" placeholder="@nick"></label>
+      <label class="field">Ссылка на Band<input type="url" id="link" placeholder="https://band.wb.ru/…"></label>
+    </div>
+    <div class="field">Переводчик<div id="translators"></div></div>
+    <div class="field">Редактор<div id="editors"></div></div>
+    <div class="two">
+      <label class="field">Готовность<select id="readiness">
+        <option>Не начато</option><option>В работе</option><option>Готово</option><option>На проверке</option></select></label>
+      <label class="field">Комментарий<input type="text" id="comment"></label>
+    </div>
+    <div id="msg" class="msg"></div>
+  </div>
+  <div class="foot"><button class="btn primary grow" id="submitBtn" type="button">Добавить задачу</button></div>
+
+<script>
+  let CATEGORIES = {};
+  $('#date').value = todayIso();
+
+  run('getContentCategories').then(d => {
+    CATEGORIES = d;
+    fillSelect($('#side'), Object.keys(d), 'Выберите…');
+  }).catch(e => setMsg($('#msg'), 'Не получилось загрузить разделы: ' + e.message, 'err'));
+
+  run('getTranslatorNames').then(names => {
+    renderChips($('#translators'), [{ items: names }], []);
+    renderChips($('#editors'), [{ items: names }], []);
+  }).catch(e => setMsg($('#msg'), 'Не получилось загрузить людей: ' + e.message, 'err'));
+
+  $('#side').addEventListener('change', () => {
+    const items = CATEGORIES[$('#side').value] || [];
+    fillSelect($('#razdel'), items, items.length ? 'Выберите…' : '—', items.length === 1 ? items[0] : '');
+  });
+
+  $('#submitBtn').addEventListener('click', () => {
+    if (!$('#side').value) return setMsg($('#msg'), 'Выберите сторону', 'err');
+    if (!$('#task').value.trim()) return setMsg($('#msg'), 'Опишите задачу', 'err');
+    const task = {
+      date: $('#date').value, side: $('#side').value, razdel: $('#razdel').value, task: $('#task').value,
+      customer: $('#customer').value, link: $('#link').value,
+      translator: chipValues($('#translators')).join(', '), editor: chipValues($('#editors')).join(', '),
+      readiness: $('#readiness').value, comment: $('#comment').value
+    };
+    const btn = $('#submitBtn');
+    btn.disabled = true; btn.textContent = 'Добавляю…';
+    run('submitNewTranslatorTask', task).then(() => {
+      setMsg($('#msg'), 'Добавлено! Закрываю…', 'ok');
+      setTimeout(() => google.script.host.close(), 900);
+    }).catch(e => {
+      setMsg($('#msg'), 'Не добавилось: ' + e.message, 'err');
+      btn.disabled = false; btn.textContent = 'Добавить задачу';
+    });
+  });
+</script>
+</body>
+</html>
