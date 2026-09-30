@@ -1,12 +1,24 @@
 {
   "manifest_version": 3,
   "name": "Задачи и сметы",
-  "version": "0.2.0",
-  "description": "Добавляет задачи менеджеров в таблицу и записывает сметы (итог с НДС и ссылку с ВБ Диска) без захода в таблицу.",
-  "action": { "default_title": "Задачи и сметы" },
-  "side_panel": { "default_path": "sidepanel.html" },
-  "background": { "service_worker": "background.js" },
-  "permissions": ["sidePanel", "storage", "clipboardRead"],
+  "version": "0.3.0",
+  "description": "Добавляет задачи менеджеров в таблицу, показывает ваши открытые задачи и записывает сметы — без захода в таблицу.",
+  "action": {
+    "default_title": "Задачи и сметы"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "clipboardRead",
+    "alarms"
+  ],
   "host_permissions": [
     "https://script.google.com/*",
     "https://script.googleusercontent.com/*"

@@ -100,6 +100,7 @@ function onOpen() {
   ui.createMenu('⚙️ Настройки')
     .addItem('🎨 Оформить таблицу', 'setupDesign')
     .addItem('🛡 Защитить шапку и справочники', 'protectImportantRanges')
+    .addItem('📥 Перенести историю из старой таблицы', 'migrateFromOldTable')
     .addSeparator()
     .addSubMenu(ui.createMenu('✉️ Еженедельная сводка')
       .addItem('Включить (по понедельникам)', 'createWeeklyDigestTrigger')
@@ -111,10 +112,6 @@ function onOpen() {
       .addItem('Включить (26 числа)', 'createMonthEndReminderTrigger')
       .addItem('Тест — прислать сейчас', 'sendMonthEndReminders'))
     .addToUi();
-
-  // Translation Status пока не подключён: нет окна «Список для трекера».
-  // Когда будет готов — раскомментировать:
-  // tsAddMenu(ui);
 
   ensureFilterExists();
 }
@@ -777,15 +774,24 @@ function getTaskForEdit(row) {
 
 /**
  * Где сейчас задача. Пока окно было открыто, кто-то мог добавить или удалить задачи,
- * и строки сдвинулись — поэтому ищем по номеру (или по теме, если номера нет).
+ * и строки сдвинулись — поэтому ищем по номеру и теме. В старых задачах у одного номера
+ * бывает несколько строк (несколько запросов в одном письме) — тогда тема решает, какая строка.
  */
 function locateTaskRow_(sh, row, id, origSubject) {
+  if (!id && origSubject == null) throw new Error('Не знаю, какую задачу искать — откройте её заново.');
+  const hasSubject = origSubject != null;
+  const exact = r => (!id || str_(r[COL.ID - 1]) === id) && (!hasSubject || String(r[COL.SUBJECT - 1]) === origSubject);
   const n = dataRowCount_(sh);
-  const matches = r => id ? str_(r[COL.ID - 1]) === id : String(r[COL.SUBJECT - 1]) === origSubject;
-  if (row >= 2 && row <= n + 1 && matches(sh.getRange(row, 1, 1, TASK_COLS).getValues()[0])) return row;
+  if (row >= 2 && row <= n + 1 && exact(sh.getRange(row, 1, 1, TASK_COLS).getValues()[0])) return row;
   const rows = readRows_(sh, TASK_COLS);
-  for (let i = 0; i < rows.length; i++) if (matches(rows[i])) return i + 2;
-  throw new Error('Задача ' + (id || '«' + shortSubject_(origSubject) + '»') + ' не найдена — возможно, её удалили. Найдите её заново.');
+  const i = rows.findIndex(exact);
+  if (i !== -1) return i + 2;
+  if (id) {
+    // Тему могли поменять, пока окно было открыто: если строка с таким номером одна — это она
+    const byId = rows.map((r, k) => str_(r[COL.ID - 1]) === id ? k : -1).filter(k => k !== -1);
+    if (byId.length === 1) return byId[0] + 2;
+  }
+  throw new Error('Задача ' + (id || '«' + shortSubject_(origSubject) + '»') + ' не найдена — возможно, её удалили или изменили. Найдите её заново.');
 }
 
 const TASK_FIELD_NAMES = {};
@@ -853,6 +859,106 @@ function deleteTask(row, id, origSubject) {
     logChange('Удаление задачи', str_(id), 'Тема письма', subject, '');
     sh.deleteRow(r);
     return true;
+  });
+}
+
+// ==================== ПОВТОРИТЬ ЗАДАЧУ ====================
+
+/**
+ * Последние задачи менеджера для «Повторить задачу»: по одной на каждую похожую тему
+ * (даты в теме не учитываются), свежие сверху.
+ */
+function getRecentTasksForRepeat(manager) {
+  manager = manager === '*' ? '' : (str_(manager) || currentManager_()); // «*» — задачи всех менеджеров
+  const rows = readRows_(getTasksSheet(), TASK_COLS);
+  const links = subjectLinks_(getTasksSheet());
+  const seen = {}, out = [];
+  for (let i = 0; i < rows.length && out.length < 25; i++) {
+    const r = rows[i];
+    if (!r[COL.SUBJECT - 1] || (manager && str_(r[COL.MANAGER - 1]) !== manager)) continue;
+    const title = shortSubject_(r[COL.SUBJECT - 1]);
+    const key = title.replace(/\d{1,2}[./]\d{1,2}([./]\d{2,4})?/g, '').trim().toLowerCase() + '|' + str_(r[COL.CONTRACTOR - 1]);
+    if (seen[key]) continue;
+    seen[key] = true;
+    out.push({
+      id: str_(r[COL.ID - 1]), title: title, date: fmtDate_(r[COL.DATE - 1], 'dd.MM'),
+      contractor: str_(r[COL.CONTRACTOR - 1]), ticket: str_(r[COL.TICKET - 1]), product: str_(r[COL.PRODUCT - 1]),
+      customer: str_(r[COL.CUSTOMER - 1]), manager: str_(r[COL.MANAGER - 1]), deadline: str_(r[COL.DEADLINE - 1]),
+      languages: String(r[COL.LANGS - 1] || '').split(',').map(s => s.trim()).filter(Boolean),
+      hasLink: Boolean(links[i] && links[i].link)
+    });
+  }
+  return out;
+}
+
+// ==================== ПРОВЕРКА НА ДУБЛИ ====================
+
+/**
+ * Похожие задачи: та же ссылка на Band или та же тема с тем же тикетом.
+ * Окно «Новая задача» и расширение спрашивают перед добавлением.
+ */
+function findDuplicateTasks(task) {
+  const sh = getTasksSheet();
+  const rows = readRows_(sh, TASK_COLS);
+  const links = subjectLinks_(sh);
+  const subject = shortSubject_(task.subject).toLowerCase();
+  const ticket = normTicket_(task.ticket);
+  const link = str_(task.link);
+  const out = [];
+  rows.forEach((r, i) => {
+    if (!r[COL.SUBJECT - 1] || out.length >= 5) return;
+    const sameLink = link && links[i] && (links[i].link === link || links[i].link2 === link);
+    const sameSubject = subject && shortSubject_(r[COL.SUBJECT - 1]).toLowerCase() === subject &&
+      normTicket_(r[COL.TICKET - 1]) === ticket;
+    if (sameLink || sameSubject) {
+      out.push({ id: str_(r[COL.ID - 1]), title: shortSubject_(r[COL.SUBJECT - 1]), date: fmtDate_(r[COL.DATE - 1], 'dd.MM.yyyy'),
+        manager: str_(r[COL.MANAGER - 1]), why: sameLink ? 'та же ссылка на Band' : 'та же тема и тикет' });
+    }
+  });
+  return out;
+}
+
+// ==================== МОИ ЗАДАЧИ (для расширения) ====================
+
+/** Открытые задачи менеджера: сначала просроченные, потом по сроку. */
+function getMyOpenTasks(manager) {
+  manager = manager === '*' ? '' : (str_(manager) || currentManager_()); // «*» — пока не выбран
+  if (!manager) return { manager: '', tasks: [], overdue: 0, statuses: [], managers: getListsData().managers };
+  const sh = getTasksSheet();
+  const rows = readRows_(sh, TASK_COLS);
+  const links = subjectLinks_(sh);
+  const today = today_();
+  const tasks = [];
+  rows.forEach((r, i) => {
+    if (!r[COL.SUBJECT - 1] || str_(r[COL.MANAGER - 1]) !== manager) return;
+    if (CLOSED_STATUSES.indexOf(str_(r[COL.STATUS - 1])) !== -1) return;
+    const due = r[COL.DUE - 1];
+    const dueTime = due instanceof Date ? due.getTime() : null;
+    tasks.push({
+      row: i + 2, id: str_(r[COL.ID - 1]), subject: String(r[COL.SUBJECT - 1]), title: shortSubject_(r[COL.SUBJECT - 1]),
+      ticket: str_(r[COL.TICKET - 1]), status: str_(r[COL.STATUS - 1]), deadline: str_(r[COL.DEADLINE - 1]),
+      due: fmtDate_(due, 'dd.MM'), overdue: dueTime !== null && dueTime < today.getTime(),
+      dueToday: dueTime !== null && dueTime >= today.getTime() && dueTime < today.getTime() + 86400000,
+      link: links[i] ? links[i].link : '', sort: dueTime === null ? Infinity : dueTime
+    });
+  });
+  tasks.sort((a, b) => a.sort - b.sort);
+  tasks.forEach(t => { delete t.sort; });
+  const lists = getListsData();
+  return { manager: manager, tasks: tasks, overdue: tasks.filter(t => t.overdue).length,
+    statuses: lists.statuses, managers: lists.managers };
+}
+
+/** Поменять только статус (быстрая кнопка в расширении). */
+function setTaskStatus(row, id, origSubject, status) {
+  return withScriptLock_(() => {
+    const sh = getTasksSheet();
+    const r = locateTaskRow_(sh, Number(row), str_(id), origSubject);
+    const cell = sh.getRange(r, COL.STATUS);
+    const before = str_(cell.getValue());
+    cell.setValue(str_(status));
+    if (before !== str_(status)) logChange('Правка', str_(id), 'Статус', before, str_(status));
+    return { ok: true, row: r };
   });
 }
 

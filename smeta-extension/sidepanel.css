@@ -215,3 +215,21 @@ form { display: flex; flex-direction: column; gap: 16px; }
 .btn.small { padding: 5px 10px; font-size: 12.5px; }
 .done-subject { word-break: break-word; font-size: 13px; }
 .done .btn + .btn { margin-top: 0; }
+
+/* ---------- Вкладка «Мои» ---------- */
+.tab-badge {
+  display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; margin-left: 2px;
+  border-radius: 999px; background: var(--err); color: #fff; font-size: 11px; font-weight: 700;
+}
+.mine-head { display: flex; gap: 8px; align-items: center; }
+.mine-head select { flex: 1; }
+.mine-list { display: flex; flex-direction: column; gap: 8px; }
+.mine-item { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.mine-item.overdue { border-color: color-mix(in srgb, var(--err) 45%, var(--line)); background: var(--err-soft); }
+.mine-item .title { font-size: 13px; font-weight: 600; word-break: break-word; }
+.mine-item .title a { color: var(--ink); text-decoration: none; }
+.mine-item .title a:hover { color: var(--accent); }
+.mine-item .meta { margin-top: 2px; font-size: 12px; color: var(--ink-soft); }
+.mine-item .meta .late { color: var(--err); font-weight: 700; }
+.mine-item .meta .today { color: var(--warn); font-weight: 700; }
+.mine-item select { margin-top: 8px; padding: 6px 8px; font-size: 13px; }

@@ -13,13 +13,16 @@ lists[managerRow][12] = 'nastya@wb.ru';
 const trRow = lists.findIndex(r => r[9] === 'Виктория Гусева');
 lists[trRow][10] = 'vika@wb.ru';
 
-const { ctx, ss } = makeContext(fixture, { email: 'nastya@wb.ru' });
+// Старая таблица (лист «Localization Misc») для проверки переноса — тоже не в репозитории
+const oldFixture = process.env.OLD_FIXTURE ? JSON.parse(fs.readFileSync(process.env.OLD_FIXTURE, 'utf8')) : null;
+const OLD_ID = 'OLDTABLE_1234567890abcdefghij';
+const { ctx, ss, others } = makeContext(fixture, { email: 'nastya@wb.ru', others: oldFixture ? { [OLD_ID]: oldFixture } : {} });
 vm.createContext(ctx);
 // Даты — из «мира» скрипта, иначе instanceof Date не сработает
 const CDate = vm.runInContext('Date', ctx);
-ss.getSheets().forEach(sh => sh.cells.forEach(row => row.forEach(c => { if (c.v instanceof Date) c.v = new CDate(c.v.getTime()); })));
+[ss, ...Object.values(others)].forEach(book => book.getSheets().forEach(sh => sh.cells.forEach(row => row.forEach(c => { if (c.v instanceof Date) c.v = new CDate(c.v.getTime()); }))));
 const same = (a, b, m) => assert.equal(JSON.stringify(a), JSON.stringify(b), m);
-for (const f of ['table-scripts/Код.gs', 'smeta-extension/apps-script/Smeta.gs']) {
+for (const f of ['table-scripts/Код.gs', 'table-scripts/Перенос.gs', 'smeta-extension/apps-script/Smeta.gs']) {
   vm.runInContext(fs.readFileSync(`${REPO}/${f}`, 'utf8'), ctx, { filename: f });
 }
 const G = ctx;
@@ -28,7 +31,9 @@ const tr = () => ss.getSheetByName('✍️ Задачи (переводчики)
 const log = () => ss.getSheetByName('📝 Журнал');
 const rowOf = id => tasks().getRange('A1:A200').getValues().findIndex(r => r[0] === id) + 1;
 let passed = 0;
-function test(name, fn) {
+function test(name, opts, fn) {
+  if (typeof opts === 'function') { fn = opts; opts = {}; }
+  if (opts.skip) { console.log('skip', name); return; }
   try { fn(); passed++; console.log('ok  ', name); } catch (e) { console.log('FAIL', name, '\n     ', e.stack.split('\n').slice(0, 4).join('\n      ')); process.exitCode = 1; }
 }
 
@@ -280,6 +285,86 @@ test('Правка прямо в листе: журнал, цветные язы
   // «Списки» — обновляются цвета, без ошибок
   G.onEdit({ range: ss.getSheetByName('Списки').getRange('E20') });
   assert.equal(ctx.SCRIPT_LOCK_HELD, false);
+});
+
+test('Повторить задачу: последние задачи, похожие темы схлопываются', () => {
+  const list = G.getRecentTasksForRepeat('Анастасия Лисовая');
+  assert.ok(list.length >= 2);
+  const app = list.filter(t => /Новые строчки для приложения/.test(t.title) && t.contractor === 'LogrusIT');
+  assert.equal(app.length, 1, 'одна «для приложения», а не по штуке на каждую дату');
+  assert.ok(Array.isArray(app[0].languages) && app[0].languages.length > 3);
+  const all = G.getRecentTasksForRepeat('*');
+  assert.ok(all.length >= list.length);
+});
+
+test('Проверка дублей', () => {
+  const t = G.getTaskForEdit(rowOf('LIT-8'));
+  const d = G.findDuplicateTasks({ subject: t.subject, ticket: '1116' });
+  assert.ok(d.some(x => x.id === 'LIT-8'), JSON.stringify(d));
+  assert.equal(G.findDuplicateTasks({ subject: 'Совсем новая тема', ticket: '1116' }).length, 0);
+  const byLink = G.findDuplicateTasks({ subject: 'другое', link: 'https://band/lit4' });
+  assert.equal(byLink[0].id, 'LIT-4'); assert.equal(byLink[0].why, 'та же ссылка на Band');
+});
+
+test('Мои задачи и статус из расширения', () => {
+  const call = b => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify({ token: 'T', ...b }) } }));
+  const none = call({ action: 'myTasks' });
+  assert.equal(none.tasks.length, 0, 'без выбранного менеджера — пусто (а не задачи владельца)');
+  assert.ok(none.managers.includes('Анастасия Лисовая'));
+  const mine = call({ action: 'myTasks', manager: 'Анастасия Лисовая' });
+  assert.ok(mine.tasks.length >= 3 && mine.overdue >= 1, JSON.stringify(mine).slice(0, 300));
+  assert.ok(mine.tasks[0].overdue, 'просроченные первыми');
+  assert.ok(mine.statuses.includes('Отдано'));
+  const t = mine.tasks[0];
+  const res = call({ action: 'setStatus', user: 'Настя', row: t.row, id: t.id, origSubject: t.subject, status: 'Отдано' });
+  assert.ok(res.ok, JSON.stringify(res));
+  const after = call({ action: 'myTasks', manager: 'Анастасия Лисовая' });
+  assert.ok(!after.tasks.some(x => x.id === t.id && x.subject === t.subject), 'закрытая пропала из списка');
+  const last = log().getRange(log().getLastRow(), 1, 1, 7).getValues()[0];
+  same([last[1], last[4], last[6]], ['Расширение (Настя)', 'Статус', 'Отдано']);
+  const rec = call({ action: 'recentTasks' });
+  assert.ok(rec.ok && rec.tasks.length);
+  const dup = call({ action: 'checkDuplicates', task: { subject: 'x', link: 'https://band/lit4' } });
+  assert.equal(dup.duplicates.length, 1);
+});
+
+test('Перенос истории из старой таблицы', { skip: !oldFixture }, () => {
+  const before = tasks().getLastRow();
+  ctx.__prompt = 'https://docs.google.com/spreadsheets/d/' + OLD_ID + '/edit#gid=0';
+  calls.alerts.length = 0;
+  G.migrateFromOldTable();
+  const added = tasks().getLastRow() - before;
+  assert.ok(added > 3700, 'перенесено ' + added + '; ' + calls.alerts.join(' // '));
+  assert.match(calls.alerts[0], /Будет добавлено задач: \d+/);
+  const migrationAlert = calls.alerts[0];
+  const rows = tasks().getRange(1, 1, tasks().getLastRow(), 17).getValues();
+  // Одна задача подрядчику на три строки (разные запросы из Band): номер и тема у всех, сумма — только у первой
+  const g = rows.filter(r => r[0] === 'LIT-26-1953');
+  assert.equal(g.length, 3);
+  assert.ok(g.every(r => /^\[LIT-26-1953\]/.test(r[2])));
+  assert.equal(g.filter(r => r[11] !== '').length, 1, 'сумма не задвоилась');
+  assert.ok(g.every(r => r[1] === 'LOCAL-493'), 'тикет из колонки «Задача»');
+  assert.ok(g.every(r => r[4] === 'WBP'), 'сторона → продукт по памятке');
+  const firstOld = rows.findIndex(r => r[0] === 'LIT-25-1') + 1;
+  assert.equal(G.linksFromRich_(tasks().getRange(firstOld, 3).getRichTextValue()).link.slice(0, 26), 'https://band.wb.ru/wb/pl/g');
+  assert.equal(rows[rows.length - 1][0], 'LIT-25-1', 'самые старые — внизу');
+  // Повторный запуск ничего не задваивает
+  calls.alerts.length = 0;
+  G.migrateFromOldTable();
+  assert.equal(tasks().getLastRow() - before, added);
+  assert.match(calls.alerts[0], /Переносить нечего/);
+  // Правка второй строки общего номера попадает во вторую, а не в первую
+  const second = rows.findIndex((r, i) => r[0] === 'LIT-26-1953' && i > rows.findIndex(x => x[0] === 'LIT-26-1953')) + 1;
+  const t = G.getTaskForEdit(second);
+  G.saveTaskEdits({ ...t, comment: 'вторая строка' });
+  assert.equal(tasks().getRange(second, 17).getValue(), 'вторая строка');
+  assert.notEqual(tasks().getRange(second - 1, 17).getValue(), 'вторая строка');
+  // Номера новых задач продолжаются после перенесённых
+  const next = G.generateNextTaskId(tasks(), 'LogrusIT');
+  assert.ok(Number(next.split('-')[2]) > 2231 && !rows.some(r => r[0] === next), next);
+  console.log('      окно подтверждения:', calls.alerts.length ? '' : '', migrationAlert.replace(/\n/g, ' | '));
+  const d = G.getDashboardData('2025');
+  assert.ok(d.totalTasks > 800, 'дашборд видит историю: ' + d.totalTasks);
 });
 
 test('colorizeRowDirectly: на оформленном листе не красит, на неоформленном — правильные колонки', () => {

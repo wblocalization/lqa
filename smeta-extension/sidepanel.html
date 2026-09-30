@@ -9,6 +9,7 @@
 <header class="top">
   <nav class="tabs" role="tablist">
     <button class="tab" role="tab" data-tab="task" aria-controls="tabTask" aria-selected="true" type="button">Задача</button>
+    <button class="tab" role="tab" data-tab="mine" aria-controls="tabMine" aria-selected="false" type="button">Мои <span id="mineBadge" class="tab-badge" hidden></span></button>
     <button class="tab" role="tab" data-tab="smeta" aria-controls="tabSmeta" aria-selected="false" type="button">Смета</button>
   </nav>
   <button id="openSettings" class="icon-btn" type="button" title="Настройки" aria-label="Настройки">
@@ -51,8 +52,8 @@
         </label>
       </div>
 
-      <label>Шаблон
-        <select id="tTemplate"></select>
+      <label>Повторить задачу
+        <select id="tRepeat"><option value="">— новая задача с нуля —</option></select>
       </label>
 
       <label><span>Тема письма <span class="req">*</span></span>
@@ -118,6 +119,16 @@
     </section>
 
     <p id="tMsg" class="status" role="status"></p>
+  </section>
+
+  <section id="tabMine" role="tabpanel" hidden>
+    <div class="mine-head">
+      <select id="mManager" aria-label="Менеджер"></select>
+      <button id="mRefresh" class="btn ghost small" type="button">Обновить</button>
+    </div>
+    <p id="mSummary" class="muted"></p>
+    <div id="mList" class="mine-list"></div>
+    <p id="mMsg" class="status" role="status"></p>
   </section>
 
   <section id="tabSmeta" role="tabpanel" hidden>

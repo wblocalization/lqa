@@ -25,7 +25,7 @@
       </label>
     </div>
 
-    <label class="field">Шаблон<select id="template"></select></label>
+    <label class="field">Повторить задачу<select id="repeat"><option value="">— новая задача с нуля —</option></select></label>
     <label class="field"><span>Тема <span class="req">*</span></span><input type="text" id="subject" placeholder="Только суть — номер и коды добавятся сами"></label>
     <label class="field">Ссылка на Band<input type="url" id="link" placeholder="https://band.wb.ru/…"></label>
 
@@ -70,23 +70,8 @@
   let LISTS = null;
   let nextId = '';
 
-  // Быстрые шаблоны: предзаполняют обычный набор, дальше всё можно поменять
-  const TEMPLATES = {
-    push: { label: 'Пуш-рассылка (маркетинг)', product: 'Магазинка Пуши и коммуникации: Маркетинг',
-      langs: ['Армянский', 'Грузинский', 'Казахский', 'Кыргызский', 'Таджикский', 'Узбекский'] },
-    web: { label: 'Новые строки для веба', product: 'Магазинка', contractor: 'LogrusIT', customer: '@coy.elena3',
-      manager: 'Анастасия Лисовая', ticketNum: '1114', subject: 'Новые строчки для веба от {date}',
-      langs: ['Амхарский', 'Армянский', 'Грузинский', 'Казахский', 'Кыргызский', 'Таджикский', 'Узбекский', 'ШТАТ английский'] },
-    app: { label: 'Новые строки для приложения', product: 'Магазинка', contractor: 'LogrusIT', customer: '@syrcov.evgeniy, @arslanov.anton',
-      manager: 'Анастасия Лисовая', ticketNum: '1116', subject: 'Новые строчки для приложения от {date}',
-      langs: ['Азербайджанский', 'Армянский', 'Грузинский', 'Казахский', 'Кыргызский', 'Таджикский', 'Узбекский', 'ШТАТ английский'] },
-    seller: { label: 'Портал продавца (поставки/аналитика/FBS)', product: 'Портал продавца',
-      langs: ['ШТАТ английский', 'ШТАТ грузинский', 'ШТАТ китайский', 'ШТАТ узбекский', 'ШТАТ армянский', 'Казахский', 'Таджикский'] }
-  };
-
+  let RECENT = [];
   $('#date').value = todayIso();
-  fillSelect($('#template'), [], '— без шаблона —');
-  $('#template').innerHTML += Object.keys(TEMPLATES).map(k => `<option value="${k}">${esc(TEMPLATES[k].label)}</option>`).join('');
 
   run('getAddTaskFormLists').then(d => {
     LISTS = d;
@@ -102,6 +87,11 @@
       { title: 'Редкие', items: d.languages.rare }
     ], [], v => v.replace(/^ШТАТ\s+/i, ''));
     updatePreview();
+    return run('getRecentTasksForRepeat', d.currentManager || '');
+  }).then(list => {
+    RECENT = list || [];
+    $('#repeat').innerHTML = '<option value="">— новая задача с нуля —</option>' +
+      RECENT.map((t, i) => `<option value="${i}">${esc(t.title)} · ${esc(t.date)}${t.ticket ? ' · ' + esc(t.ticket) : ''}</option>`).join('');
   }).catch(e => setMsg($('#msg'), 'Не получилось загрузить списки: ' + e.message, 'err'));
 
   function checkedLangs() { return chipValues($('#langs')); }
@@ -134,19 +124,27 @@
   ['subject', 'product'].forEach(id => { $('#' + id).addEventListener('input', updatePreview); $('#' + id).addEventListener('change', updatePreview); });
   $('#langs').addEventListener('change', updatePreview);
 
-  $('#template').addEventListener('change', () => {
-    const t = TEMPLATES[$('#template').value];
+  /** «Новые строчки от 22.09» → «Новые строчки от <сегодня>». */
+  function withToday(title) {
+    const [, m, d] = $('#date').value.split('-');
+    // \b не работает с русскими буквами — границу слова задаём явно
+    return d && m ? title.replace(/(^|\s)(от\s+)\d{1,2}\.\d{1,2}(\.\d{2,4})?/i, '$1$2' + d + '.' + m) : title;
+  }
+
+  // «Повторить задачу»: подставляет всё из выбранной задачи, дата — сегодняшняя
+  $('#repeat').addEventListener('change', () => {
+    const t = RECENT[$('#repeat').value];
     if (!t || !LISTS) return;
-    $('#product').value = t.product || '';
-    $$('#langs input').forEach(cb => { cb.checked = t.langs.includes(cb.value); });
-    if (t.contractor) { $('#contractor').value = t.contractor; refreshId(); }
-    if (t.ticketNum) $('#ticketNum').value = t.ticketNum;
-    if (t.manager) $('#manager').value = t.manager;
-    if (t.customer) $('#customer').value = t.customer;
-    if (t.subject) {
-      const [, m, d] = $('#date').value.split('-');
-      $('#subject').value = t.subject.replace('{date}', d && m ? d + '.' + m : '');
-    }
+    $('#contractor').value = t.contractor; refreshId();
+    $('#ticketNum').value = t.ticket.replace(/^LOCAL-/i, '');
+    $('#product').value = t.product;
+    $('#customer').value = t.customer;
+    $('#manager').value = t.manager;
+    $('#deadline').value = t.deadline;
+    $('#subject').value = withToday(t.title);
+    $('#link').value = '';
+    $$('#langs input').forEach(cb => { cb.checked = t.languages.includes(cb.value); });
+    setMsg($('#msg'), 'Заполнено по ' + (t.id || 'прошлой задаче') + '. Вставьте новую ссылку на Band и проверьте тему.');
     updatePreview();
   });
 
@@ -171,15 +169,23 @@
       languages: checkedLangs()
     };
     const btn = $('#submitBtn');
-    btn.disabled = true; btn.textContent = 'Добавляю…';
-    run('submitNewTaskFromDialog', task).then(id => {
+    btn.disabled = true; btn.textContent = 'Проверяю…';
+    run('findDuplicateTasks', task).then(dups => {
+      if (dups.length && !confirm('Похожая задача уже есть:\n\n' +
+          dups.map(d => `${d.id || '—'} · ${d.title} · ${d.date} · ${d.manager} (${d.why})`).join('\n') +
+          '\n\nВсё равно добавить?')) {
+        throw new Error('Не добавлено — похожая задача уже есть.');
+      }
+      btn.textContent = 'Добавляю…';
+      return run('submitNewTaskFromDialog', task);
+    }).then(id => {
       const subject = buildSubject(id);
       copyText(subject);
       setMsg($('#msg'), 'Добавлено: ' + id + '. Тема скопирована в буфер. Закрываю…', 'ok');
       $('#preview').textContent = subject;
       setTimeout(() => google.script.host.close(), 1600);
     }).catch(e => {
-      setMsg($('#msg'), 'Не добавилось: ' + e.message, 'err');
+      setMsg($('#msg'), e.message.startsWith('Не добавлено') ? e.message : 'Не добавилось: ' + e.message, 'err');
       btn.disabled = false; btn.textContent = 'Добавить задачу';
     });
   });

@@ -52,6 +52,11 @@ function doPost(e) {
     if (req.action === 'taskForm') return smetaJson_(taskForm_());
     if (req.action === 'previewTaskId') return smetaJson_(previewTaskId_(req));
     if (req.action === 'addTask') return smetaJson_(addTask_(req));
+    // Запросы из расширения выполняются от имени владельца таблицы, поэтому «кто я» берём только из настроек расширения
+    if (req.action === 'recentTasks') { requireTableScript_(); return smetaJson_({ ok: true, tasks: getRecentTasksForRepeat(req.manager || '*') }); }
+    if (req.action === 'checkDuplicates') { requireTableScript_(); return smetaJson_({ ok: true, duplicates: findDuplicateTasks(req.task || {}) }); }
+    if (req.action === 'myTasks') { requireTableScript_(); return smetaJson_(Object.assign({ ok: true }, getMyOpenTasks(req.manager || '*'))); }
+    if (req.action === 'setStatus') return smetaJson_(setStatus_(req));
     return smetaJson_({ ok: false, error: 'Неизвестное действие' });
   } catch (err) {
     return smetaJson_({ ok: false, error: String(err && err.message || err) });
@@ -201,6 +206,17 @@ function addTask_(req) {
   try {
     const id = submitNewTaskFromDialog(task);
     return { ok: true, id: id };
+  } finally {
+    LOG_ACTOR = '';
+  }
+}
+
+/** Быстрая смена статуса из вкладки «Мои задачи». */
+function setStatus_(req) {
+  requireTableScript_();
+  LOG_ACTOR = 'Расширение' + (req.user ? ' (' + req.user + ')' : '');
+  try {
+    return setTaskStatus(req.row, req.id, req.origSubject, req.status);
   } finally {
     LOG_ACTOR = '';
   }

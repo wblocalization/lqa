@@ -5,7 +5,7 @@ const $ = (s) => document.querySelector(s);
 const els = {
   form: $('#taskForm'), loading: $('#taskLoading'), done: $('#taskDone'), doneId: $('#taskDoneId'),
   doneSubject: $('#taskDoneSubject'), copyDone: $('#taskCopyDone'), again: $('#taskAgain'),
-  contractor: $('#tContractor'), ticketNum: $('#tTicketNum'), template: $('#tTemplate'),
+  contractor: $('#tContractor'), ticketNum: $('#tTicketNum'), repeat: $('#tRepeat'),
   subject: $('#tSubject'), link: $('#tLink'), pasteLink: $('#tPasteLink'),
   product: $('#tProduct'), date: $('#tDate'), deadline: $('#tDeadline'), exactDeadline: $('#tExactDeadline'),
   customer: $('#tCustomer'), langs: $('#tLangs'), manager: $('#tManager'), status: $('#tStatus'),
@@ -18,31 +18,7 @@ let lists = null;       // справочники из таблицы
 let nextId = '';        // номер, который получит задача (подсказка)
 let lastSubject = '';   // тема добавленной задачи — для «Скопировать тему»
 
-// Те же быстрые шаблоны, что в окне «➕ Добавить задачу».
-const TEMPLATES = {
-  push: {
-    label: 'Пуш-рассылка (маркетинг)',
-    product: 'Магазинка Пуши и коммуникации: Маркетинг',
-    langs: ['Армянский', 'Грузинский', 'Казахский', 'Кыргызский', 'Таджикский', 'Узбекский'],
-  },
-  web: {
-    label: 'Новые строки для веба',
-    product: 'Магазинка', contractor: 'LogrusIT', customer: '@coy.elena3', manager: 'Анастасия Лисовая', ticketNum: '1114',
-    langs: ['Амхарский', 'Армянский', 'Грузинский', 'Казахский', 'Кыргызский', 'Таджикский', 'Узбекский', 'ШТАТ английский'],
-    subject: 'Новые строчки для веба от {date}',
-  },
-  app: {
-    label: 'Новые строки для приложения',
-    product: 'Магазинка', contractor: 'LogrusIT', customer: '@syrcov.evgeniy, @arslanov.anton', manager: 'Анастасия Лисовая', ticketNum: '1116',
-    langs: ['Азербайджанский', 'Армянский', 'Грузинский', 'Казахский', 'Кыргызский', 'Таджикский', 'Узбекский', 'ШТАТ английский'],
-    subject: 'Новые строчки для приложения от {date}',
-  },
-  seller: {
-    label: 'Портал продавца (поставки/аналитика/FBS)',
-    product: 'Портал продавца',
-    langs: ['ШТАТ английский', 'ШТАТ грузинский', 'ШТАТ китайский', 'ШТАТ узбекский', 'ШТАТ армянский', 'Казахский', 'Таджикский'],
-  },
-};
+let recent = [];        // последние задачи — для «Повторить задачу»
 
 // ---------- Сообщения ----------
 function setMsg(text, kind = 'info') {
@@ -91,8 +67,6 @@ function buildForm() {
   fillSelect(els.status, lists.statuses);
   fillSelect(els.deliveryStatus, lists.deliveryStatuses);
   fillSelect(els.manager, lists.managers);
-  els.template.innerHTML = '<option value="">— без шаблона —</option>' +
-    Object.entries(TEMPLATES).map(([k, t]) => `<option value="${k}">${esc(t.label)}</option>`).join('');
 
   const titles = { regular: 'Основные', shtat: 'ШТАТ', rare: 'Редкие' };
   els.langs.innerHTML = ['regular', 'shtat', 'rare']
@@ -104,6 +78,20 @@ function buildForm() {
     .join('');
 
   resetForm();
+  loadRecent();
+}
+
+/** Последние задачи менеджера для «Повторить задачу». */
+async function loadRecent() {
+  try {
+    const r = await api({ action: 'recentTasks', manager: settings.manager || lists.currentManager || '' });
+    if (!r.ok) throw new Error(r.error);
+    recent = r.tasks || [];
+  } catch {
+    recent = [];
+  }
+  els.repeat.innerHTML = '<option value="">— новая задача с нуля —</option>' +
+    recent.map((t, i) => `<option value="${i}">${esc(t.title)} · ${esc(t.date)}${t.ticket ? ' · ' + esc(t.ticket) : ''}</option>`).join('');
 }
 
 function resetForm() {
@@ -119,20 +107,28 @@ function today() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-// ---------- Шаблоны ----------
-els.template.addEventListener('change', () => {
-  const t = TEMPLATES[els.template.value];
+// ---------- Повторить задачу ----------
+/** «Новые строчки от 22.09» → «Новые строчки от <сегодня>». */
+function withToday(title) {
+  const [, m, d] = els.date.value.split('-');
+  // \b не работает с русскими буквами — границу слова задаём явно
+  return d && m ? title.replace(/(^|\s)(от\s+)\d{1,2}\.\d{1,2}(\.\d{2,4})?/i, `$1$2${d}.${m}`) : title;
+}
+
+els.repeat.addEventListener('change', () => {
+  const t = recent[els.repeat.value];
   if (!t) return;
-  els.product.value = t.product || '';
-  checkedLangInputs(false).forEach((cb) => { cb.checked = t.langs.includes(cb.value); });
-  if (t.contractor) { els.contractor.value = t.contractor; refreshNextId(); }
-  if (t.ticketNum) els.ticketNum.value = t.ticketNum;
-  if (t.manager) els.manager.value = t.manager;
-  if (t.customer) els.customer.value = t.customer;
-  if (t.subject) {
-    const [, m, d] = els.date.value.split('-');
-    els.subject.value = t.subject.replace('{date}', d && m ? `${d}.${m}` : '');
-  }
+  els.contractor.value = t.contractor;
+  refreshNextId();
+  els.ticketNum.value = t.ticket.replace(/^LOCAL-/i, '');
+  els.product.value = t.product;
+  els.customer.value = t.customer;
+  els.manager.value = t.manager;
+  els.deadline.value = t.deadline;
+  els.subject.value = withToday(t.title);
+  els.link.value = '';
+  checkedLangInputs(false).forEach((cb) => { cb.checked = t.languages.includes(cb.value); });
+  setMsg(`Заполнено по ${t.id || 'прошлой задаче'}. Вставьте новую ссылку на Band и проверьте тему.`);
   updatePreview();
 });
 
@@ -224,11 +220,20 @@ els.form.addEventListener('submit', async (e) => {
   };
 
   els.submit.disabled = true;
-  setMsg('Добавляю…');
+  setMsg('Проверяю, нет ли такой задачи…');
   try {
+    const d = await api({ action: 'checkDuplicates', task });
+    if (d.ok && d.duplicates && d.duplicates.length && !confirm('Похожая задача уже есть:\n\n' +
+        d.duplicates.map((x) => `${x.id || '—'} · ${x.title} · ${x.date} · ${x.manager} (${x.why})`).join('\n') +
+        '\n\nВсё равно добавить?')) {
+      setMsg('Не добавлено — похожая задача уже есть.', 'err');
+      return;
+    }
+    setMsg('Добавляю…');
     const r = await api({ action: 'addTask', task });
     if (!r.ok) throw new Error(r.error);
     if (task.manager) await saveSettings({ manager: task.manager }); // в следующий раз менеджер подставится сам
+    loadRecent();
     lastSubject = buildSubject(r.id);
     els.doneId.textContent = r.id;
     els.doneSubject.textContent = lastSubject;

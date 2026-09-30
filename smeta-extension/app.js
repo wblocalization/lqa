@@ -2,6 +2,7 @@
 import { settings, loadSettings, saveSettings, isConfigured } from './core.js';
 import * as smeta from './smeta.js';
 import * as task from './task.js';
+import * as mine from './mine.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
@@ -18,6 +19,7 @@ function showTab(name) {
     $(`#${t.getAttribute('aria-controls')}`).hidden = !on;
   });
   if (name === 'task') task.initTaskTab();
+  if (name === 'mine') mine.loadMine();
   try { localStorage.setItem('tab', name); } catch { /* не страшно */ }
 }
 els.tabs.forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));
@@ -39,6 +41,7 @@ els.saveSettings.addEventListener('click', async () => {
   els.settings.hidden = true;
   smeta.onSettingsSaved();
   task.onSettingsSaved();
+  mine.loadMine();
 });
 
 // Высота шапки — чтобы тема письма прилипала точно под ней
@@ -52,4 +55,4 @@ fillSettings();
 if (!isConfigured()) els.settings.hidden = false;
 let startTab = 'task';
 try { startTab = localStorage.getItem('tab') || 'task'; } catch { /* по умолчанию «Задача» */ }
-showTab(startTab === 'smeta' ? 'smeta' : 'task');
+showTab(['smeta', 'mine'].includes(startTab) ? startTab : 'task');

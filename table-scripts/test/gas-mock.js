@@ -85,6 +85,7 @@ class Sheet {
     this.maxCols = Math.max(maxCols || 26, ...rows.map(r => r.length), 1);
     this.cells = rows.map(r => r.map(v => ({ v })));
     this.cf = []; this.filter = null; this.frozenRows = 0; this.frozenCols = 0; this.groups = {}; this.merges = [];
+    this.mergeRects = []; // [row, col, numRows, numCols]
   }
   cell(r, c) {
     while (this.cells.length < r) this.cells.push([]);
@@ -124,6 +125,7 @@ class Sheet {
   }
   deleteRow(r) { this.cells.splice(r - 1, 1); this.maxRows--; return this; }
   deleteRows(r, n) { this.cells.splice(r - 1, n); this.maxRows -= n; return this; }
+  insertRowsAfter(r, n) { for (let i = 0; i < n; i++) this.cells.splice(r, 0, []); this.maxRows += n; return this; }
   insertColumnsAfter(c, n) { this.maxCols += n; return this; }
   deleteColumns(c, n) { this.maxCols -= n; this.cells.forEach(row => row.splice(c - 1, n)); return this; }
   clear() { this.cells = []; return this; }
@@ -183,6 +185,11 @@ class Range {
     }
     return this;
   }
+  getMergedRanges() {
+    return this.sh.mergeRects
+      .filter(([r, c, nr, nc]) => r >= this.r && c >= this.c && r + nr <= this.r + this.nr && c + nc <= this.c + this.nc)
+      .map(([r, c, nr, nc]) => new Range(this.sh, r, c, nr, nc));
+  }
   createFilter() { this.sh.filter = chain({ criteria: {}, remove: () => { this.sh.filter = null; }, setColumnFilterCriteria: (col, cr) => { this.sh.filter.criteria[col] = cr; } }); return this.sh.filter; }
   protect() { return chain({}); }
   merge() { this.sh.merges.push(this.a1()); return this; }
@@ -193,7 +200,11 @@ class Range {
 class Spreadsheet {
   constructor(fixture, id) {
     this.id = id || 'MAIN'; this.sheets = [];
-    Object.entries(fixture || {}).forEach(([name, s]) => this.sheets.push(new Sheet(this, name, s.rows, s.maxRows, s.maxCols)));
+    Object.entries(fixture || {}).forEach(([name, s]) => {
+      const sh = new Sheet(this, name, s.rows, s.maxRows, s.maxCols);
+      sh.mergeRects = s.merges || [];
+      this.sheets.push(sh);
+    });
   }
   getId() { return this.id; }
   getSheetByName(n) { return this.sheets.find(s => s.name === n) || null; }
@@ -217,18 +228,21 @@ function formatDate(d, tz, p) {
 
 function makeContext(fixture, opts = {}) {
   const ss = new Spreadsheet(reviveFixture(fixture));
+  const others = {};
+  Object.entries(opts.others || {}).forEach(([id, fx]) => { others[id] = new Spreadsheet(reviveFixture(fx), id); });
   let userEmail = opts.email || '';
   const ui = {
     createMenu: name => { const m = { name, items: [], addItem(l, f) { this.items.push([l, f]); return this; }, addSeparator() { return this; }, addSubMenu(s) { this.items.push(['sub:' + s.name, s.items]); return this; }, addToUi() { calls.menus.push(this); } }; return m; },
-    alert: m => calls.alerts.push(m), prompt: () => ({ getSelectedButton: () => 'OK', getResponseText: () => opts.prompt || '' }),
-    Button: { OK: 'OK' }, ButtonSet: { OK_CANCEL: 1 },
+    alert: (...a) => { calls.alerts.push(a.length > 1 ? a[1] : a[0]); return 'YES'; },
+    prompt: () => ({ getSelectedButton: () => 'OK', getResponseText: () => ctx.__prompt || opts.prompt || '' }),
+    Button: { OK: 'OK', YES: 'YES' }, ButtonSet: { OK_CANCEL: 1, YES_NO: 2 },
     showModalDialog: () => {}, showSidebar: () => {}
   };
   const ctx = {
     console,
     SpreadsheetApp: {
       getActive: () => ss, getActiveSpreadsheet: () => ss, getUi: () => ui, flush: () => {},
-      openById: () => ss,
+      openById: id => others[id] || ss,
       create: title => { const n = new Spreadsheet({ 'Лист1': { rows: [], maxRows: 1000, maxCols: 26 } }, 'NEW' + calls.created.length); n.title = title; calls.created.push(n); return n; },
       newRichTextValue: () => new RichBuilder(),
       newTextStyle: () => chain({ build() { return {}; } }),
@@ -250,7 +264,7 @@ function makeContext(fixture, opts = {}) {
     Logger: console,
     __setEmail: e => { userEmail = e; }
   };
-  return { ctx, ss, calls };
+  return { ctx, ss, calls, others };
 }
 
 module.exports = { makeContext, calls, RichBuilder };
