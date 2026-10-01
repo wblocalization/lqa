@@ -1,5 +1,5 @@
 // Вкладка «Новая задача»: то же, что окно «➕ Добавить задачу» в таблице, только без захода в таблицу.
-import { settings, isConfigured, api, esc, readClipboard } from './core.js';
+import { settings, isConfigured, api, esc, readClipboard, getLists } from './core.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
@@ -37,10 +37,13 @@ export async function initTaskTab() {
   els.loading.hidden = false;
   els.loading.textContent = 'Загружаю справочники из таблицы…';
   try {
-    const r = await api({ action: 'taskForm' });
-    if (!r.ok) throw new Error(r.error);
-    lists = r.lists;
+    // Справочники — из памяти (мгновенно); поменялись в таблице — перестроим форму, если в ней ещё ничего не начали
+    lists = await getLists((fresh) => {
+      lists = fresh;
+      if (!els.contractor.value && !els.subject.value.trim()) buildForm();
+    });
     buildForm();
+    loadNextIds();
     els.loading.hidden = true;
     els.form.hidden = false;
   } catch (e) {
@@ -215,12 +218,23 @@ els.importFile.addEventListener('change', async () => {
 
 // ---------- Номер и превью темы ----------
 let idSeq = 0;
+// Следующие номера для всех подрядчиков — одним запросом, чтобы при выборе подрядчика номер был сразу
+let nextIds = {};
+async function loadNextIds() {
+  try {
+    const r = await api({ action: 'previewTaskIds' });
+    if (!r.ok) return; // старый скрипт не умеет — номер узнаем при выборе подрядчика
+    nextIds = r.ids || {};
+    if (els.contractor.value && !nextId && nextIds[els.contractor.value]) { nextId = nextIds[els.contractor.value]; updatePreview(); }
+  } catch { /* не страшно */ }
+}
+
 async function refreshNextId() {
   const contractor = els.contractor.value;
   const seq = ++idSeq;
-  nextId = '';
+  nextId = nextIds[contractor] || '';
   updatePreview();
-  if (!contractor) return;
+  if (!contractor || nextId) return;
   try {
     const r = await api({ action: 'previewTaskId', contractor });
     if (seq !== idSeq) return;
@@ -335,6 +349,8 @@ els.form.addEventListener('submit', async (e) => {
     setMsg('Добавляю…');
     const r = await api({ action: 'addTask', task });
     if (!r.ok) throw new Error(r.error);
+    nextIds = {};
+    loadNextIds(); // номера сдвинулись
     lastSubject = buildSubject(r.id);
     els.doneId.textContent = r.id;
     els.doneSubject.textContent = lastSubject;

@@ -265,3 +265,5 @@ form { display: flex; flex-direction: column; gap: 16px; }
   overflow: hidden; text-overflow: ellipsis; }
 .seg button[aria-pressed=true] { background: var(--bg); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / .08); }
 .seg .n { font-weight: 400; color: var(--ink-soft); }
+#eTop { padding: 9px 12px; border-radius: 8px; background: var(--soft); text-align: left; }
+#eTop.err { background: var(--err-soft); }

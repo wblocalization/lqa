@@ -413,6 +413,8 @@ test('Мои задачи и статус из расширения', () => {
   assert.equal(call({ action: 'myTasks', manager: 'Анастасия Лисовая', filter: 'cancelled' }).tasks.filter(x => x.status !== 'Отменено').length, 0);
   const last = log().getRange(log().getLastRow(), 1, 1, 7).getValues()[0];
   same([last[1], last[4], last[6]], ['Расширение (Настя)', 'Статус', 'Отдано']);
+  const ids = call({ action: 'previewTaskIds' });
+  assert.ok(ids.ok && ids.ids.LogrusIT === G.previewNextTaskId('LogrusIT'), JSON.stringify(ids));
   const dup = call({ action: 'checkDuplicates', task: { subject: 'x', link: 'https://band/lit4' } });
   assert.equal(dup.duplicates.length, 1);
   // Правка из расширения: поиск → задача целиком → сохранение (в журнал — от расширения)

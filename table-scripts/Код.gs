@@ -754,10 +754,11 @@ function oldTableMaxSeq_(base) {
       const m = String(r[0]).trim().match(re);
       if (m) max = Math.max(max, Number(m[1]));
     });
-    if (cache) cache.put(key, String(max), 60);
   } catch (e) {
     // старая таблица недоступна (или правка прямо в листе, где её открывать нельзя) — считаем только по новой
   }
+  // Открывать старую таблицу долго — раз в 6 часов достаточно: новые номера всё равно сверяются с новой таблицей
+  if (cache) cache.put(key, String(max), 21600);
   return max;
 }
 
@@ -777,6 +778,14 @@ function generateNextTaskId(sh, contractor) {
 
 function previewNextTaskId(contractor) {
   return contractor ? generateNextTaskId(getTasksSheet(), contractor) : '';
+}
+
+/** Следующие номера сразу для всех подрядчиков — расширение берёт их одним запросом при открытии формы. */
+function previewNextTaskIds() {
+  const sh = getTasksSheet();
+  const out = {};
+  getListsData().contractors.forEach(c => { out[c] = generateNextTaskId(sh, c); });
+  return out;
 }
 
 // ==================== ДОБАВИТЬ ЗАДАЧУ ====================
@@ -1034,10 +1043,13 @@ function deleteTask(row, id, origSubject) {
  * Похожие задачи: та же ссылка на Band или та же тема с тем же тикетом.
  * Окно «Новая задача» и расширение спрашивают перед добавлением.
  */
+// Дубли ищем среди последних задач (новые — сверху): читать ссылки у всех тысяч строк долго
+const DUP_SCAN_ROWS = 800;
 function findDuplicateTasks(task) {
   const sh = getTasksSheet();
-  const rows = readRows_(sh, TASK_COLS);
-  const links = subjectLinks_(sh);
+  const n = Math.min(dataRowCount_(sh), DUP_SCAN_ROWS);
+  const rows = n ? sh.getRange(2, 1, n, TASK_COLS).getValues() : [];
+  const links = n ? sh.getRange(2, COL.SUBJECT, n, 1).getRichTextValues().map(r => linksFromRich_(r[0])) : [];
   const subject = shortSubject_(task.subject).toLowerCase();
   const ticket = normTicket_(task.ticket);
   const link = str_(task.link);

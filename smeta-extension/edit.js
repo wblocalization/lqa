@@ -1,5 +1,5 @@
 // Правка задачи из расширения: то же, что «Поиск и правка» в таблице.
-import { api, esc } from './core.js';
+import { api, esc, getLists } from './core.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
@@ -8,7 +8,7 @@ const els = {
   product: $('#eProduct'), customer: $('#eCustomer'), langs: $('#eLangs'), deadline: $('#eDeadline'),
   exactDeadline: $('#eExactDeadline'), status: $('#eStatus'), deliveryStatus: $('#eDeliveryStatus'),
   contractor: $('#eContractor'), manager: $('#eManager'), estimateLink: $('#eEstimateLink'),
-  total: $('#eTotal'), sp: $('#eSp'), comment: $('#eComment'), save: $('#eSave'), msg: $('#eMsg'),
+  total: $('#eTotal'), sp: $('#eSp'), comment: $('#eComment'), save: $('#eSave'), msg: $('#eMsg'), top: $('#eTop'),
 };
 
 let lists = null;    // справочники из таблицы — один раз
@@ -63,21 +63,26 @@ export async function openEditor(ref, done) {
   els.title.textContent = ref.id || 'Задача';
   els.save.disabled = true;
   els.langs.innerHTML = '';
-  setMsg('Загружаю задачу…');
+  // «Загружаю задачу…» — сверху, где смотрят, а не под кнопкой
+  els.top.hidden = false;
+  els.top.className = 'status';
+  els.top.textContent = 'Загружаю задачу…';
+  setMsg('');
   window.scrollTo(0, 0);
   try {
-    if (!lists) {
-      const f = await api({ action: 'taskForm' });
-      if (!f.ok) throw new Error(f.error);
-      lists = f.lists;
-    }
-    const r = await api({ action: 'getTask', row: ref.row, id: ref.id || '', origSubject: ref.origSubject });
+    // Справочники — из памяти, задача — одним запросом, параллельно
+    const [l, r] = await Promise.all([
+      lists ? lists : getLists((fresh) => { lists = fresh; }),
+      api({ action: 'getTask', row: ref.row, id: ref.id || '', origSubject: ref.origSubject }),
+    ]);
+    lists = l;
     if (!r.ok) throw new Error(r.error);
     fill(r.task);
     els.save.disabled = false;
-    setMsg('');
+    els.top.hidden = true;
   } catch (e) {
-    setMsg(`Не получилось открыть: ${e.message}`, 'err');
+    els.top.className = 'status err';
+    els.top.textContent = `Не получилось открыть: ${e.message}`;
   }
 }
 

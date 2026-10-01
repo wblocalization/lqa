@@ -63,6 +63,27 @@ export function explainHtmlAnswer(html) {
   return 'скрипт ответил ошибкой, а не данными. Ошибка Google: ' + (plain.slice(0, 220) || 'пустой ответ');
 }
 
+/**
+ * Справочники таблицы (подрядчики, продукты, статусы…): сразу из памяти расширения, свежие — в фоне.
+ * onFresh(lists) вызывается, если в таблице что-то поменялось. Первый раз — ждём таблицу.
+ */
+export async function getLists(onFresh) {
+  const key = `lists:${settings.url}`;
+  let cached = null;
+  try { cached = (await chrome.storage.local.get(key))[key]; } catch { /* нет — ждём таблицу */ }
+  const fresh = api({ action: 'taskForm' }).then((r) => {
+    if (!r.ok) throw new Error(r.error);
+    chrome.storage.local.set({ [key]: r.lists }).catch(() => {});
+    if (cached && onFresh && JSON.stringify(cached) !== JSON.stringify(r.lists)) onFresh(r.lists);
+    return r.lists;
+  });
+  if (cached) {
+    fresh.catch(() => {}); // не обновилось — работаем с тем, что есть
+    return cached;
+  }
+  return fresh;
+}
+
 export function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
