@@ -26,8 +26,8 @@
     <label>Токен
       <input id="setToken" type="password" autocomplete="off">
     </label>
-    <label>Ваше имя <span class="opt">для «Журнала»</span>
-      <input id="setUser" type="text" placeholder="Анастасия Лисовая">
+    <label>Кто вы <span class="opt">будете менеджером в новых задачах и во вкладке «Мои»</span>
+      <select id="setManager"><option value="">Сначала адрес и токен</option></select>
     </label>
     <div class="row-btns">
       <button id="closeSettings" class="btn ghost" type="button">Отмена</button>
@@ -43,6 +43,21 @@
         <div class="preview-txt"><span class="eyebrow">Тема письма</span><p id="tPreview" class="preview"></p></div>
         <button id="tCopyPreview" class="btn ghost small" type="button">Скопировать</button>
       </div>
+      <div class="tpl">
+        <label>Шаблон
+          <span class="with-btn">
+            <select id="tTemplate"><option value="">— без шаблона —</option></select>
+            <button id="tSaveTpl" class="btn ghost" type="button" title="Запомнить подрядчика, тикет, продукт, языки и т. д.">Сохранить</button>
+          </span>
+        </label>
+        <div class="tpl-actions">
+          <button id="tDelTpl" class="link-btn" type="button" hidden>Удалить шаблон</button>
+          <button id="tExportTpl" class="link-btn" type="button">Скачать шаблоны</button>
+          <button id="tImportTpl" class="link-btn" type="button">Загрузить из файла</button>
+          <input id="tImportFile" type="file" accept=".json,application/json" hidden>
+        </div>
+      </div>
+
       <div class="two">
         <label><span>Подрядчик <span class="req">*</span></span>
           <select id="tContractor" required></select>
@@ -51,10 +66,6 @@
           <span class="prefixed"><span>LOCAL-</span><input id="tTicketNum" type="text" inputmode="numeric" placeholder="1234"></span>
         </label>
       </div>
-
-      <label>Повторить задачу
-        <select id="tRepeat"><option value="">— новая задача с нуля —</option></select>
-      </label>
 
       <label><span>Тема письма <span class="req">*</span></span>
         <input id="tSubject" type="text" required placeholder="Только суть, номер добавится сам">

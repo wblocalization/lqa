@@ -261,7 +261,7 @@ function makeContext(fixture, opts = {}) {
   const others = {};
   Object.entries(opts.others || {}).forEach(([id, fx]) => { others[id] = new Spreadsheet(reviveFixture(fx), id); });
   let userEmail = opts.email || '';
-  const docProps = {}, cache = {};
+  const docProps = {}, userProps = {}, cache = {};
   const ui = {
     createMenu: name => { const m = { name, items: [], addItem(l, f) { this.items.push([l, f]); return this; }, addSeparator() { return this; }, addSubMenu(s) { this.items.push(['sub:' + s.name, s.items]); return this; }, addToUi() { calls.menus.push(this); } }; return m; },
     alert: (...a) => { calls.alerts.push(a.length > 1 ? a[1] : a[0]); return 'YES'; },
@@ -288,7 +288,9 @@ function makeContext(fixture, opts = {}) {
     Utilities: { formatDate, getUuid: () => 'uuid-1234' },
     LockService: { getScriptLock: () => ({ waitLock() { if (ctx.__lockHeld) throw new Error('deadlock: lock already held'); ctx.__lockHeld = true; }, releaseLock() { ctx.__lockHeld = false; } }) },
     PropertiesService: { getScriptProperties: () => ({ getProperty: () => 'T', setProperty() {} }),
-      getDocumentProperties: () => ({ getProperty: k => docProps[k] || null, setProperty: (k, v) => { docProps[k] = v; } }) },
+      getDocumentProperties: () => ({ getProperty: k => docProps[k] || null, setProperty: (k, v) => { docProps[k] = v; } }),
+      getUserProperties: () => ({ getProperty: k => (k in userProps ? userProps[k] : null), setProperties: o => Object.assign(userProps, o),
+        deleteProperty: k => { delete userProps[k]; } }) },
     CacheService: { getDocumentCache: () => ({ get: k => cache[k] || null, put: (k, v) => { cache[k] = v; } }) },
     MailApp: { sendEmail: m => calls.mail.push(m) },
     ScriptApp: { getProjectTriggers: () => [], deleteTrigger() {}, newTrigger: h => chain({ timeBased() { return this; }, create() { calls.triggers.push(h); } }), WeekDay: { MONDAY: 1 } },

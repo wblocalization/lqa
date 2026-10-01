@@ -9,6 +9,9 @@
     display: flex; gap: 10px; align-items: flex-start; box-shadow: 0 2px 6px rgb(0 0 0 / .06); }
   .preview .btn { flex: none; }
   .preview .txt { flex: 1; min-width: 0; }
+  .tpl-actions { display: flex; flex-wrap: wrap; gap: 2px 14px; font-weight: 400; }
+  .link-btn { background: none; border: none; padding: 2px 0; font-size: 12px; color: var(--soft); text-decoration: underline; text-underline-offset: 2px; }
+  .link-btn:hover { color: var(--ink); }
 </style>
 </head>
 <body class="has-foot">
@@ -18,6 +21,19 @@
       <button class="btn small" id="copyBtn" type="button">Скопировать</button>
     </div>
 
+    <div class="field">Шаблон
+      <div class="with-btn">
+        <select id="template" style="flex:1;min-width:0"><option value="">— без шаблона —</option></select>
+        <button class="btn" id="saveTpl" type="button" title="Запомнить подрядчика, тикет, продукт, языки и т. д.">Сохранить</button>
+      </div>
+      <div class="tpl-actions">
+        <button class="link-btn" id="delTpl" type="button" hidden>Удалить шаблон</button>
+        <button class="link-btn" id="exportTpl" type="button">Скачать шаблоны</button>
+        <button class="link-btn" id="importTpl" type="button">Загрузить из файла</button>
+        <input type="file" id="importFile" accept=".json,application/json" hidden>
+      </div>
+    </div>
+
     <div class="two">
       <label class="field"><span>Подрядчик <span class="req">*</span></span><select id="contractor"></select></label>
       <label class="field">Тикет
@@ -25,7 +41,6 @@
       </label>
     </div>
 
-    <label class="field">Повторить задачу<select id="repeat"><option value="">— новая задача с нуля —</option></select></label>
     <label class="field"><span>Тема <span class="req">*</span></span><input type="text" id="subject" placeholder="Только суть — номер и коды добавятся сами"></label>
     <label class="field">Ссылка на Band<input type="url" id="link" placeholder="https://band.wb.ru/…"></label>
 
@@ -70,7 +85,7 @@
   let LISTS = null;
   let nextId = '';
 
-  let RECENT = [];
+  let TEMPLATES = [];
   $('#date').value = todayIso();
 
   run('getAddTaskFormLists').then(d => {
@@ -87,11 +102,8 @@
       { title: 'Редкие', items: d.languages.rare }
     ], [], v => v.replace(/^ШТАТ\s+/i, ''));
     updatePreview();
-    return run('getRecentTasksForRepeat', d.currentManager || '');
-  }).then(list => {
-    RECENT = list || [];
-    $('#repeat').innerHTML = '<option value="">— новая задача с нуля —</option>' +
-      RECENT.map((t, i) => `<option value="${i}">${esc(t.title)} · ${esc(t.date)}${t.ticket ? ' · ' + esc(t.ticket) : ''}</option>`).join('');
+    TEMPLATES = d.templates || [];
+    renderTemplates();
   }).catch(e => setMsg($('#msg'), 'Не получилось загрузить списки: ' + e.message, 'err'));
 
   function checkedLangs() { return chipValues($('#langs')); }
@@ -131,21 +143,91 @@
     return d && m ? title.replace(/(^|\s)(от\s+)\d{1,2}\.\d{1,2}(\.\d{2,4})?/i, '$1$2' + d + '.' + m) : title;
   }
 
-  // «Повторить задачу»: подставляет всё из выбранной задачи, дата — сегодняшняя
-  $('#repeat').addEventListener('change', () => {
-    const t = RECENT[$('#repeat').value];
+  // ---------- Шаблоны: свои у каждого; файл тот же, что у расширения ----------
+  function renderTemplates(selectName) {
+    TEMPLATES.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+    $('#template').innerHTML = '<option value="">— без шаблона —</option>' +
+      TEMPLATES.map((t, i) => `<option value="${i}">${esc(t.name)}</option>`).join('');
+    const i = TEMPLATES.findIndex(t => t.name === selectName);
+    $('#template').value = i === -1 ? '' : String(i);
+    $('#delTpl').hidden = !$('#template').value;
+  }
+
+  function storeTemplates(selectName, okText) {
+    return run('saveTaskTemplates', TEMPLATES).then(list => {
+      TEMPLATES = list;
+      renderTemplates(selectName);
+      if (okText) setMsg($('#msg'), okText, 'ok');
+    }).catch(e => setMsg($('#msg'), 'Шаблоны не сохранились: ' + e.message, 'err'));
+  }
+
+  $('#template').addEventListener('change', () => {
+    $('#delTpl').hidden = !$('#template').value;
+    const t = TEMPLATES[$('#template').value];
     if (!t || !LISTS) return;
     $('#contractor').value = t.contractor; refreshId();
     $('#ticketNum').value = t.ticket.replace(/^LOCAL-/i, '');
     $('#product').value = t.product;
     $('#customer').value = t.customer;
-    $('#manager').value = t.manager;
     $('#deadline').value = t.deadline;
-    $('#subject').value = withToday(t.title);
+    $('#comment').value = t.comment;
+    $('#subject').value = withToday(t.subject);
     $('#link').value = '';
     $$('#langs input').forEach(cb => { cb.checked = t.languages.includes(cb.value); });
-    setMsg($('#msg'), 'Заполнено по ' + (t.id || 'прошлой задаче') + '. Вставьте новую ссылку на Band и проверьте тему.');
+    setMsg($('#msg'), 'Заполнено по шаблону «' + t.name + '». Вставьте ссылку на Band и проверьте тему.');
     updatePreview();
+  });
+
+  $('#saveTpl').addEventListener('click', () => {
+    if (!$('#contractor').value && !$('#subject').value.trim()) return setMsg($('#msg'), 'Заполните хотя бы подрядчика или тему — их и запомнит шаблон', 'err');
+    const current = TEMPLATES[$('#template').value];
+    const name = (prompt('Название шаблона:', current ? current.name : $('#subject').value.trim()) || '').trim();
+    if (!name) return;
+    const existing = TEMPLATES.findIndex(t => t.name === name);
+    if (existing !== -1 && !confirm('Шаблон «' + name + '» уже есть. Заменить?')) return;
+    const num = $('#ticketNum').value.trim().replace(/^local-?\s*/i, '');
+    const tpl = {
+      name: name, contractor: $('#contractor').value, ticket: num ? 'LOCAL-' + num : '', subject: $('#subject').value.trim(),
+      product: $('#product').value, customer: $('#customer').value.trim(), deadline: $('#deadline').value,
+      comment: $('#comment').value.trim(), languages: checkedLangs()
+    };
+    if (existing !== -1) TEMPLATES[existing] = tpl; else TEMPLATES.push(tpl);
+    storeTemplates(name, 'Шаблон «' + name + '» сохранён');
+  });
+
+  $('#delTpl').addEventListener('click', () => {
+    const t = TEMPLATES[$('#template').value];
+    if (!t || !confirm('Удалить шаблон «' + t.name + '»?')) return;
+    TEMPLATES.splice(Number($('#template').value), 1);
+    storeTemplates('', 'Шаблон «' + t.name + '» удалён');
+  });
+
+  $('#exportTpl').addEventListener('click', () => {
+    if (!TEMPLATES.length) return setMsg($('#msg'), 'Шаблонов пока нет: заполните форму и нажмите «Сохранить» рядом с «Шаблон»', 'err');
+    const blob = new Blob([JSON.stringify({ type: 'wb-task-templates', version: 1, templates: TEMPLATES }, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'task-templates.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setMsg($('#msg'), 'Скачано шаблонов: ' + TEMPLATES.length + '. Файл можно отправить коллеге — пусть нажмёт «Загрузить из файла».', 'ok');
+  });
+
+  $('#importTpl').addEventListener('click', () => $('#importFile').click());
+  $('#importFile').addEventListener('change', () => {
+    const file = $('#importFile').files[0];
+    $('#importFile').value = '';
+    if (!file) return;
+    file.text().then(text => {
+      const data = JSON.parse(text);
+      const list = (Array.isArray(data) ? data : data.templates || []).filter(t => t && typeof t.name === 'string' && t.name.trim());
+      if (!list.length) throw new Error('в файле нет шаблонов');
+      let replaced = 0;
+      list.forEach(t => {
+        const i = TEMPLATES.findIndex(x => x.name === t.name.trim());
+        if (i !== -1) { TEMPLATES[i] = t; replaced++; } else TEMPLATES.push(t);
+      });
+      return storeTemplates('', 'Загружено шаблонов: ' + list.length + (replaced ? ' (заменено с тем же названием: ' + replaced + ')' : ''));
+    }).catch(e => setMsg($('#msg'), 'Не получилось загрузить: ' + e.message, 'err'));
   });
 
   $('#copyBtn').addEventListener('click', () => {

@@ -8,6 +8,7 @@ const els = {
 };
 
 let data = null;
+let viewing = ''; // можно посмотреть задачи коллеги, не меняя «Кто вы» в настройках
 
 function setMsg(text, kind = 'info') {
   els.msg.textContent = text;
@@ -30,7 +31,7 @@ export async function loadMine() {
   els.summary.textContent = 'Загружаю…';
   setMsg('');
   try {
-    const r = await api({ action: 'myTasks', manager: settings.manager || '' });
+    const r = await api({ action: 'myTasks', manager: viewing || settings.manager || '' });
     if (!r.ok) throw new Error(r.error);
     data = r;
     render();
@@ -43,9 +44,9 @@ export async function loadMine() {
 function render() {
   els.manager.innerHTML = `<option value="">— выберите себя —</option>` +
     data.managers.map((m) => `<option value="${esc(m)}"${m === data.manager ? ' selected' : ''}>${esc(m)}</option>`).join('');
-  showOverdue(data.overdue);
+  if (!data.manager || data.manager === settings.manager) showOverdue(data.overdue);
   if (!data.manager) {
-    els.summary.textContent = 'Выберите себя в списке выше — запомню.';
+    els.summary.textContent = 'Выберите себя в списке выше (или в ⚙️ «Кто вы») — запомню.';
     els.list.innerHTML = '';
     return;
   }
@@ -87,7 +88,8 @@ els.list.addEventListener('change', async (e) => {
 });
 
 els.manager.addEventListener('change', async () => {
-  await saveSettings({ manager: els.manager.value });
+  if (!settings.manager) await saveSettings({ manager: els.manager.value, user: els.manager.value });
+  else viewing = els.manager.value === settings.manager ? '' : els.manager.value;
   loadMine();
 });
 els.refresh.addEventListener('click', loadMine);

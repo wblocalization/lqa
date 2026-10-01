@@ -1,12 +1,12 @@
 // Боковая панель: вкладки «Задача» / «Смета» и общие настройки.
-import { settings, loadSettings, saveSettings, isConfigured } from './core.js';
+import { settings, loadSettings, saveSettings, isConfigured, api, esc } from './core.js';
 import * as smeta from './smeta.js';
 import * as task from './task.js';
 import * as mine from './mine.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
-  settings: $('#settings'), setUrl: $('#setUrl'), setToken: $('#setToken'), setUser: $('#setUser'),
+  settings: $('#settings'), setUrl: $('#setUrl'), setToken: $('#setToken'), setManager: $('#setManager'),
   openSettings: $('#openSettings'), closeSettings: $('#closeSettings'), saveSettings: $('#saveSettings'),
   tabs: [...document.querySelectorAll('.tab')],
 };
@@ -25,19 +25,45 @@ function showTab(name) {
 els.tabs.forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));
 
 // ---------- Настройки ----------
+// «Кто вы» — менеджер из «Списков»: подставляется в новые задачи, во вкладку «Мои» и в «Журнал».
+let managersSeq = 0;
+async function loadManagers() {
+  const seq = ++managersSeq;
+  const conf = { url: els.setUrl.value.trim(), token: els.setToken.value.trim() };
+  const current = els.setManager.value || settings.manager || settings.user;
+  if (!conf.url || !conf.token) {
+    els.setManager.innerHTML = '<option value="">Сначала адрес и токен</option>';
+    return;
+  }
+  els.setManager.innerHTML = '<option value="">Загружаю менеджеров…</option>';
+  try {
+    const r = await api({ action: 'taskForm' }, conf);
+    if (!r.ok) throw new Error(r.error);
+    if (seq !== managersSeq) return;
+    const names = r.lists.managers;
+    els.setManager.innerHTML = '<option value="">— выберите себя —</option>' +
+      names.map((m) => `<option value="${esc(m)}"${m === current ? ' selected' : ''}>${esc(m)}</option>`).join('');
+  } catch (e) {
+    if (seq === managersSeq) els.setManager.innerHTML = `<option value="">Не загрузилось: ${esc(e.message)}</option>`;
+  }
+}
+
 function fillSettings() {
   els.setUrl.value = settings.url;
   els.setToken.value = settings.token;
-  els.setUser.value = settings.user;
+  loadManagers();
 }
+[els.setUrl, els.setToken].forEach((el) => el.addEventListener('change', loadManagers));
 
 els.openSettings.addEventListener('click', () => {
-  fillSettings();
+  if (els.settings.hidden) fillSettings();
   els.settings.hidden = !els.settings.hidden;
 });
 els.closeSettings.addEventListener('click', () => { els.settings.hidden = true; });
 els.saveSettings.addEventListener('click', async () => {
-  await saveSettings({ url: els.setUrl.value.trim(), token: els.setToken.value.trim(), user: els.setUser.value.trim() });
+  const patch = { url: els.setUrl.value.trim(), token: els.setToken.value.trim() };
+  if (els.setManager.value) Object.assign(patch, { manager: els.setManager.value, user: els.setManager.value });
+  await saveSettings(patch);
   els.settings.hidden = true;
   smeta.onSettingsSaved();
   task.onSettingsSaved();
@@ -51,8 +77,10 @@ setHeadH();
 window.addEventListener('resize', setHeadH);
 
 await loadSettings();
-fillSettings();
-if (!isConfigured()) els.settings.hidden = false;
+if (!isConfigured() || !settings.manager) {
+  fillSettings();
+  els.settings.hidden = false;
+}
 let startTab = 'task';
 try { startTab = localStorage.getItem('tab') || 'task'; } catch { /* по умолчанию «Задача» */ }
 showTab(['smeta', 'mine'].includes(startTab) ? startTab : 'task');

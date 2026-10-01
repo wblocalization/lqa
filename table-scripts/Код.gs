@@ -335,16 +335,29 @@ function getListsData() {
   return {
     products: col(0), langs: col(1), deadlines: col(2), statuses: col(3), managers: col(4),
     contractors: contractors, deliveryStatuses: col(7), translators: col(9),
-    prefixes: contractors.map((c, i) => String(raw[i][14] || '').trim()) // O = Префикс подрядчика
+    prefixes: contractors.map((c, i) => String(raw[i][14] || '').trim()), // O = Префикс подрядчика
+    langCodes: langCodesFrom_(col(1), raw)
   };
 }
 
-// Коды языков для темы письма
+// Коды языков для темы письма. Лист «Списки», колонка I «Код языка» (рядом с языком в B), главнее;
+// это — запасной вариант. Новый язык: впишите его в B, а код — в I той же строки.
 const LANG_CODES = {
   'Азербайджанский': 'az', 'Английский': 'en', 'Амхарский': 'am', 'Армянский': 'hy',
   'Грузинский': 'ka', 'Казахский': 'kk', 'Китайский': 'zhs', 'Кыргызский': 'ky',
-  'Русский': 'ru', 'Таджикский': 'tg', 'Узбекский': 'uz', 'Суахили': 'sw'
+  'Русский': 'ru', 'Таджикский': 'tg', 'Узбекский': 'uz', 'Суахили': 'sw',
+  'Белорусский': 'be', 'Иврит': 'he', 'Корейский': 'ko', 'Турецкий': 'tr', 'Арабский': 'ar', 'Французский': 'fr'
 };
+
+function langCodesFrom_(langs, raw) {
+  const codes = {};
+  Object.keys(LANG_CODES).forEach(l => { codes[l] = LANG_CODES[l]; });
+  langs.forEach((l, i) => {
+    const c = String(raw[i][8] || '').trim(); // I = Код языка
+    if (c) codes[l] = c;
+  });
+  return codes;
+}
 const RARE_LANGS = ['Белорусский', 'Иврит', 'Корейский', 'Турецкий', 'Арабский', 'Французский'];
 
 // Префиксы номеров задач. Лист «Списки», колонка O, главнее; это — запасной вариант.
@@ -722,14 +735,59 @@ function getAddTaskFormLists() {
     contractors: lists.contractors, products: lists.products, deadlines: lists.deadlines,
     statuses: lists.statuses, deliveryStatuses: lists.deliveryStatuses, managers: lists.managers,
     languages: { regular: regular, shtat: shtat, rare: rare },
-    langCodes: LANG_CODES,
-    currentManager: currentManager_()
+    langCodes: lists.langCodes,
+    currentManager: currentManager_(),
+    templates: getTaskTemplates()
   };
 }
 
+// ==================== ШАБЛОНЫ ЗАДАЧ ====================
+// Свои у каждого: хранятся в личных настройках скрипта (видит только тот, кто сохранил).
+// Тот же формат файла, что у расширения: { type: 'wb-task-templates', templates: [...] }.
+const TPL_PROP = 'TASK_TEMPLATES';
+const TPL_CHUNK = 8000; // одно значение в Properties — до 9 КБ
+
+function cleanTemplate_(t) {
+  t = t || {};
+  const out = { name: str_(t.name) };
+  ['contractor', 'ticket', 'subject', 'product', 'customer', 'deadline', 'comment'].forEach(k => {
+    out[k] = typeof t[k] === 'string' ? t[k].trim() : '';
+  });
+  out.languages = Array.isArray(t.languages) ? t.languages.filter(l => typeof l === 'string') : [];
+  return out;
+}
+
+function getTaskTemplates() {
+  const props = PropertiesService.getUserProperties();
+  const n = Number(props.getProperty(TPL_PROP + '_N') || 0);
+  let json = '';
+  for (let i = 0; i < n; i++) json += props.getProperty(TPL_PROP + '_' + i) || '';
+  try {
+    return json ? JSON.parse(json).map(cleanTemplate_).filter(t => t.name) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+/** Сохраняет весь список шаблонов (окно присылает его целиком после правки). */
+function saveTaskTemplates(list) {
+  const clean = (list || []).map(cleanTemplate_).filter(t => t.name);
+  const json = JSON.stringify(clean);
+  const props = PropertiesService.getUserProperties();
+  const old = Number(props.getProperty(TPL_PROP + '_N') || 0);
+  const n = Math.ceil(json.length / TPL_CHUNK);
+  const values = {};
+  for (let i = 0; i < n; i++) values[TPL_PROP + '_' + i] = json.slice(i * TPL_CHUNK, (i + 1) * TPL_CHUNK);
+  values[TPL_PROP + '_N'] = String(n);
+  props.setProperties(values);
+  for (let i = n; i < old; i++) props.deleteProperty(TPL_PROP + '_' + i);
+  return clean;
+}
+
 /** Тема письма: [номер][подрядчик][коды языков][продукт] суть. */
-function buildTaskSubject_(id, task) {
-  const codes = (task.languages || []).map(l => LANG_CODES[l]).filter(Boolean);
+function buildTaskSubject_(id, task, lists) {
+  const langCodes = (lists || getListsData()).langCodes;
+  const codes = (task.languages || []).map(l => langCodes[l]).filter(Boolean);
   const prefix = '[' + id + ']' + (task.contractor ? '[' + task.contractor + ']' : '') +
     codes.map(c => '[' + c + ']').join('') + (task.product ? '[' + task.product + ']' : '');
   const raw = str_(task.subject);
@@ -905,35 +963,6 @@ function deleteTask(row, id, origSubject) {
     sh.deleteRow(r);
     return true;
   });
-}
-
-// ==================== ПОВТОРИТЬ ЗАДАЧУ ====================
-
-/**
- * Последние задачи менеджера для «Повторить задачу»: по одной на каждую похожую тему
- * (даты в теме не учитываются), свежие сверху.
- */
-function getRecentTasksForRepeat(manager) {
-  manager = manager === '*' ? '' : (str_(manager) || currentManager_()); // «*» — задачи всех менеджеров
-  const rows = readRows_(getTasksSheet(), TASK_COLS);
-  const links = subjectLinks_(getTasksSheet());
-  const seen = {}, out = [];
-  for (let i = 0; i < rows.length && out.length < 25; i++) {
-    const r = rows[i];
-    if (!r[COL.SUBJECT - 1] || (manager && str_(r[COL.MANAGER - 1]) !== manager)) continue;
-    const title = shortSubject_(r[COL.SUBJECT - 1]);
-    const key = title.replace(/\d{1,2}[./]\d{1,2}([./]\d{2,4})?/g, '').trim().toLowerCase() + '|' + str_(r[COL.CONTRACTOR - 1]);
-    if (seen[key]) continue;
-    seen[key] = true;
-    out.push({
-      id: str_(r[COL.ID - 1]), title: title, date: fmtDate_(r[COL.DATE - 1], 'dd.MM'),
-      contractor: str_(r[COL.CONTRACTOR - 1]), ticket: str_(r[COL.TICKET - 1]), product: str_(r[COL.PRODUCT - 1]),
-      customer: str_(r[COL.CUSTOMER - 1]), manager: str_(r[COL.MANAGER - 1]), deadline: str_(r[COL.DEADLINE - 1]),
-      languages: String(r[COL.LANGS - 1] || '').split(',').map(s => s.trim()).filter(Boolean),
-      hasLink: Boolean(links[i] && links[i].link)
-    });
-  }
-  return out;
 }
 
 // ==================== ПРОВЕРКА НА ДУБЛИ ====================

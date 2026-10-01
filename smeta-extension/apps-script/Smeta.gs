@@ -53,7 +53,6 @@ function doPost(e) {
     if (req.action === 'previewTaskId') return smetaJson_(previewTaskId_(req));
     if (req.action === 'addTask') return smetaJson_(addTask_(req));
     // Запросы из расширения выполняются от имени владельца таблицы, поэтому «кто я» берём только из настроек расширения
-    if (req.action === 'recentTasks') { requireTableScript_(); return smetaJson_({ ok: true, tasks: getRecentTasksForRepeat(req.manager || '*') }); }
     if (req.action === 'checkDuplicates') { requireTableScript_(); return smetaJson_({ ok: true, duplicates: findDuplicateTasks(req.task || {}) }); }
     if (req.action === 'myTasks') { requireTableScript_(); return smetaJson_(Object.assign({ ok: true }, getMyOpenTasks(req.manager || '*'))); }
     if (req.action === 'setStatus') return smetaJson_(setStatus_(req));

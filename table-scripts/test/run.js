@@ -298,14 +298,22 @@ test('Правка прямо в листе: журнал, цветные язы
   assert.equal(ctx.SCRIPT_LOCK_HELD, false);
 });
 
-test('Повторить задачу: последние задачи, похожие темы схлопываются', () => {
-  const list = G.getRecentTasksForRepeat('Анастасия Лисовая');
-  assert.ok(list.length >= 2);
-  const app = list.filter(t => /Новые строчки для приложения/.test(t.title) && t.contractor === 'LogrusIT');
-  assert.equal(app.length, 1, 'одна «для приложения», а не по штуке на каждую дату');
-  assert.ok(Array.isArray(app[0].languages) && app[0].languages.length > 3);
-  const all = G.getRecentTasksForRepeat('*');
-  assert.ok(all.length >= list.length);
+test('Шаблоны задач: свои у каждого, большой список не теряется', () => {
+  same(G.getTaskTemplates(), []);
+  const many = Array.from({ length: 60 }, (_, i) => ({ name: 'Шаблон ' + i, contractor: 'LogrusIT', ticket: 'LOCAL-1116',
+    subject: 'Новые строчки для приложения от 22.09 — '.repeat(5) + i, languages: ['Грузинский', 'Иврит'], evil: '<x>' }));
+  G.saveTaskTemplates(many.concat([{ name: '' }, { name: 'плохие языки', languages: 'нет' }]));
+  const got = G.getTaskTemplates();
+  assert.equal(got.length, 61);
+  assert.equal(got[59].subject.slice(-2), '59');
+  assert.ok(!('evil' in got[0]));
+  same(got[60].languages, []);
+  G.saveTaskTemplates(got.slice(0, 1)); // старые куски удаляются
+  assert.equal(G.getTaskTemplates().length, 1);
+  assert.equal(G.getAddTaskFormLists().templates[0].name, 'Шаблон 0');
+  // Редкие языки получили коды; код из «Списков» (колонка I) главнее
+  const codes = G.getAddTaskFormLists().langCodes;
+  same([codes['Иврит'], codes['Турецкий'], codes['Корейский'], codes['Армянский']], ['he', 'tr', 'ko', 'hy']);
 });
 
 test('Проверка дублей', () => {
@@ -333,8 +341,6 @@ test('Мои задачи и статус из расширения', () => {
   assert.ok(!after.tasks.some(x => x.id === t.id && x.subject === t.subject), 'закрытая пропала из списка');
   const last = log().getRange(log().getLastRow(), 1, 1, 7).getValues()[0];
   same([last[1], last[4], last[6]], ['Расширение (Настя)', 'Статус', 'Отдано']);
-  const rec = call({ action: 'recentTasks' });
-  assert.ok(rec.ok && rec.tasks.length);
   const dup = call({ action: 'checkDuplicates', task: { subject: 'x', link: 'https://band/lit4' } });
   assert.equal(dup.duplicates.length, 1);
 });

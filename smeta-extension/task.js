@@ -1,11 +1,13 @@
 // Вкладка «Задача»: то же, что окно «➕ Добавить задачу» в таблице, только без захода в таблицу.
-import { settings, saveSettings, isConfigured, api, esc, readClipboard } from './core.js';
+import { settings, isConfigured, api, esc, readClipboard } from './core.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
   form: $('#taskForm'), loading: $('#taskLoading'), done: $('#taskDone'), doneId: $('#taskDoneId'),
   doneSubject: $('#taskDoneSubject'), copyDone: $('#taskCopyDone'), again: $('#taskAgain'),
-  contractor: $('#tContractor'), ticketNum: $('#tTicketNum'), repeat: $('#tRepeat'),
+  contractor: $('#tContractor'), ticketNum: $('#tTicketNum'),
+  template: $('#tTemplate'), saveTpl: $('#tSaveTpl'), delTpl: $('#tDelTpl'), exportTpl: $('#tExportTpl'),
+  importTpl: $('#tImportTpl'), importFile: $('#tImportFile'),
   subject: $('#tSubject'), link: $('#tLink'), pasteLink: $('#tPasteLink'),
   product: $('#tProduct'), date: $('#tDate'), deadline: $('#tDeadline'), exactDeadline: $('#tExactDeadline'),
   customer: $('#tCustomer'), langs: $('#tLangs'), manager: $('#tManager'), status: $('#tStatus'),
@@ -17,8 +19,6 @@ const els = {
 let lists = null;       // справочники из таблицы
 let nextId = '';        // номер, который получит задача (подсказка)
 let lastSubject = '';   // тема добавленной задачи — для «Скопировать тему»
-
-let recent = [];        // последние задачи — для «Повторить задачу»
 
 // ---------- Сообщения ----------
 function setMsg(text, kind = 'info') {
@@ -78,24 +78,13 @@ function buildForm() {
     .join('');
 
   resetForm();
-  loadRecent();
-}
-
-/** Последние задачи менеджера для «Повторить задачу». */
-async function loadRecent() {
-  try {
-    const r = await api({ action: 'recentTasks', manager: settings.manager || lists.currentManager || '' });
-    if (!r.ok) throw new Error(r.error);
-    recent = r.tasks || [];
-  } catch {
-    recent = [];
-  }
-  els.repeat.innerHTML = '<option value="">— новая задача с нуля —</option>' +
-    recent.map((t, i) => `<option value="${i}">${esc(t.title)} · ${esc(t.date)}${t.ticket ? ' · ' + esc(t.ticket) : ''}</option>`).join('');
+  loadTemplates();
 }
 
 function resetForm() {
+  const tpl = els.template.value;
   els.form.reset();
+  els.template.value = tpl; // выбранный шаблон остаётся выбранным, но поля — с нуля
   els.date.value = today();
   if (settings.manager && lists.managers.includes(settings.manager)) els.manager.value = settings.manager;
   nextId = '';
@@ -107,7 +96,39 @@ function today() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-// ---------- Повторить задачу ----------
+// ---------- Шаблоны ----------
+// Свои у каждого (хранятся в Chrome). Файлом можно поделиться: тот же формат понимает окно «Новая задача» в таблице.
+const TPL_FILE_TYPE = 'wb-task-templates';
+let templates = [];
+
+async function loadTemplates() {
+  templates = (await chrome.storage.local.get('templates')).templates || [];
+  renderTemplates();
+}
+
+async function storeTemplates(selectName = '') {
+  await chrome.storage.local.set({ templates });
+  renderTemplates(selectName);
+}
+
+function renderTemplates(selectName = '') {
+  templates.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  els.template.innerHTML = '<option value="">— без шаблона —</option>' +
+    templates.map((t, i) => `<option value="${i}">${esc(t.name)}</option>`).join('');
+  const i = templates.findIndex((t) => t.name === selectName);
+  els.template.value = i === -1 ? '' : String(i);
+  els.delTpl.hidden = !els.template.value;
+}
+
+/** Только известные поля и только строки: файл мог прийти от кого угодно. */
+function cleanTemplate(t) {
+  const str = (v) => (typeof v === 'string' ? v.trim() : '');
+  const out = { name: str(t && t.name) };
+  ['contractor', 'ticket', 'subject', 'product', 'customer', 'deadline', 'comment'].forEach((k) => { out[k] = str(t[k]); });
+  out.languages = Array.isArray(t.languages) ? t.languages.filter((l) => typeof l === 'string') : [];
+  return out;
+}
+
 /** «Новые строчки от 22.09» → «Новые строчки от <сегодня>». */
 function withToday(title) {
   const [, m, d] = els.date.value.split('-');
@@ -115,21 +136,80 @@ function withToday(title) {
   return d && m ? title.replace(/(^|\s)(от\s+)\d{1,2}\.\d{1,2}(\.\d{2,4})?/i, `$1$2${d}.${m}`) : title;
 }
 
-els.repeat.addEventListener('change', () => {
-  const t = recent[els.repeat.value];
+els.template.addEventListener('change', () => {
+  els.delTpl.hidden = !els.template.value;
+  const t = templates[els.template.value];
   if (!t) return;
   els.contractor.value = t.contractor;
   refreshNextId();
   els.ticketNum.value = t.ticket.replace(/^LOCAL-/i, '');
   els.product.value = t.product;
   els.customer.value = t.customer;
-  els.manager.value = t.manager;
   els.deadline.value = t.deadline;
-  els.subject.value = withToday(t.title);
+  els.comment.value = t.comment;
+  els.subject.value = withToday(t.subject);
   els.link.value = '';
   checkedLangInputs(false).forEach((cb) => { cb.checked = t.languages.includes(cb.value); });
-  setMsg(`Заполнено по ${t.id || 'прошлой задаче'}. Вставьте новую ссылку на Band и проверьте тему.`);
+  setMsg(`Заполнено по шаблону «${t.name}». Вставьте ссылку на Band и проверьте тему.`);
   updatePreview();
+});
+
+els.saveTpl.addEventListener('click', async () => {
+  if (!els.contractor.value && !els.subject.value.trim()) return setMsg('Заполните хотя бы подрядчика или тему — их и запомнит шаблон', 'err');
+  const current = templates[els.template.value];
+  const name = (prompt('Название шаблона:', current ? current.name : els.subject.value.trim()) || '').trim();
+  if (!name) return;
+  const existing = templates.findIndex((t) => t.name === name);
+  if (existing !== -1 && !confirm(`Шаблон «${name}» уже есть. Заменить?`)) return;
+  const ticketNum = els.ticketNum.value.trim();
+  const tpl = cleanTemplate({
+    name, contractor: els.contractor.value, ticket: ticketNum ? `LOCAL-${ticketNum}` : '', subject: els.subject.value,
+    product: els.product.value, customer: els.customer.value, deadline: els.deadline.value, comment: els.comment.value,
+    languages: checkedLangInputs().map((cb) => cb.value),
+  });
+  if (existing !== -1) templates[existing] = tpl; else templates.push(tpl);
+  await storeTemplates(name);
+  setMsg(`Шаблон «${name}» сохранён`, 'ok');
+});
+
+els.delTpl.addEventListener('click', async () => {
+  const t = templates[els.template.value];
+  if (!t || !confirm(`Удалить шаблон «${t.name}»?`)) return;
+  templates.splice(Number(els.template.value), 1);
+  await storeTemplates();
+  setMsg(`Шаблон «${t.name}» удалён`);
+});
+
+els.exportTpl.addEventListener('click', () => {
+  if (!templates.length) return setMsg('Шаблонов пока нет: заполните форму и нажмите «Сохранить» рядом с «Шаблон»', 'err');
+  const blob = new Blob([JSON.stringify({ type: TPL_FILE_TYPE, version: 1, templates }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'task-templates.json';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  setMsg(`Скачано шаблонов: ${templates.length}. Файл можно отправить коллеге — пусть нажмёт «Загрузить из файла».`, 'ok');
+});
+
+els.importTpl.addEventListener('click', () => els.importFile.click());
+els.importFile.addEventListener('change', async () => {
+  const file = els.importFile.files[0];
+  els.importFile.value = '';
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    const list = (Array.isArray(data) ? data : data.templates || []).map(cleanTemplate).filter((t) => t.name);
+    if (!list.length) throw new Error('в файле нет шаблонов');
+    let replaced = 0;
+    list.forEach((t) => {
+      const i = templates.findIndex((x) => x.name === t.name);
+      if (i !== -1) { templates[i] = t; replaced++; } else templates.push(t);
+    });
+    await storeTemplates();
+    setMsg(`Загружено шаблонов: ${list.length}` + (replaced ? ` (заменено с тем же названием: ${replaced})` : ''), 'ok');
+  } catch (e) {
+    setMsg(`Не получилось загрузить: ${e.message}`, 'err');
+  }
 });
 
 // ---------- Номер и превью темы ----------
@@ -232,8 +312,6 @@ els.form.addEventListener('submit', async (e) => {
     setMsg('Добавляю…');
     const r = await api({ action: 'addTask', task });
     if (!r.ok) throw new Error(r.error);
-    if (task.manager) await saveSettings({ manager: task.manager }); // в следующий раз менеджер подставится сам
-    loadRecent();
     lastSubject = buildSubject(r.id);
     els.doneId.textContent = r.id;
     els.doneSubject.textContent = lastSubject;

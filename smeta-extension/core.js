@@ -15,11 +15,12 @@ export async function saveSettings(patch) {
 
 export const isConfigured = () => Boolean(settings.url && settings.token);
 
-export async function api(payload) {
-  if (!isConfigured()) throw new Error('Заполните адрес и токен в настройках');
-  const res = await fetch(settings.url, {
+/** conf — адрес и токен, если они ещё не сохранены (окно настроек). В «Журнал» пишется, кто вы. */
+export async function api(payload, conf = settings) {
+  if (!conf.url || !conf.token) throw new Error('Заполните адрес и токен в настройках');
+  const res = await fetch(conf.url, {
     method: 'POST',
-    body: JSON.stringify({ ...payload, token: settings.token, user: settings.user }),
+    body: JSON.stringify({ ...payload, token: conf.token, user: settings.manager || settings.user }),
   });
   const text = await res.text();
   try {
