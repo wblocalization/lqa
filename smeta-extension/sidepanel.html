@@ -150,6 +150,12 @@
         <select id="mManager" aria-label="Менеджер"></select>
         <button id="mRefresh" class="btn ghost small" type="button">Обновить</button>
       </div>
+      <div id="mFilter" class="seg" role="tablist" aria-label="Какие задачи показать">
+        <button type="button" data-f="open">Открытые</button>
+        <button type="button" data-f="done">Отданные</button>
+        <button type="button" data-f="cancelled">Отменённые</button>
+        <button type="button" data-f="all">Все</button>
+      </div>
       <p id="mSummary" class="muted"></p>
       <div id="mList" class="mine-list"></div>
       <p id="mMsg" class="status" role="status"></p>

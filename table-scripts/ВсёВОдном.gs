@@ -1069,32 +1069,56 @@ function findDuplicateTasks(task) {
 // ==================== МОИ ЗАДАЧИ (для расширения) ====================
 
 /** Открытые задачи менеджера: сначала просроченные, потом по сроку. */
-function getMyOpenTasks(manager) {
+/**
+ * Задачи менеджера для расширения. filter: 'open' (по умолчанию) — открытые, по сроку;
+ * 'done' — отданные, 'cancelled' — отменённые, 'all' — все; закрытые и «все» — свежие сверху, не больше 100.
+ * counts — сколько задач в каждом фильтре; overdue — просрочки среди открытых (для бейджа).
+ */
+const MY_TASKS_LIMIT = 100;
+function myTaskFilter_(filter, status) {
+  if (filter === 'done') return status === 'Отдано';
+  if (filter === 'cancelled') return status === 'Отменено';
+  if (filter === 'all') return true;
+  return CLOSED_STATUSES.indexOf(status) === -1;
+}
+
+function getMyOpenTasks(manager, filter) {
+  filter = ['open', 'done', 'cancelled', 'all'].indexOf(filter) !== -1 ? filter : 'open';
   manager = manager === '*' ? '' : (str_(manager) || currentManager_()); // «*» — пока не выбран
-  if (!manager) return { manager: '', tasks: [], overdue: 0, statuses: [], managers: getListsData().managers };
+  if (!manager) return { manager: '', filter: filter, tasks: [], overdue: 0, counts: {}, statuses: [], managers: getListsData().managers };
   const sh = getTasksSheet();
   const rows = readRows_(sh, TASK_COLS);
   const links = subjectLinks_(sh);
   const today = today_();
   const tasks = [];
+  const counts = { open: 0, done: 0, cancelled: 0, all: 0 };
+  let overdue = 0;
   rows.forEach((r, i) => {
     if (!r[COL.SUBJECT - 1] || str_(r[COL.MANAGER - 1]) !== manager) return;
-    if (CLOSED_STATUSES.indexOf(str_(r[COL.STATUS - 1])) !== -1) return;
+    const status = str_(r[COL.STATUS - 1]);
+    const isOpen = CLOSED_STATUSES.indexOf(status) === -1;
     const due = r[COL.DUE - 1];
     const dueTime = due instanceof Date ? due.getTime() : null;
+    const late = isOpen && dueTime !== null && dueTime < today.getTime();
+    ['open', 'done', 'cancelled', 'all'].forEach(f => { if (myTaskFilter_(f, status)) counts[f]++; });
+    if (late) overdue++;
+    if (!myTaskFilter_(filter, status)) return;
+    const date = r[COL.DATE - 1];
     tasks.push({
       row: i + 2, id: str_(r[COL.ID - 1]), subject: String(r[COL.SUBJECT - 1]), title: shortSubject_(r[COL.SUBJECT - 1]),
-      ticket: str_(r[COL.TICKET - 1]), status: str_(r[COL.STATUS - 1]), deadline: str_(r[COL.DEADLINE - 1]),
-      due: fmtDate_(due, 'dd.MM'), overdue: dueTime !== null && dueTime < today.getTime(),
-      dueToday: dueTime !== null && dueTime >= today.getTime() && dueTime < today.getTime() + 86400000,
-      link: links[i] ? links[i].link : '', sort: dueTime === null ? Infinity : dueTime
+      ticket: str_(r[COL.TICKET - 1]), status: status, deadline: str_(r[COL.DEADLINE - 1]),
+      date: fmtDate_(date, 'dd.MM.yy'), due: fmtDate_(due, 'dd.MM'), overdue: late,
+      dueToday: isOpen && dueTime !== null && dueTime >= today.getTime() && dueTime < today.getTime() + 86400000,
+      link: links[i] ? links[i].link : '',
+      sort: filter === 'open' ? (dueTime === null ? Infinity : dueTime) : -(date instanceof Date ? date.getTime() : 0)
     });
   });
   tasks.sort((a, b) => a.sort - b.sort);
   tasks.forEach(t => { delete t.sort; });
   const lists = getListsData();
-  return { manager: manager, tasks: tasks, overdue: tasks.filter(t => t.overdue).length,
-    statuses: lists.statuses, managers: lists.managers };
+  return { manager: manager, filter: filter, tasks: filter === 'open' ? tasks : tasks.slice(0, MY_TASKS_LIMIT),
+    more: filter === 'open' ? 0 : Math.max(0, tasks.length - MY_TASKS_LIMIT),
+    counts: counts, overdue: overdue, statuses: lists.statuses, managers: lists.managers };
 }
 
 /** Поменять только статус (быстрая кнопка в расширении). */
@@ -2681,7 +2705,7 @@ function doPost(e) {
     if (req.action === 'previewTaskId') return smetaJson_(previewTaskId_(req));
     // Запросы из расширения выполняются от имени владельца таблицы, поэтому «кто я» берём только из настроек расширения
     if (req.action === 'checkDuplicates') { requireTableScript_(); return smetaJson_({ ok: true, duplicates: findDuplicateTasks(req.task || {}) }); }
-    if (req.action === 'myTasks') { requireTableScript_(); return smetaJson_(Object.assign({ ok: true }, getMyOpenTasks(req.manager || '*'))); }
+    if (req.action === 'myTasks') { requireTableScript_(); return smetaJson_(Object.assign({ ok: true }, getMyOpenTasks(req.manager || '*', req.filter))); }
     if (req.action === 'searchTasks') return smetaJson_(searchTasks_(req));
     if (req.action === 'getTask') return smetaJson_(getTask_(req));
   } catch (err) {

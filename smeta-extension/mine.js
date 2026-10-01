@@ -6,11 +6,16 @@ const $ = (s) => document.querySelector(s);
 const els = {
   manager: $('#mManager'), refresh: $('#mRefresh'), summary: $('#mSummary'),
   list: $('#mList'), msg: $('#mMsg'), badge: $('#mineBadge'),
-  searchForm: $('#mSearchForm'), search: $('#mSearch'), found: $('#mFound'),
+  filter: $('#mFilter'), searchForm: $('#mSearchForm'), search: $('#mSearch'), found: $('#mFound'),
 };
 
 let data = null;
-let viewing = ''; // можно посмотреть задачи коллеги, не меняя «Кто вы» в настройках
+let viewing = '';
+// Какие задачи показывать: open / done / cancelled / all — запоминается
+let filter = 'open';
+try { filter = localStorage.getItem('mineFilter') || 'open'; } catch { /* по умолчанию открытые */ }
+const CLOSED = ['Отдано', 'Отменено'];
+const FILTER_TEXT = { open: 'Открытых', done: 'Отданных', cancelled: 'Отменённых', all: 'Всего' }; // можно посмотреть задачи коллеги, не меняя «Кто вы» в настройках
 
 function setMsg(text, kind = 'info') {
   els.msg.textContent = text;
@@ -33,7 +38,7 @@ export async function loadMine() {
   els.summary.textContent = 'Загружаю…';
   setMsg('');
   try {
-    const r = await api({ action: 'myTasks', manager: viewing || settings.manager || '' });
+    const r = await api({ action: 'myTasks', manager: viewing || settings.manager || '', filter });
     if (!r.ok) throw new Error(r.error);
     data = r;
     render();
@@ -52,12 +57,16 @@ function render() {
     els.list.innerHTML = '';
     return;
   }
+  renderFilter();
   const n = data.tasks.length;
+  const more = data.more ? ` (показаны последние ${n} из ${n + data.more})` : '';
   els.summary.textContent = n
-    ? `Открытых задач: ${n}${data.overdue ? ` · просрочено: ${data.overdue}` : ''}`
-    : 'Открытых задач нет 🎉';
+    ? `${FILTER_TEXT[filter]} задач: ${n + (data.more || 0)}${more}${filter === 'open' && data.overdue ? ` · просрочено: ${data.overdue}` : ''}`
+    : (filter === 'open' ? 'Открытых задач нет 🎉' : 'Таких задач нет');
   els.list.innerHTML = data.tasks.map((t, i) => {
-    const due = t.overdue ? `<span class="late">просрочено · ${esc(t.due)}</span>`
+    const closed = CLOSED.includes(t.status);
+    const due = closed ? `${esc(t.status.toLowerCase())}${t.date ? ' · от ' + esc(t.date) : ''}`
+      : t.overdue ? `<span class="late">просрочено · ${esc(t.due)}</span>`
       : t.dueToday ? `<span class="today">сегодня</span>`
       : t.due ? `срок ${esc(t.due)}` : (t.deadline ? esc(t.deadline) : 'срок не указан');
     const title = t.link ? `<a href="${esc(t.link)}" target="_blank" rel="noopener">${esc(t.title)} 🔗</a>` : esc(t.title);
@@ -121,9 +130,42 @@ els.found.addEventListener('click', (e) => {
   openEditor({ row: t.row, id: t.id }, afterSave);
 });
 
-// Статус меняется сразу: закрытая задача пропадает из списка, а сохранение идёт в фоне.
-// Не получилось — задача возвращается на место и видно ошибку.
-const CLOSED = ['Отдано', 'Отменено'];
+// Статус меняется сразу: задача, которая больше не подходит под фильтр, пропадает из списка,
+// а сохранение идёт в фоне. Не получилось — задача возвращается на место и видно ошибку.
+function matches(f, status) {
+  if (f === 'done') return status === 'Отдано';
+  if (f === 'cancelled') return status === 'Отменено';
+  if (f === 'all') return true;
+  return !CLOSED.includes(status);
+}
+
+/** Счётчики в фильтре: задача перешла из одного статуса в другой. */
+function recount(from, to) {
+  if (!data.counts) return;
+  ['open', 'done', 'cancelled'].forEach((f) => {
+    if (matches(f, from)) data.counts[f]--;
+    if (matches(f, to)) data.counts[f]++;
+  });
+}
+
+function renderFilter() {
+  const c = data.counts || {};
+  els.filter.querySelectorAll('button').forEach((b) => {
+    const f = b.dataset.f;
+    b.setAttribute('aria-pressed', String(f === filter));
+    b.innerHTML = `${b.dataset.label || (b.dataset.label = b.textContent)}${c[f] != null ? ` <span class="n">${c[f]}</span>` : ''}`;
+  });
+}
+
+els.filter.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-f]');
+  if (!b || b.dataset.f === filter) return;
+  filter = b.dataset.f;
+  try { localStorage.setItem('mineFilter', filter); } catch { /* не страшно */ }
+  els.list.innerHTML = '';
+  renderFilter();
+  loadMine();
+});
 els.list.addEventListener('change', async (e) => {
   const sel = e.target.closest('select[data-i]');
   if (!sel) return;
@@ -131,12 +173,12 @@ els.list.addEventListener('change', async (e) => {
   const t = data.tasks[i];
   const prev = t.status;
   const status = sel.value;
-  const closed = CLOSED.includes(status);
+  const gone = !matches(filter, status);
+  const wasLate = t.overdue;
   t.status = status;
-  if (closed) {
-    data.tasks.splice(i, 1);
-    if (t.overdue) data.overdue--;
-  }
+  recount(prev, status);
+  if (CLOSED.includes(status) && t.overdue) { t.overdue = false; data.overdue--; }
+  if (gone) data.tasks.splice(i, 1);
   render();
   setMsg(`${t.id || 'Задача'}: «${status || 'пусто'}» — сохраняю…`);
   try {
@@ -144,11 +186,10 @@ els.list.addEventListener('change', async (e) => {
     if (!r.ok) throw new Error(r.error);
     setMsg(`${t.id || 'Задача'}: статус «${status || 'пусто'}» ✓`, 'ok');
   } catch (err) {
+    recount(status, prev);
     t.status = prev;
-    if (closed) {
-      data.tasks.splice(Math.min(i, data.tasks.length), 0, t);
-      if (t.overdue) data.overdue++;
-    }
+    if (wasLate && !t.overdue) { t.overdue = true; data.overdue++; }
+    if (gone) data.tasks.splice(Math.min(i, data.tasks.length), 0, t);
     render();
     setMsg(`${t.id || 'Задача'}: не сохранилось — ${err.message}`, 'err');
   }

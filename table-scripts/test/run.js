@@ -396,6 +396,18 @@ test('Мои задачи и статус из расширения', () => {
   assert.ok(res.ok, JSON.stringify(res));
   const after = call({ action: 'myTasks', manager: 'Анастасия Лисовая' });
   assert.ok(!after.tasks.some(x => x.id === t.id && x.subject === t.subject), 'закрытая пропала из списка');
+  // Фильтр: отданные / отменённые / все; счётчики сходятся
+  const done = call({ action: 'myTasks', manager: 'Анастасия Лисовая', filter: 'done' });
+  assert.ok(done.tasks.some(x => x.id === t.id) && done.tasks.every(x => x.status === 'Отдано'));
+  assert.ok(done.tasks.every(x => !x.overdue), 'у закрытых нет «просрочено»');
+  const all = call({ action: 'myTasks', manager: 'Анастасия Лисовая', filter: 'all' });
+  const c = all.counts;
+  assert.equal(c.all, all.tasks.length + all.more);
+  assert.ok(c.open + c.done + c.cancelled <= c.all && c.done >= 1, JSON.stringify(c));
+  assert.equal(after.overdue, done.overdue, 'бейдж просрочек не зависит от фильтра');
+  const dates = all.tasks.map(x => x.date).filter(Boolean);
+  assert.ok(dates.length, 'у задач есть дата');
+  assert.equal(call({ action: 'myTasks', manager: 'Анастасия Лисовая', filter: 'cancelled' }).tasks.filter(x => x.status !== 'Отменено').length, 0);
   const last = log().getRange(log().getLastRow(), 1, 1, 7).getValues()[0];
   same([last[1], last[4], last[6]], ['Расширение (Настя)', 'Статус', 'Отдано']);
   const dup = call({ action: 'checkDuplicates', task: { subject: 'x', link: 'https://band/lit4' } });
