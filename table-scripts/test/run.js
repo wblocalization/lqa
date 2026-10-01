@@ -248,6 +248,25 @@ test('Расширение (Smeta.gs): добавить задачу и запи
   const w = call({ action: 'write', task: add.id, total: 1234.5, link: 'https://disk/x' });
   assert.ok(w.ok, JSON.stringify(w));
   assert.equal(tasks().getRange(rowOf(add.id), 12).getValue(), 1234.5);
+  // В ячейке сметы — «Смета [номер]» со ссылкой; повторная запись видит старую ссылку
+  const r = rowOf(add.id);
+  assert.equal(tasks().getRange(r, 11).getValue(), 'Смета [' + add.id + ']');
+  assert.equal(G.linksFromRich_(tasks().getRange(r, 11).getRichTextValue()).link, 'https://disk/x');
+  const again = call({ action: 'write', task: add.id, total: 1, link: 'https://disk/y' });
+  same([again.error, again.link], ['exists', 'https://disk/x']);
+  assert.equal(call({ action: 'lookup', task: add.id }).link, 'https://disk/x');
+  // Окно правки видит адрес, а сохранение без изменений не пишет в журнал «Смета»
+  const t = G.getTaskForEdit(r);
+  assert.equal(t.estimateLink, 'https://disk/x');
+  const logBefore = log().getLastRow();
+  G.saveTaskEdits(t);
+  assert.ok(!log().getRange(logBefore + 1, 1, Math.max(1, log().getLastRow() - logBefore), 7).getValues().some(x => x[4] === 'Смета'));
+  G.saveTaskEdits({ ...t, estimateLink: 'https://disk/z' });
+  same([tasks().getRange(r, 11).getValue(), G.getTaskForEdit(r).estimateLink], ['Смета [' + add.id + ']', 'https://disk/z']);
+  // Адрес, вписанный руками, тоже становится «Смета [номер]»
+  tasks().getRange(r, 11).setValue('https://disk/hand');
+  G.onEdit({ range: tasks().getRange(r, 11), source: ss, oldValue: 'Смета', value: 'https://disk/hand' });
+  same([tasks().getRange(r, 11).getValue(), G.getTaskForEdit(r).estimateLink], ['Смета [' + add.id + ']', 'https://disk/hand']);
 });
 
 test('Фильтры', () => {
@@ -389,6 +408,8 @@ test('Перенос истории из старой таблицы', { skip: !
   const multi = rows.findIndex(r => r[0] === 'LIT-26-2188') + 1;
   same(G.linksFromRich_(tasks().getRange(multi, 3).getRichTextValue()),
     { link: 'https://band.wb.ru/wb/pl/tpw8mh66tpd7ung4siq9g96hoh', link2: 'https://band.wb.ru/wb/pl/tjfa9pqwnprk3eorhzjinzkhjy' });
+  // Смета из старой таблицы — тоже «Смета [номер]» со ссылкой
+  same([tasks().getRange(multi, 11).getValue(), G.getTaskForEdit(multi).estimateLink], ['Смета [LIT-26-2188]', 'https://disk.wb.ru/f/83009693']);
   assert.match(tasks().getRange(multi, 17).getValue(), /Ещё ссылки: https:\/\/band.wb.ru\/wb\/pl\/mytom1ojftg3789opd3c7ioe1o/);
   const firstOld = rows.findIndex(r => r[0] === 'LIT-25-1') + 1;
   assert.equal(G.linksFromRich_(tasks().getRange(firstOld, 3).getRichTextValue()).link.slice(0, 26), 'https://band.wb.ru/wb/pl/g');

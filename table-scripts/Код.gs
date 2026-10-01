@@ -161,6 +161,10 @@ function onTasksEdit_(e) {
       });
     }
     if (col <= COL.LANGS && lastCol >= COL.LANGS) colorizeLanguagesCell(sh, row + i);
+    // Вставили адрес сметы — показываем коротко «Смета [номер]»
+    if (col <= COL.ESTIMATE && lastCol >= COL.ESTIMATE && isUrlText_(r[COL.ESTIMATE - 1])) {
+      sh.getRange(row + i, COL.ESTIMATE).setRichTextValue(estimateRich_(r[COL.ESTIMATE - 1], r[COL.ID - 1]));
+    }
   });
 
   // Одна ячейка — пишем в журнал, что было и что стало
@@ -198,6 +202,19 @@ function applyAllTranslatorValidations() { setupDesign(); }
  */
 function htmlSource_(name) {
   return typeof HTML_FILES !== 'undefined' && HTML_FILES[name] != null ? HTML_FILES[name] : null;
+}
+
+/** Адреса смет, вписанные текстом (в т. ч. перенесённые), → «Смета [номер]» со ссылкой. */
+function estimateLinksToLabels_(sh) {
+  const n = dataRowCount_(sh);
+  if (!n) return;
+  const range = sh.getRange(2, COL.ESTIMATE, n, 1);
+  const values = range.getValues();
+  if (!values.some(r => isUrlText_(r[0]))) return;
+  const ids = sh.getRange(2, COL.ID, n, 1).getValues();
+  const rich = range.getRichTextValues();
+  range.setRichTextValues(values.map((r, i) => [isUrlText_(r[0]) ? estimateRich_(r[0], ids[i][0])
+    : rich[i][0] || SpreadsheetApp.newRichTextValue().setText(cellText_(r[0])).build()]));
 }
 
 /** Подключает Общее.html в окна: <?!= include('Общее') ?> */
@@ -288,6 +305,25 @@ function linksFromRich_(rt) {
   });
   const hasMarker = rt.getText().indexOf(LINK2_MARKER) !== -1;
   return { link: urls[0] || '', link2: hasMarker && urls.length > 1 ? urls[urls.length - 1] : '' };
+}
+
+// Смета: в ячейке короткая ссылка «Смета [LIT-26-2232]» вместо длинного адреса
+const ESTIMATE_LABEL_RE = /^Смета( \[[^\]]*\])?$/;
+const isUrlText_ = v => /^https?:\/\/\S+$/i.test(str_(v));
+
+function estimateRich_(url, id) {
+  url = str_(url);
+  const label = url ? 'Смета' + (str_(id) ? ' [' + str_(id) + ']' : '') : '';
+  const b = SpreadsheetApp.newRichTextValue().setText(label);
+  return (url ? b.setLinkUrl(url) : b).build();
+}
+
+/** Адрес сметы из ячейки: ссылка под «Смета […]» или сам текст, если там адрес. */
+function estimateUrl_(rich, value) {
+  const link = linksFromRich_(rich).link;
+  if (link) return link;
+  const v = str_(value);
+  return ESTIMATE_LABEL_RE.test(v) ? '' : v;
 }
 
 /** Ссылки всех строк одним запросом (раньше — по запросу на строку). */
@@ -814,6 +850,7 @@ function submitNewTaskFromDialog(task) {
     ];
     sh.getRange(row, 1, 1, TASK_COLS).setValues([values]);
     if (task.link || task.link2) sh.getRange(row, COL.SUBJECT).setRichTextValue(buildSubjectRich_(subject, task.link, task.link2));
+    if (task.estimateLink) sh.getRange(row, COL.ESTIMATE).setRichTextValue(estimateRich_(task.estimateLink, id));
     if (values[COL.LANGS - 1]) colorizeLanguagesCell(sh, row);
     colorizeRowDirectly(sh, row);
 
@@ -868,7 +905,7 @@ function getTaskForEdit(row) {
     date: fmtDate_(r[COL.DATE - 1], 'yyyy-MM-dd'), product: str_(r[COL.PRODUCT - 1]),
     customer: str_(r[COL.CUSTOMER - 1]), languages: str_(r[COL.LANGS - 1]),
     deadline: str_(r[COL.DEADLINE - 1]), exactDeadline: fmtDate_(r[COL.DUE - 1], 'yyyy-MM-dd'),
-    status: str_(r[COL.STATUS - 1]), estimateLink: str_(r[COL.ESTIMATE - 1]),
+    status: str_(r[COL.STATUS - 1]), estimateLink: estimateUrl_(sh.getRange(row, COL.ESTIMATE).getRichTextValue(), r[COL.ESTIMATE - 1]),
     total: r[COL.TOTAL - 1] === '' ? '' : r[COL.TOTAL - 1], contractor: str_(r[COL.CONTRACTOR - 1]),
     manager: str_(r[COL.MANAGER - 1]), deliveryStatus: str_(r[COL.DELIVERY - 1]),
     sp: r[COL.SP - 1] === '' ? '' : r[COL.SP - 1], comment: str_(r[COL.COMMENT - 1])
@@ -913,6 +950,7 @@ function saveTaskEdits(task) {
     const sh = getTasksSheet();
     const row = locateTaskRow_(sh, Number(task.row), str_(task.id), task.origSubject);
     const old = sh.getRange(row, 1, 1, TASK_COLS).getValues()[0];
+    old[COL.ESTIMATE - 1] = estimateUrl_(sh.getRange(row, COL.ESTIMATE).getRichTextValue(), old[COL.ESTIMATE - 1]);
     const next = old.slice();
     const set = (col, v) => { next[col - 1] = v; };
     set(COL.TICKET, normTicket_(task.ticket));
@@ -940,6 +978,7 @@ function saveTaskEdits(task) {
     }
     sh.getRange(row, COL.TICKET).setValue(next[COL.TICKET - 1]);
     sh.getRange(row, COL.DATE, 1, TASK_COLS - COL.DATE + 1).setValues([next.slice(COL.DATE - 1)]);
+    if (next[COL.ESTIMATE - 1]) sh.getRange(row, COL.ESTIMATE).setRichTextValue(estimateRich_(next[COL.ESTIMATE - 1], id));
 
     // Тема со ссылками: пишем, только если что-то поменялось, чтобы не трогать лишнее
     const subject = str_(task.subject);
@@ -1961,7 +2000,9 @@ function designTasksSheet_(sh) {
   sh.getRange(2, COL.ESTIMATE, maxRows - 1, 1).setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
   sh.getRange(2, COL.DATE, maxRows - 1, 1).setNumberFormat('dd.mm.yyyy');
   sh.getRange(2, COL.DUE, maxRows - 1, 1).setNumberFormat('dd.mm.yyyy');
-  sh.getRange(2, COL.TOTAL, maxRows - 1, 1).setNumberFormat('#,##0.00 "₽"');
+  sh.getRange(2, COL.TOTAL, maxRows - 1, 1).setNumberFormat('#,##0.00'); // просто число, без «₽»
+  sh.getRange(2, COL.ESTIMATE, maxRows - 1, 1).setHorizontalAlignment('center');
+  estimateLinksToLabels_(sh);
   sh.getRange(2, COL.SP, maxRows - 1, 1).setNumberFormat('0');
 
   // Языки: если «чипы» не включены — каждый язык своим цветом текста (одним запросом на весь лист)

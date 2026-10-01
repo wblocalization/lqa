@@ -89,8 +89,20 @@ function smetaLookup_(req) {
   return {
     ok: true, found: true, row: t.row, matched: t.matched,
     subject: v[t.col.subject], contractor: v[t.col.contractor], manager: v[t.col.manager],
-    link: v[t.col.link], total: v[t.col.total],
+    link: smetaCellLink_(t, v), total: v[t.col.total],
   };
+}
+
+
+/** Адрес сметы: ссылка под «Смета [номер]» или сам текст ячейки, если там адрес. */
+function smetaCellLink_(t, values) {
+  const rt = t.sheet.getRange(t.row, t.col.link + 1).getRichTextValue();
+  if (rt) {
+    const url = rt.getLinkUrl() || rt.getRuns().map(function (r) { return r.getLinkUrl(); }).filter(Boolean)[0];
+    if (url) return url;
+  }
+  const v = String(values[t.col.link] || '').trim();
+  return /^Смета( \[[^\]]*\])?$/.test(v) ? '' : v;
 }
 
 function smetaWrite_(req) {
@@ -102,14 +114,17 @@ function smetaWrite_(req) {
   const t = smetaFindTask_(req.task);
   if (!t) return { ok: false, error: 'Задача ' + req.task + ' не найдена в листе «' + SMETA_TASKS_SHEET + '»' };
 
-  const oldLink = t.values[t.col.link];
+  const oldLink = smetaCellLink_(t, t.values);
   const oldTotal = t.values[t.col.total];
   if ((oldLink || oldTotal) && !req.overwrite) {
     return { ok: false, error: 'exists', link: oldLink, total: oldTotal };
   }
 
   const sheet = t.sheet;
-  sheet.getRange(t.row, t.col.link + 1).setValue(link);
+  // В ячейке — короткое «Смета [LIT-26-2232]», адрес — ссылкой под ним
+  const rowId = String(t.values[t.col.task] || '').trim();
+  sheet.getRange(t.row, t.col.link + 1).setRichTextValue(
+    SpreadsheetApp.newRichTextValue().setText('Смета' + (rowId ? ' [' + rowId + ']' : '')).setLinkUrl(link).build());
   sheet.getRange(t.row, t.col.total + 1).setValue(Math.round(total * 100) / 100);
 
   const who = 'Расширение смет' + (req.user ? ' (' + req.user + ')' : '');
