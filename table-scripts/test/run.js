@@ -153,7 +153,7 @@ test('Правка не теряет доп. ссылку', () => {
 
 test('Несколько доп. ссылок: «(ссылка 2)», «(ссылка 3)» после темы', () => {
   const id = G.submitNewTaskFromDialog({ contractor: 'LogrusIT', subject: 'Три переписки', link: 'https://band/m',
-    link2: 'https://band/x\nhttps://band/y  https://band/z', languages: [] });
+    link2: 'https://band/x\nhttps://band/y  https://band/z', languages: [], manager: 'Анастасия Лисовая' });
   const row = rowOf(id);
   const rt = tasks().getRange(row, 3).getRichTextValue();
   assert.match(rt.getText(), /Три переписки \(ссылка 2\) \(ссылка 3\) \(ссылка 4\)$/);
@@ -161,6 +161,11 @@ test('Несколько доп. ссылок: «(ссылка 2)», «(ссыл
   const t = G.getTaskForEdit(row);
   assert.ok(!/ссылка \d/.test(t.subject), t.subject);
   assert.equal(G.findDuplicateTasks({ subject: 'другое', link: 'https://band/y' }).length, 1, 'дубль и по доп. ссылке');
+  // Тема для копирования — без «(ссылка N)»: окно правки, расширение, отчёты
+  const look = JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify({ token: 'T', action: 'lookup', task: id }) } }));
+  assert.ok(look.found && !/ссылка \d/.test(look.subject), look.subject);
+  const line = G.getManagerReport('Анастасия Лисовая', '').groups.flatMap(g => g.lines).find(l => l.link === 'https://band/m');
+  assert.ok(line && !/ссылка \d/.test(line.subject) && line.link2.split('\n').length === 3, JSON.stringify(line));
   G.saveTaskEdits({ ...t, link2: 'https://band/y' });
   const rt2 = tasks().getRange(row, 3).getRichTextValue();
   assert.match(rt2.getText(), /Три переписки \(ссылка 2\)$/);

@@ -1275,7 +1275,7 @@ function getManagerReport(manager, monthStr) {
     const key = ticket || '(без тикета)';
     const sp = Number(r[COL.SP - 1]) || 0, money = Number(r[COL.TOTAL - 1]) || 0;
     if (!groups[key]) { groups[key] = { ticket: ticket, lines: [], ticketTotal: 0, ticketMoneyTotal: 0 }; order.push(key); taskCount++; }
-    groups[key].lines.push({ subject: String(subject), link: links[i].link || '', link2: links[i].link2 || '', sp: sp, money: money });
+    groups[key].lines.push({ subject: stripLinkMarkers_(subject), link: links[i].link || '', link2: links[i].link2 || '', sp: sp, money: money });
     groups[key].ticketTotal += sp;
     groups[key].ticketMoneyTotal += money;
     grandTotal += sp; grandMoney += money; lineCount++;
@@ -1387,7 +1387,7 @@ function getCustomReport(yearFilter, monthFilter) {
       byManager[manager].count++; byManager[manager].sp += sp;
     }
     if (contractor) byContractor[contractor] = (byContractor[contractor] || 0) + 1;
-    taskRows.push({ subject: String(r[COL.SUBJECT - 1]), link: links[i].link, sp: sp, manager: manager, product: product });
+    taskRows.push({ subject: stripLinkMarkers_(r[COL.SUBJECT - 1]), link: links[i].link, sp: sp, manager: manager, product: product });
   });
 
   const sortDesc = obj => Object.keys(obj).map(k => [k, obj[k]]).sort((a, b) => b[1] - a[1]);
@@ -1534,7 +1534,7 @@ function sendWeeklyDigests() {
     data.forEach((r, i) => {
       if (str_(r[COL.MANAGER - 1]) !== m.manager || !r[COL.SUBJECT - 1]) return;
       if (CLOSED_STATUSES.indexOf(str_(r[COL.STATUS - 1])) !== -1) return;
-      rows.push({ subject: String(r[COL.SUBJECT - 1]), link: links[i].link, exact: r[COL.DUE - 1], approx: str_(r[COL.DEADLINE - 1]) });
+      rows.push({ subject: stripLinkMarkers_(r[COL.SUBJECT - 1]), link: links[i].link, exact: r[COL.DUE - 1], approx: str_(r[COL.DEADLINE - 1]) });
     });
     if (!rows.length) return;
     const cards = rows.map(r => taskCardHtml(r, '#F1F3F5', '<div style="font-size:12px;color:#990000;margin-bottom:4px;">' + esc_(deadlineLabel(r)) + '</div>')).join('');
@@ -1568,7 +1568,7 @@ function sendDueSoonAlerts() {
       if (CLOSED_STATUSES.indexOf(str_(r[COL.STATUS - 1])) !== -1) return;
       const due = r[COL.DUE - 1];
       if (!(due instanceof Date)) return;
-      const item = { subject: String(r[COL.SUBJECT - 1]), link: links[i].link, exact: due };
+      const item = { subject: stripLinkMarkers_(r[COL.SUBJECT - 1]), link: links[i].link, exact: due };
       if (sameDay(due, today)) dueToday.push(item);
       else if (due < today) overdue.push(item);
       else if (sameDay(due, tomorrow)) dueTomorrow.push(item);
@@ -1627,7 +1627,7 @@ function sendMonthEndReminders() {
       if (!(d instanceof Date) || d.getFullYear() !== now.getFullYear() || d.getMonth() !== now.getMonth()) return;
       const missing = checks.filter(c => r[c[0] - 1] === '' || r[c[0] - 1] === null).map(c => c[1]);
       if (!links[i].link) missing.push('Ссылка на Band');
-      if (missing.length) gaps.push({ subject: String(r[COL.SUBJECT - 1]), link: links[i].link, missing: missing });
+      if (missing.length) gaps.push({ subject: stripLinkMarkers_(r[COL.SUBJECT - 1]), link: links[i].link, missing: missing });
     });
     if (!gaps.length) return;
     withGaps++;

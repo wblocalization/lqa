@@ -88,7 +88,7 @@ function smetaLookup_(req) {
   const v = t.values;
   return {
     ok: true, found: true, row: t.row, matched: t.matched,
-    subject: v[t.col.subject], contractor: v[t.col.contractor], manager: v[t.col.manager],
+    subject: String(v[t.col.subject] || '').replace(/ \((?:доп\. ссылка|ссылка \d+)\)/g, ''), contractor: v[t.col.contractor], manager: v[t.col.manager],
     link: smetaCellLink_(t, v), total: v[t.col.total],
   };
 }
