@@ -33,6 +33,9 @@
       </span>
     </label>
     <p id="setManagerMsg" class="status err" hidden></p>
+    <label>Папка для смет на ВБ Диске <span class="opt">внутри неё — папка с темой письма; можно «Сметы/2026»</span>
+      <input id="setDiskFolder" type="text" placeholder="Сметы">
+    </label>
     <div class="row-btns">
       <button id="closeSettings" class="btn ghost" type="button">Отмена</button>
       <button id="saveSettings" class="btn" type="button">Сохранить</button>
@@ -249,12 +252,13 @@
       <div class="card">
         <label for="link" class="eyebrow">Ссылка на ВБ Диск</label>
         <div class="with-btn">
-          <input id="link" type="url" required placeholder="https://…">
+          <input id="link" type="url" placeholder="пусто — загружу PDF на ВБ Диск сам">
           <button id="pasteLink" class="btn ghost" type="button" title="Вставить из буфера">Вставить</button>
         </div>
       </div>
 
-      <button id="submit" class="btn primary" type="submit">Записать в таблицу</button>
+      <p id="diskHint" class="hint"></p>
+      <button id="submit" class="btn primary" type="submit">Загрузить на ВБ Диск и записать</button>
     </form>
 
     <section id="done" class="done" hidden>

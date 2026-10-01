@@ -6,7 +6,7 @@ import * as mine from './mine.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
-  settings: $('#settings'), setUrl: $('#setUrl'), setToken: $('#setToken'), setManager: $('#setManager'), managerMsg: $('#setManagerMsg'), retryManagers: $('#retryManagers'),
+  settings: $('#settings'), setUrl: $('#setUrl'), setToken: $('#setToken'), setManager: $('#setManager'), setDiskFolder: $('#setDiskFolder'), managerMsg: $('#setManagerMsg'), retryManagers: $('#retryManagers'),
   openSettings: $('#openSettings'), closeSettings: $('#closeSettings'), saveSettings: $('#saveSettings'),
   tabs: [...document.querySelectorAll('.tab')],
 };
@@ -59,6 +59,7 @@ async function loadManagers() {
 function fillSettings() {
   els.setUrl.value = settings.url;
   els.setToken.value = settings.token;
+  els.setDiskFolder.value = settings.diskFolder || '';
   loadManagers();
 }
 [els.setUrl, els.setToken].forEach((el) => el.addEventListener('change', loadManagers));
@@ -70,7 +71,8 @@ els.openSettings.addEventListener('click', () => {
 });
 els.closeSettings.addEventListener('click', () => { els.settings.hidden = true; });
 els.saveSettings.addEventListener('click', async () => {
-  const patch = { url: els.setUrl.value.trim(), token: els.setToken.value.trim() };
+  const patch = { url: els.setUrl.value.trim(), token: els.setToken.value.trim(),
+    diskFolder: els.setDiskFolder.value.trim().replace(/^\/+|\/+$/g, '') || 'Сметы' };
   if (els.setManager.value) Object.assign(patch, { manager: els.setManager.value, user: els.setManager.value });
   await saveSettings(patch);
   els.settings.hidden = true;

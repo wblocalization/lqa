@@ -1,6 +1,6 @@
 // Общее для вкладок: настройки и связь с Apps Script таблицы.
 
-export const settings = { url: '', token: '', user: '', manager: '' };
+export const settings = { url: '', token: '', user: '', manager: '', diskFolder: 'Сметы' };
 
 export async function loadSettings() {
   const saved = await chrome.storage.local.get('settings');

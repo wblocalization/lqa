@@ -1,6 +1,7 @@
 import * as pdfjs from './vendor/pdf.min.mjs';
 import { parseEstimate, formatMoney } from './parser.js';
-import { isConfigured, api, esc, readClipboard } from './core.js';
+import { settings, isConfigured, api, esc, readClipboard } from './core.js';
+import { uploadToDisk, folderNameFromSubject } from './disk.js';
 
 pdfjs.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('vendor/pdf.worker.min.mjs');
 
@@ -9,10 +10,26 @@ const els = {
   empty: $('#empty'), drop: $('#drop'), file: $('#file'), form: $('#form'), fileName: $('#fileName'),
   reset: $('#reset'), done: $('#done'), doneText: $('#doneText'), again: $('#again'),
   task: $('#task'), rowInfo: $('#rowInfo'), total: $('#total'), totalHint: $('#totalHint'),
-  link: $('#link'), pasteLink: $('#pasteLink'), submit: $('#submit'), status: $('#status'),
+  link: $('#link'), pasteLink: $('#pasteLink'), submit: $('#submit'), status: $('#status'), diskHint: $('#diskHint'),
 };
 
-let current = null; // { fileName } — смета, которая сейчас в форме
+let current = null; // { file, fileName, subject, filled } — смета, которая сейчас в форме
+
+/** Куда ляжет PDF на ВБ Диске: папка из настроек / тема письма. */
+function diskFolders() {
+  const base = String(settings.diskFolder || 'Сметы').split('/').map((x) => x.trim()).filter(Boolean);
+  const name = folderNameFromSubject(current && current.subject) || normTask(els.task.value);
+  return name ? base.concat([name]) : base;
+}
+
+/** Ссылка вписана — просто записываем; пусто — сначала загрузим PDF на диск. */
+function updateDiskHint() {
+  const manual = Boolean(els.link.value.trim());
+  els.submit.textContent = manual ? 'Записать в таблицу' : 'Загрузить на ВБ Диск и записать';
+  els.diskHint.hidden = manual || !current;
+  if (current && !manual) els.diskHint.textContent = `PDF ляжет в «${diskFolders().join(' / ')}»`;
+}
+els.link.addEventListener('input', updateDiskHint);
 
 // ---------- Статус ----------
 function setStatus(text, kind = 'info') {
@@ -64,7 +81,7 @@ async function handleFile(file) {
     return;
   }
 
-  current = { fileName: file.name };
+  current = { file, fileName: file.name, subject: '', filled: false };
   showScreen('form');
   els.fileName.textContent = file.name;
   els.task.value = parsed.task || '';
@@ -74,6 +91,7 @@ async function handleFile(file) {
     : 'Итог с НДС не нашёлся — впишите вручную.';
   els.totalHint.classList.toggle('bad', !parsed.total);
   els.link.value = '';
+  updateDiskHint();
 
   const missing = [!parsed.task && 'номер задачи', !parsed.total && 'итог с НДС'].filter(Boolean);
   setStatus(missing.length ? `Не нашлось: ${missing.join(', ')}. Проверьте поля.` : '', missing.length ? 'err' : 'info');
@@ -115,6 +133,7 @@ async function lookup() {
       return;
     }
     const filled = r.link || r.total;
+    if (current) { current.subject = r.subject || ''; current.filled = Boolean(filled); updateDiskHint(); }
     showRow({
       kind: filled ? 'warn' : '',
       html: `<b>${esc(r.subject || task)}</b><span class="meta">${esc([r.contractor, r.manager].filter(Boolean).join(' · '))}</span>` +
@@ -142,6 +161,7 @@ els.task.addEventListener('input', () => {
 els.pasteLink.addEventListener('click', async () => {
   try {
     els.link.value = await readClipboard();
+    updateDiskHint();
   } catch {
     setStatus('Нет доступа к буферу — вставьте ссылку вручную (Ctrl+V)', 'err');
   }
@@ -150,16 +170,34 @@ els.pasteLink.addEventListener('click', async () => {
 els.form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const task = normTask(els.task.value);
-  const total = Number(els.total.value.replace(/[\s  ₽]/g, '').replace(',', '.'));
-  const link = els.link.value.trim();
+  const total = Number(els.total.value.replace(/[\s  ₽]/g, '').replace(',', '.'));
+  let link = els.link.value.trim();
   if (!task) return setStatus('Укажите номер', 'err');
   if (!(total > 0)) return setStatus('Сумма не похожа на число', 'err');
-  if (!/^https?:\/\//i.test(link)) return setStatus('Вставьте ссылку на смету с ВБ Диска', 'err');
+  if (link && !/^https?:\/\//i.test(link)) return setStatus('Ссылка должна начинаться с https://', 'err');
+  if (!link && !current) return setStatus('Перетащите PDF сметы или вставьте ссылку', 'err');
+
+  // Смета уже есть — спрашиваем до загрузки, чтобы не грузить зря
+  let overwrite = false;
+  if (current && current.filled) {
+    if (!confirm(`В ${task} уже есть смета. Перезаписать?`)) return setStatus('Отменено — ничего не менялось.');
+    overwrite = true;
+  }
 
   els.submit.disabled = true;
-  setStatus('Записываю…');
   try {
-    let r = await api({ action: 'write', task, total, link, fileName: current?.fileName || '' });
+    let where = '';
+    if (!link) {
+      const folders = diskFolders();
+      setStatus(`Загружаю на ВБ Диск: ${folders.join(' / ')}…`);
+      const up = await uploadToDisk(current.file, folders);
+      link = up.link;
+      where = ` · PDF в «${folders.join(' / ')}»`;
+      els.link.value = link;
+      updateDiskHint();
+    }
+    setStatus('Записываю в таблицу…');
+    let r = await api({ action: 'write', task, total, link, fileName: current?.fileName || '', overwrite });
     if (!r.ok && r.error === 'exists') {
       const was = r.total ? `${formatMoney(Number(r.total))} ₽` : 'пусто';
       if (!confirm(`В ${task} уже есть смета (${was}). Перезаписать?`)) {
@@ -169,17 +207,18 @@ els.form.addEventListener('submit', async (e) => {
       r = await api({ action: 'write', task, total, link, fileName: current?.fileName || '', overwrite: true });
     }
     if (!r.ok) throw new Error(r.error);
-    els.doneText.textContent = `${task} · ${formatMoney(total)} ₽ и ссылка в строке ${r.row}`;
+    els.doneText.textContent = `${task} · ${formatMoney(total)} ₽ и ссылка в строке ${r.row}${where}`;
     setStatus('');
     current = null;
     els.file.value = '';
     showScreen('done');
   } catch (err) {
-    setStatus(`Не записалось: ${err.message}`, 'err');
+    setStatus(`Не получилось: ${err.message}`, 'err');
   } finally {
     els.submit.disabled = false;
   }
 });
+
 
 function normTask(s) {
   return String(s).trim().replace(/\s+/g, ' ').toUpperCase();
