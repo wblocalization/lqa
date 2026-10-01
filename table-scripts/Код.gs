@@ -161,7 +161,7 @@ function onTasksEdit_(e) {
       });
     }
     if (col <= COL.LANGS && lastCol >= COL.LANGS) colorizeLanguagesCell(sh, row + i);
-    // Вставили адрес сметы — показываем коротко «Смета [номер]»
+    // Вставили адрес сметы — показываем коротко «Ссылка на смету номер»
     if (col <= COL.ESTIMATE && lastCol >= COL.ESTIMATE && isUrlText_(r[COL.ESTIMATE - 1])) {
       sh.getRange(row + i, COL.ESTIMATE).setRichTextValue(estimateRich_(r[COL.ESTIMATE - 1], r[COL.ID - 1]));
     }
@@ -204,17 +204,21 @@ function htmlSource_(name) {
   return typeof HTML_FILES !== 'undefined' && HTML_FILES[name] != null ? HTML_FILES[name] : null;
 }
 
-/** Адреса смет, вписанные текстом (в т. ч. перенесённые), → «Смета [номер]» со ссылкой. */
+/** Адреса смет, вписанные текстом (в т. ч. перенесённые), → «Ссылка на смету номер» со ссылкой. */
 function estimateLinksToLabels_(sh) {
   const n = dataRowCount_(sh);
   if (!n) return;
   const range = sh.getRange(2, COL.ESTIMATE, n, 1);
   const values = range.getValues();
-  if (!values.some(r => isUrlText_(r[0]))) return;
+  // Голый адрес или подпись прежнего вида («Смета [номер]») → «Ссылка на смету номер»
+  if (!values.some(r => isUrlText_(r[0]) || (ESTIMATE_LABEL_RE.test(str_(r[0])) && !/^Ссылка на смету/.test(str_(r[0]))))) return;
   const ids = sh.getRange(2, COL.ID, n, 1).getValues();
   const rich = range.getRichTextValues();
-  range.setRichTextValues(values.map((r, i) => [isUrlText_(r[0]) ? estimateRich_(r[0], ids[i][0])
-    : rich[i][0] || SpreadsheetApp.newRichTextValue().setText(cellText_(r[0])).build()]));
+  range.setRichTextValues(values.map((r, i) => {
+    const url = estimateUrl_(rich[i][0], r[0]);
+    if (isUrlText_(url) && (isUrlText_(r[0]) || ESTIMATE_LABEL_RE.test(str_(r[0])))) return [estimateRich_(url, ids[i][0])];
+    return [rich[i][0] || SpreadsheetApp.newRichTextValue().setText(cellText_(r[0])).build()];
+  }));
 }
 
 /** Подключает Общее.html в окна: <?!= include('Общее') ?> */
@@ -307,18 +311,18 @@ function linksFromRich_(rt) {
   return { link: urls[0] || '', link2: hasMarker && urls.length > 1 ? urls[urls.length - 1] : '' };
 }
 
-// Смета: в ячейке короткая ссылка «Смета [LIT-26-2232]» вместо длинного адреса
-const ESTIMATE_LABEL_RE = /^Смета( \[[^\]]*\])?$/;
+// Смета: в ячейке короткая ссылка «Ссылка на смету LIT-26-2232» вместо длинного адреса
+const ESTIMATE_LABEL_RE = /^(Смета|Ссылка на смету)( \[[^\]]*\]| \S+)?$/; // и прежний вид «Смета [номер]»
 const isUrlText_ = v => /^https?:\/\/\S+$/i.test(str_(v));
 
 function estimateRich_(url, id) {
   url = str_(url);
-  const label = url ? 'Смета' + (str_(id) ? ' [' + str_(id) + ']' : '') : '';
+  const label = url ? 'Ссылка на смету' + (str_(id) ? ' ' + str_(id) : '') : '';
   const b = SpreadsheetApp.newRichTextValue().setText(label);
   return (url ? b.setLinkUrl(url) : b).build();
 }
 
-/** Адрес сметы из ячейки: ссылка под «Смета […]» или сам текст, если там адрес. */
+/** Адрес сметы из ячейки: ссылка под «Ссылка на смету …» или сам текст, если там адрес. */
 function estimateUrl_(rich, value) {
   const link = linksFromRich_(rich).link;
   if (link) return link;

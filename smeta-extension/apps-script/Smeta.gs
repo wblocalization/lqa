@@ -94,7 +94,7 @@ function smetaLookup_(req) {
 }
 
 
-/** Адрес сметы: ссылка под «Смета [номер]» или сам текст ячейки, если там адрес. */
+/** Адрес сметы: ссылка под «Ссылка на смету номер» или сам текст ячейки, если там адрес. */
 function smetaCellLink_(t, values) {
   const rt = t.sheet.getRange(t.row, t.col.link + 1).getRichTextValue();
   if (rt) {
@@ -102,7 +102,7 @@ function smetaCellLink_(t, values) {
     if (url) return url;
   }
   const v = String(values[t.col.link] || '').trim();
-  return /^Смета( \[[^\]]*\])?$/.test(v) ? '' : v;
+  return /^(Смета|Ссылка на смету)( \[[^\]]*\]| \S+)?$/.test(v) ? '' : v;
 }
 
 function smetaWrite_(req) {
@@ -121,10 +121,10 @@ function smetaWrite_(req) {
   }
 
   const sheet = t.sheet;
-  // В ячейке — короткое «Смета [LIT-26-2232]», адрес — ссылкой под ним
+  // В ячейке — короткое «Ссылка на смету LIT-26-2232», адрес — ссылкой под ним
   const rowId = String(t.values[t.col.task] || '').trim();
   sheet.getRange(t.row, t.col.link + 1).setRichTextValue(
-    SpreadsheetApp.newRichTextValue().setText('Смета' + (rowId ? ' [' + rowId + ']' : '')).setLinkUrl(link).build());
+    SpreadsheetApp.newRichTextValue().setText('Ссылка на смету' + (rowId ? ' ' + rowId : '')).setLinkUrl(link).build());
   sheet.getRange(t.row, t.col.total + 1).setValue(Math.round(total * 100) / 100);
 
   const who = 'Расширение смет' + (req.user ? ' (' + req.user + ')' : '');
