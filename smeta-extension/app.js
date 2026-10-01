@@ -6,7 +6,7 @@ import * as mine from './mine.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
-  settings: $('#settings'), setUrl: $('#setUrl'), setToken: $('#setToken'), setManager: $('#setManager'),
+  settings: $('#settings'), setUrl: $('#setUrl'), setToken: $('#setToken'), setManager: $('#setManager'), managerMsg: $('#setManagerMsg'), retryManagers: $('#retryManagers'),
   openSettings: $('#openSettings'), closeSettings: $('#closeSettings'), saveSettings: $('#saveSettings'),
   tabs: [...document.querySelectorAll('.tab')],
 };
@@ -36,15 +36,23 @@ async function loadManagers() {
     return;
   }
   els.setManager.innerHTML = '<option value="">Загружаю менеджеров…</option>';
+  els.managerMsg.hidden = true;
   try {
-    const r = await api({ action: 'taskForm' }, conf);
+    // «managers» — быстрый запрос; старый скрипт его не знает — тогда берём из справочников формы
+    let r = await api({ action: 'managers' }, conf);
+    if (!r.ok && /Неизвестное действие/.test(r.error || '')) {
+      const f = await api({ action: 'taskForm' }, conf);
+      r = f.ok ? { ok: true, managers: f.lists.managers } : f;
+    }
     if (!r.ok) throw new Error(r.error);
     if (seq !== managersSeq) return;
-    const names = r.lists.managers;
     els.setManager.innerHTML = '<option value="">— выберите себя —</option>' +
-      names.map((m) => `<option value="${esc(m)}"${m === current ? ' selected' : ''}>${esc(m)}</option>`).join('');
+      r.managers.map((m) => `<option value="${esc(m)}"${m === current ? ' selected' : ''}>${esc(m)}</option>`).join('');
   } catch (e) {
-    if (seq === managersSeq) els.setManager.innerHTML = `<option value="">Не загрузилось: ${esc(e.message)}</option>`;
+    if (seq !== managersSeq) return;
+    els.setManager.innerHTML = '<option value="">Не загрузилось</option>';
+    els.managerMsg.textContent = `Не загрузилось: ${e.message}`;
+    els.managerMsg.hidden = false;
   }
 }
 
@@ -54,6 +62,7 @@ function fillSettings() {
   loadManagers();
 }
 [els.setUrl, els.setToken].forEach((el) => el.addEventListener('change', loadManagers));
+els.retryManagers.addEventListener('click', loadManagers);
 
 els.openSettings.addEventListener('click', () => {
   if (els.settings.hidden) fillSettings();

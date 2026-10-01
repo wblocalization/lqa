@@ -2514,18 +2514,30 @@ function doPost(e) {
   const token = PropertiesService.getScriptProperties().getProperty('SMETA_TOKEN');
   if (!token || req.token !== token) return smetaJson_({ ok: false, error: 'Неверный токен' });
 
-  const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
-  SCRIPT_LOCK_HELD = true; // Код.gs не будет брать блокировку второй раз
+  // Чтение — без очереди: панель шлёт несколько запросов сразу, и они не должны ждать друг друга
   try {
+    if (req.action === 'managers') { requireTableScript_(); return smetaJson_({ ok: true, managers: getListsData().managers }); }
     if (req.action === 'lookup') return smetaJson_(smetaLookup_(req));
-    if (req.action === 'write') return smetaJson_(smetaWrite_(req));
     if (req.action === 'taskForm') return smetaJson_(taskForm_());
     if (req.action === 'previewTaskId') return smetaJson_(previewTaskId_(req));
-    if (req.action === 'addTask') return smetaJson_(addTask_(req));
     // Запросы из расширения выполняются от имени владельца таблицы, поэтому «кто я» берём только из настроек расширения
     if (req.action === 'checkDuplicates') { requireTableScript_(); return smetaJson_({ ok: true, duplicates: findDuplicateTasks(req.task || {}) }); }
     if (req.action === 'myTasks') { requireTableScript_(); return smetaJson_(Object.assign({ ok: true }, getMyOpenTasks(req.manager || '*'))); }
+  } catch (err) {
+    return smetaJson_({ ok: false, error: String(err && err.message || err) });
+  }
+
+  // Запись — по одному, чтобы два человека не получили один номер и не затёрли строку друг другу
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+  } catch (err) {
+    return smetaJson_({ ok: false, error: 'Таблица занята другим запросом, попробуйте ещё раз через минуту' });
+  }
+  SCRIPT_LOCK_HELD = true; // Код.gs не будет брать блокировку второй раз
+  try {
+    if (req.action === 'write') return smetaJson_(smetaWrite_(req));
+    if (req.action === 'addTask') return smetaJson_(addTask_(req));
     if (req.action === 'setStatus') return smetaJson_(setStatus_(req));
     return smetaJson_({ ok: false, error: 'Неизвестное действие' });
   } catch (err) {
@@ -2534,6 +2546,11 @@ function doPost(e) {
     SCRIPT_LOCK_HELD = false;
     lock.releaseLock();
   }
+}
+
+/** Проверка: открыть адрес веб-приложения в браузере — должно написать, что скрипт работает. */
+function doGet() {
+  return ContentService.createTextOutput('Скрипт работает. Адрес правильный — вставьте его в настройки расширения.');
 }
 
 function smetaLookup_(req) {

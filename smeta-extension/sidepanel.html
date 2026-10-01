@@ -27,8 +27,12 @@
       <input id="setToken" type="password" autocomplete="off">
     </label>
     <label>Кто вы <span class="opt">будете менеджером в новых задачах и во вкладке «Мои»</span>
-      <select id="setManager"><option value="">Сначала адрес и токен</option></select>
+      <span class="with-btn">
+        <select id="setManager"><option value="">Сначала адрес и токен</option></select>
+        <button id="retryManagers" class="btn ghost small" type="button" title="Загрузить список ещё раз">↻</button>
+      </span>
     </label>
+    <p id="setManagerMsg" class="status err" hidden></p>
     <div class="row-btns">
       <button id="closeSettings" class="btn ghost" type="button">Отмена</button>
       <button id="saveSettings" class="btn" type="button">Сохранить</button>
