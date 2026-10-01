@@ -1,5 +1,5 @@
 // Боковая панель: вкладки «Новая задача» / «Мои задачи» / «Смета» и общие настройки.
-import { settings, loadSettings, saveSettings, isConfigured, api, esc } from './core.js';
+import { settings, loadSettings, saveSettings, isConfigured, api, esc, DEFAULT_DISK_FOLDER } from './core.js';
 import * as smeta from './smeta.js';
 import * as task from './task.js';
 import * as mine from './mine.js';
@@ -25,6 +25,18 @@ function showTab(name) {
 els.tabs.forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));
 
 // ---------- Настройки ----------
+/**
+ * Папка для смет: путь («localization/Сметы») или ссылка на папку из адресной строки ВБ Диска
+ * (…/apps/files/files/123?dir=/localization/Сметы) — из ссылки берём путь после dir=.
+ */
+function diskFolderFromInput(value) {
+  let v = String(value || '').trim();
+  const m = v.match(/[?&]dir=([^&#]*)/);
+  if (m) {
+    try { v = decodeURIComponent(m[1].replace(/\+/g, ' ')); } catch { v = m[1]; }
+  }
+  return v.split('/').map((x) => x.trim()).filter(Boolean).join('/');
+}
 // «Кто вы» — менеджер из «Списков»: подставляется в новые задачи, во вкладку «Мои задачи» и в «Журнал».
 let managersSeq = 0;
 async function loadManagers() {
@@ -72,7 +84,7 @@ els.openSettings.addEventListener('click', () => {
 els.closeSettings.addEventListener('click', () => { els.settings.hidden = true; });
 els.saveSettings.addEventListener('click', async () => {
   const patch = { url: els.setUrl.value.trim(), token: els.setToken.value.trim(),
-    diskFolder: els.setDiskFolder.value.trim().replace(/^\/+|\/+$/g, '') || 'Сметы' };
+    diskFolder: diskFolderFromInput(els.setDiskFolder.value) || DEFAULT_DISK_FOLDER };
   if (els.setManager.value) Object.assign(patch, { manager: els.setManager.value, user: els.setManager.value });
   await saveSettings(patch);
   els.settings.hidden = true;

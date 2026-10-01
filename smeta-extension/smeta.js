@@ -1,6 +1,6 @@
 import * as pdfjs from './vendor/pdf.min.mjs';
 import { parseEstimate, formatMoney } from './parser.js';
-import { settings, isConfigured, api, esc, readClipboard } from './core.js';
+import { settings, isConfigured, api, esc, readClipboard, DEFAULT_DISK_FOLDER } from './core.js';
 import { uploadToDisk, folderNameFromSubject } from './disk.js';
 
 pdfjs.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('vendor/pdf.worker.min.mjs');
@@ -17,7 +17,7 @@ let current = null; // { file, fileName, subject, filled } — смета, ко�
 
 /** Куда ляжет PDF на ВБ Диске: папка из настроек / тема письма. */
 function diskFolders() {
-  const base = String(settings.diskFolder || 'Сметы').split('/').map((x) => x.trim()).filter(Boolean);
+  const base = String(settings.diskFolder || DEFAULT_DISK_FOLDER).split('/').map((x) => x.trim()).filter(Boolean);
   const name = folderNameFromSubject(current && current.subject) || normTask(els.task.value);
   return name ? base.concat([name]) : base;
 }

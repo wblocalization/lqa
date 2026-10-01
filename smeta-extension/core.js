@@ -1,10 +1,14 @@
 // Общее для вкладок: настройки и связь с Apps Script таблицы.
 
-export const settings = { url: '', token: '', user: '', manager: '', diskFolder: 'Сметы' };
+// Куда класть сметы на ВБ Диске: общая папка команды локализации
+export const DEFAULT_DISK_FOLDER = 'localization/Сметы';
+export const settings = { url: '', token: '', user: '', manager: '', diskFolder: DEFAULT_DISK_FOLDER };
 
 export async function loadSettings() {
   const saved = await chrome.storage.local.get('settings');
   Object.assign(settings, saved.settings || {});
+  // В 0.7.0 по умолчанию была папка «Сметы» в корне — правильная папка команды: localization/Сметы
+  if (!settings.diskFolder || settings.diskFolder === 'Сметы') settings.diskFolder = DEFAULT_DISK_FOLDER;
   return settings;
 }
 
