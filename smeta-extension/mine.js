@@ -1,4 +1,4 @@
-// Вкладка «Мои»: открытые задачи менеджера, статус меняется прямо здесь.
+// Вкладка «Мои задачи»: открытые задачи менеджера, статус меняется прямо здесь.
 import { settings, saveSettings, isConfigured, api, esc } from './core.js';
 import { openEditor } from './edit.js';
 

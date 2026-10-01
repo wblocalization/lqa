@@ -52,7 +52,7 @@ function close() {
 els.back.addEventListener('click', close);
 
 /**
- * Открыть задачу на правку. ref — { row, id, origSubject } из списка «Мои» или из поиска.
+ * Открыть задачу на правку. ref — { row, id, origSubject } из списка «Мои задачи» или из поиска.
  * done() вызывается после сохранения — обновить список.
  */
 export async function openEditor(ref, done) {

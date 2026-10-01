@@ -1,4 +1,4 @@
-// Боковая панель: вкладки «Задача» / «Смета» и общие настройки.
+// Боковая панель: вкладки «Новая задача» / «Мои задачи» / «Смета» и общие настройки.
 import { settings, loadSettings, saveSettings, isConfigured, api, esc } from './core.js';
 import * as smeta from './smeta.js';
 import * as task from './task.js';
@@ -25,7 +25,7 @@ function showTab(name) {
 els.tabs.forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));
 
 // ---------- Настройки ----------
-// «Кто вы» — менеджер из «Списков»: подставляется в новые задачи, во вкладку «Мои» и в «Журнал».
+// «Кто вы» — менеджер из «Списков»: подставляется в новые задачи, во вкладку «Мои задачи» и в «Журнал».
 let managersSeq = 0;
 async function loadManagers() {
   const seq = ++managersSeq;
@@ -91,5 +91,5 @@ if (!isConfigured() || !settings.manager) {
   els.settings.hidden = false;
 }
 let startTab = 'task';
-try { startTab = localStorage.getItem('tab') || 'task'; } catch { /* по умолчанию «Задача» */ }
+try { startTab = localStorage.getItem('tab') || 'task'; } catch { /* по умолчанию «Новая задача» */ }
 showTab(['smeta', 'mine'].includes(startTab) ? startTab : 'task');
