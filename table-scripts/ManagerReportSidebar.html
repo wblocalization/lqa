@@ -61,7 +61,7 @@
     d.groups.forEach(g => {
       html += `<div class="group"><h4>${esc(g.ticket || '(без тикета)')}</h4>` +
         g.lines.map(l => `<div class="line"><span>${l.link ? `<a href="${esc(l.link)}" target="_blank">${esc(l.subject)}</a>` : esc(l.subject)}` +
-          (l.link2 ? ` <a href="${esc(l.link2)}" target="_blank" class="small">(доп. ссылка)</a>` : '') + `</span><span class="v">${l.sp} SP</span></div>`).join('') +
+          l.link2.split('\n').filter(Boolean).map((u, i) => ` <a href="${esc(u)}" target="_blank" class="small">(ссылка ${i + 2})</a>`).join('') + `</span><span class="v">${l.sp} SP</span></div>`).join('') +
         `<div class="line"><span class="muted">Итого по тикету</span><span class="v">${g.ticketTotal} SP</span></div></div>`;
     });
     html += `<div class="total">Общий итог по ${esc(d.manager)}${d.monthLabel ? ' за ' + esc(d.monthLabel) : ''}: ${d.grandTotal} SP</div>`;

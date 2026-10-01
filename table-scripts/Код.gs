@@ -30,7 +30,18 @@ const TR_COLS = 9;
 
 const CLOSED_STATUSES = ['Отдано', 'Отменено'];
 const READINESS = ['Не начато', 'В работе', 'Готово', 'На проверке'];
-const LINK2_MARKER = ' (доп. ссылка)';
+const LINK2_MARKER = ' (доп. ссылка)'; // прежний вид; теперь доп. ссылки — « (ссылка 2)», « (ссылка 3)»…
+const LINK_MARKERS_RE = / \((?:доп\. ссылка|ссылка \d+)\)/g;
+
+/** Тема без подписей доп. ссылок. */
+function stripLinkMarkers_(s) {
+  return String(s == null ? '' : s).replace(LINK_MARKERS_RE, '');
+}
+
+/** Доп. ссылки на Band: строка «по одной в строке» (или через пробел) → список адресов. */
+function extraLinks_(s) {
+  return String(s || '').split(/[\s,;]+/).map(x => x.trim()).filter(x => /^https?:\/\//i.test(x));
+}
 
 function getTasksSheet() {
   return findSheet_(TASKS_SHEET, n => n.indexOf('задачи') !== -1 && n.indexOf('перевод') === -1);
@@ -266,7 +277,7 @@ function str_(v) {
 
 /** «[LIT-8][LogrusIT][az]… Новые строчки» → «Новые строчки». */
 function shortSubject_(s) {
-  return String(s || '').replace(LINK2_MARKER, '').replace(/^(\s*\[[^\]]*\])+\s*/, '').trim() || String(s || '');
+  return stripLinkMarkers_(s).replace(/^(\s*\[[^\]]*\])+\s*/, '').trim() || String(s || '');
 }
 
 /** «1234», «local 1234», «LOCAL-1234» → «LOCAL-1234». */
@@ -307,8 +318,9 @@ function linksFromRich_(rt) {
     const u = run.getLinkUrl();
     if (u && urls.indexOf(u) === -1) urls.push(u);
   });
-  const hasMarker = rt.getText().indexOf(LINK2_MARKER) !== -1;
-  return { link: urls[0] || '', link2: hasMarker && urls.length > 1 ? urls[urls.length - 1] : '' };
+  // link — основная (на теме), link2 — доп. ссылки по одной в строке
+  const hasMarker = /\((?:доп\. ссылка|ссылка \d+)\)/.test(rt.getText());
+  return { link: urls[0] || '', link2: hasMarker ? urls.slice(1).join('\n') : '' };
 }
 
 // Смета: в ячейке короткая ссылка «Ссылка на смету LIT-26-2232» вместо длинного адреса
@@ -345,13 +357,19 @@ function getSubjectLink2(sh, row) {
   return linksFromRich_(sh.getRange(row, COL.SUBJECT).getRichTextValue()).link2;
 }
 
-/** Тема со вшитой ссылкой и, если есть, «(доп. ссылка)» со второй. */
+/** Тема со вшитой основной ссылкой и после неё «(ссылка 2)», «(ссылка 3)»… — доп. ссылки на Band. */
 function buildSubjectRich_(text, link, link2) {
-  text = String(text || '');
-  const full = link2 && text ? text + LINK2_MARKER : text;
+  text = stripLinkMarkers_(text);
+  const extra = text ? extraLinks_(link2) : [];
+  const marks = extra.map((u, i) => ' (ссылка ' + (i + 2) + ')');
+  const full = text + marks.join('');
   let b = SpreadsheetApp.newRichTextValue().setText(full);
   if (text && link) b = b.setLinkUrl(0, text.length, link);
-  if (text && link2) b = b.setLinkUrl(text.length, full.length, link2);
+  let pos = text.length;
+  extra.forEach((u, i) => {
+    b = b.setLinkUrl(pos + 1, pos + marks[i].length, u); // без пробела перед скобкой
+    pos += marks[i].length;
+  });
   return b.build();
 }
 
@@ -904,7 +922,7 @@ function getTaskForEdit(row) {
   const subject = String(r[COL.SUBJECT - 1] || '');
   return {
     row: row, id: str_(r[COL.ID - 1]), ticket: str_(r[COL.TICKET - 1]),
-    subject: subject.replace(LINK2_MARKER, ''), origSubject: subject,
+    subject: stripLinkMarkers_(subject), origSubject: subject,
     link: links.link, link2: links.link2,
     date: fmtDate_(r[COL.DATE - 1], 'yyyy-MM-dd'), product: str_(r[COL.PRODUCT - 1]),
     customer: str_(r[COL.CUSTOMER - 1]), languages: str_(r[COL.LANGS - 1]),
@@ -987,8 +1005,9 @@ function saveTaskEdits(task) {
     // Тема со ссылками: пишем, только если что-то поменялось, чтобы не трогать лишнее
     const subject = str_(task.subject);
     const oldLinks = linksFromRich_(sh.getRange(row, COL.SUBJECT).getRichTextValue());
-    const oldSubject = String(old[COL.SUBJECT - 1]).replace(LINK2_MARKER, '');
-    if (subject !== oldSubject || str_(task.link) !== oldLinks.link || str_(task.link2) !== oldLinks.link2) {
+    const oldSubject = stripLinkMarkers_(old[COL.SUBJECT - 1]);
+    const newExtra = extraLinks_(task.link2).join('\n');
+    if (subject !== oldSubject || str_(task.link) !== oldLinks.link || newExtra !== oldLinks.link2) {
       sh.getRange(row, COL.SUBJECT).setRichTextValue(buildSubjectRich_(subject, str_(task.link), str_(task.link2)));
       logChange('Правка', id, 'Тема письма', oldSubject, subject);
     }
@@ -1024,7 +1043,7 @@ function findDuplicateTasks(task) {
   const out = [];
   rows.forEach((r, i) => {
     if (!r[COL.SUBJECT - 1] || out.length >= 5) return;
-    const sameLink = link && links[i] && (links[i].link === link || links[i].link2 === link);
+    const sameLink = link && links[i] && (links[i].link === link || extraLinks_(links[i].link2).indexOf(link) !== -1);
     const sameSubject = subject && shortSubject_(r[COL.SUBJECT - 1]).toLowerCase() === subject &&
       normTicket_(r[COL.TICKET - 1]) === ticket;
     if (sameLink || sameSubject) {
@@ -1267,7 +1286,7 @@ function getManagerReport(manager, monthStr) {
   let copyText = '';
   list.forEach(g => {
     copyText += (g.ticket || '(без тикета)') + '\n';
-    g.lines.forEach(l => { copyText += l.subject + ' — ' + l.sp + ' SP' + (l.link2 ? ' (доп. ссылка: ' + l.link2 + ')' : '') + '\n'; });
+    g.lines.forEach(l => { copyText += l.subject + ' — ' + l.sp + ' SP' + (l.link2 ? ' (доп. ссылки: ' + extraLinks_(l.link2).join(', ') + ')' : '') + '\n'; });
     copyText += 'Итого по тикету: ' + g.ticketTotal + ' SP\n\n';
   });
   copyText += 'Общий итог по ' + manager + ': ' + grandTotal + ' SP';
@@ -1282,10 +1301,10 @@ function exportReportToDoc(manager, monthStr) {
   const title = 'Отчёт по SP — ' + manager + (report.monthLabel ? ' — ' + report.monthLabel : '');
   const ss = SpreadsheetApp.create(title);
   const sheet = ss.getSheets()[0].setName('Отчёт');
-  const rows = [['Тикет', 'Тема', 'SP', 'Доп. ссылка']];
+  const rows = [['Тикет', 'Тема', 'SP', 'Доп. ссылки']];
   const rich = [];
   report.groups.forEach(g => {
-    g.lines.forEach(l => { rows.push([g.ticket || '(без тикета)', l.subject, l.sp, l.link2 || '']); rich.push([rows.length, l.subject, l.link]); });
+    g.lines.forEach(l => { rows.push([g.ticket || '(без тикета)', l.subject, l.sp, extraLinks_(l.link2).join('\n')]); rich.push([rows.length, l.subject, l.link]); });
     rows.push(['', 'Итого по тикету', g.ticketTotal, '']);
     rows.push(['', '', '', '']);
   });

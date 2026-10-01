@@ -100,7 +100,7 @@ test('Добавить задачу: номер LIT-26-2232, тема, ссыл�
   assert.equal(sh.getLastRow(), before + 1);
   const r = sh.getRange(2, 1, 1, 17).getValues()[0];
   assert.equal(r[0], 'LIT-26-2232');
-  assert.equal(r[2], '[LIT-26-2232][LogrusIT][ka][kk][Магазинка] Новые строчки (доп. ссылка)');
+  assert.equal(r[2], '[LIT-26-2232][LogrusIT][ka][kk][Магазинка] Новые строчки (ссылка 2)');
   assert.equal(r[3].getDate(), 1); assert.equal(r[3].getMonth(), 9);
   assert.equal(r[15], 3);
   same(G.linksFromRich_(sh.getRange(2, 3).getRichTextValue()), { link: 'https://band/a', link2: 'https://band/b' });
@@ -149,6 +149,31 @@ test('Правка не теряет доп. ссылку', () => {
   const rt = tasks().getRange(rowOf('LIT-1'), 3).getRichTextValue();
   same(G.linksFromRich_(rt), { link: 'https://band/one', link2: 'https://band/two' });
   assert.equal(tasks().getRange(rowOf('LIT-1'), 17).getValue(), 'поправили');
+});
+
+test('Несколько доп. ссылок: «(ссылка 2)», «(ссылка 3)» после темы', () => {
+  const id = G.submitNewTaskFromDialog({ contractor: 'LogrusIT', subject: 'Три переписки', link: 'https://band/m',
+    link2: 'https://band/x\nhttps://band/y  https://band/z', languages: [] });
+  const row = rowOf(id);
+  const rt = tasks().getRange(row, 3).getRichTextValue();
+  assert.match(rt.getText(), /Три переписки \(ссылка 2\) \(ссылка 3\) \(ссылка 4\)$/);
+  same(G.linksFromRich_(rt), { link: 'https://band/m', link2: 'https://band/x\nhttps://band/y\nhttps://band/z' });
+  const t = G.getTaskForEdit(row);
+  assert.ok(!/ссылка \d/.test(t.subject), t.subject);
+  assert.equal(G.findDuplicateTasks({ subject: 'другое', link: 'https://band/y' }).length, 1, 'дубль и по доп. ссылке');
+  G.saveTaskEdits({ ...t, link2: 'https://band/y' });
+  const rt2 = tasks().getRange(row, 3).getRichTextValue();
+  assert.match(rt2.getText(), /Три переписки \(ссылка 2\)$/);
+  same(G.linksFromRich_(rt2), { link: 'https://band/m', link2: 'https://band/y' });
+  // Прежний вид «(доп. ссылка)» читается и при правке переходит в новый
+  const old = G.getTaskForEdit(rowOf('LIT-1'));
+  G.saveTaskEdits({ ...old, link2: old.link2 + '\nhttps://band/three' });
+  const rt3 = tasks().getRange(rowOf('LIT-1'), 3).getRichTextValue();
+  assert.match(rt3.getText(), / \(ссылка 2\) \(ссылка 3\)$/);
+  assert.ok(!rt3.getText().includes('доп. ссылка'));
+  same(G.linksFromRich_(rt3).link2.split('\n'), ['https://band/two', 'https://band/three']);
+  G.saveTaskEdits({ ...G.getTaskForEdit(rowOf('LIT-1')), link2: 'https://band/two' }); // как было для следующих проверок
+  G.deleteTask(row, id, tasks().getRange(row, 3).getValue());
 });
 
 test('Очистка поля тоже попадает в журнал', () => {
@@ -408,13 +433,14 @@ test('Перенос истории из старой таблицы', { skip: !
   assert.equal(g.filter(r => r[11] !== '').length, 1, 'сумма не задвоилась');
   assert.ok(g.every(r => r[1] === 'LOCAL-493'), 'тикет из колонки «Задача»');
   assert.ok(g.every(r => r[4] === 'WBP'), 'сторона → продукт по памятке');
-  // Три ссылки в одной ячейке: первая — на тему, вторая — «(доп. ссылка)», третья — в комментарий
+  // Три ссылки в одной ячейке: первая — на тему, остальные — «(ссылка 2)», «(ссылка 3)»
   const multi = rows.findIndex(r => r[0] === 'LIT-26-2188') + 1;
   same(G.linksFromRich_(tasks().getRange(multi, 3).getRichTextValue()),
-    { link: 'https://band.wb.ru/wb/pl/tpw8mh66tpd7ung4siq9g96hoh', link2: 'https://band.wb.ru/wb/pl/tjfa9pqwnprk3eorhzjinzkhjy' });
+    { link: 'https://band.wb.ru/wb/pl/tpw8mh66tpd7ung4siq9g96hoh', link2: 'https://band.wb.ru/wb/pl/tjfa9pqwnprk3eorhzjinzkhjy\nhttps://band.wb.ru/wb/pl/mytom1ojftg3789opd3c7ioe1o' });
+  assert.match(tasks().getRange(multi, 3).getValue(), / \(ссылка 2\) \(ссылка 3\)$/);
   // Смета из старой таблицы — тоже «Ссылка на смету номер» со ссылкой
   same([tasks().getRange(multi, 11).getValue(), G.getTaskForEdit(multi).estimateLink], ['Ссылка на смету LIT-26-2188', 'https://disk.wb.ru/f/83009693']);
-  assert.match(tasks().getRange(multi, 17).getValue(), /Ещё ссылки: https:\/\/band.wb.ru\/wb\/pl\/mytom1ojftg3789opd3c7ioe1o/);
+  assert.ok(!/Ещё ссылки/.test(tasks().getRange(multi, 17).getValue()));
   const firstOld = rows.findIndex(r => r[0] === 'LIT-25-1') + 1;
   assert.equal(G.linksFromRich_(tasks().getRange(firstOld, 3).getRichTextValue()).link.slice(0, 26), 'https://band.wb.ru/wb/pl/g');
   // Весь лист по дате, свежие сверху (без дат — внизу)

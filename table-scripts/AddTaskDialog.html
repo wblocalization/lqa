@@ -43,6 +43,8 @@
 
     <label class="field"><span>Тема <span class="req">*</span></span><input type="text" id="subject" placeholder="Только суть — номер и коды добавятся сами"></label>
     <label class="field">Ссылка на Band<input type="url" id="link" placeholder="https://band.wb.ru/…"></label>
+    <label class="field">Ещё ссылки на Band <span class="muted" style="font-weight:400">если переписок несколько</span>
+      <textarea id="link2" rows="1" style="min-height:0;resize:none;overflow:hidden" placeholder="каждая с новой строки — в таблице станут «(ссылка 2)», «(ссылка 3)» после темы"></textarea></label>
 
     <div class="two">
       <label class="field">Продукт<select id="product"></select></label>
@@ -62,9 +64,8 @@
     </div>
 
     <details class="more">
-      <summary>Ещё поля: доп. ссылка, смета, итого, SP, статус отдачи, комментарий</summary>
+      <summary>Ещё поля: смета, итого, SP, статус отдачи, комментарий</summary>
       <div class="stack">
-        <label class="field">Доп. ссылка на Band<input type="url" id="link2" placeholder="если задача из двух переписок"></label>
         <label class="field">Смета (ссылка)<input type="url" id="estimateLink"></label>
         <div class="three">
           <label class="field">Итого с НДС, ₽<input type="number" id="total" step="0.01" min="0"></label>
@@ -228,6 +229,13 @@
       });
       return storeTemplates('', 'Загружено шаблонов: ' + list.length + (replaced ? ' (заменено с тем же названием: ' + replaced + ')' : ''));
     }).catch(e => setMsg($('#msg'), 'Не получилось загрузить: ' + e.message, 'err'));
+  });
+
+  // «Ещё ссылки» растёт по мере вставки: каждая ссылка — своя строка
+  $('#link2').addEventListener('input', () => {
+    const t = $('#link2');
+    t.style.height = 'auto';
+    t.style.height = (t.scrollHeight + 2) + 'px';
   });
 
   $('#copyBtn').addEventListener('click', () => {

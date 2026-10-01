@@ -228,8 +228,9 @@ function addTask_(req) {
   if (!task.contractor) return { ok: false, error: 'Выберите подрядчика' };
   if (!task.subject) return { ok: false, error: 'Впишите тему' };
   if (task.ticket && !/^LOCAL-\d+$/.test(task.ticket)) return { ok: false, error: 'Тикет должен быть вида LOCAL-1234' };
-  ['link', 'link2', 'estimateLink'].forEach(function (k) {
-    if (task[k] && !/^https?:\/\//i.test(task[k])) throw new Error('Ссылка должна начинаться с http: ' + task[k]);
+  // link2 — доп. ссылки на Band, по одной в строке
+  [task.link, task.estimateLink].concat(task.link2.split(/[\s,;]+/)).forEach(function (u) {
+    if (u && !/^https?:\/\//i.test(u)) throw new Error('Ссылка должна начинаться с http: ' + u);
   });
 
   // В «Журнал» пишем, что задачу добавили из расширения и кто.

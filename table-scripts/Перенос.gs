@@ -155,7 +155,7 @@ function planFromSource_(src) {
   const existing = {}, existingKeys = {};
   const cur = readRows_(tasks, COL.DATE);
   const curLinks = subjectLinks_(tasks);
-  const keyOf = (subject, date, link) => [str_(subject).replace(LINK2_MARKER, ''), fmtDate_(date, 'yyyy-MM-dd') || str_(date), link || ''].join('|');
+  const keyOf = (subject, date, link) => [stripLinkMarkers_(subject), fmtDate_(date, 'yyyy-MM-dd') || str_(date), link || ''].join('|');
   cur.forEach((r, i) => {
     if (str_(r[COL.ID - 1])) existing[str_(r[COL.ID - 1])] = true;
     else existingKeys[keyOf(r[COL.SUBJECT - 1], r[COL.DATE - 1], curLinks[i] && curLinks[i].link)] = true;
@@ -174,13 +174,12 @@ function planFromSource_(src) {
     // «Задача» в старой таблице — чаще номер тикета (LOCAL-493), иначе описание
     const ticketMatch = taskText.match(/^LOCAL[-\s]?(\d+)$/i);
     const ticket = ticketMatch ? 'LOCAL-' + ticketMatch[1] : '';
-    // В одной ячейке бывает несколько ссылок на Band: первая — на тему, вторая — «(доп. ссылка)», остальные — в комментарий
+    // В одной ячейке бывает несколько ссылок на Band: первая — на тему, остальные — «(ссылка 2)», «(ссылка 3)»…
     const urls = get(OLD.BAND).match(/https?:\/\/[^\s,;]+/g) || [];
     const band = urls[0] || links[i - 1] || ''; // ссылка ячейки — если в тексте вместо адреса подпись
     const extra = urls.filter(u => u !== band);
     const comment = [
       get(OLD.COMMENT),
-      extra.length > 1 ? 'Ещё ссылки: ' + extra.slice(1).join(' ') : '',
       taskText && !ticketMatch && taskText !== subject ? 'Задача: ' + taskText : '',
       get(OLD.COMPLAINTS) ? 'Жалобы на заказчика: ' + get(OLD.COMPLAINTS) : ''
     ].filter(Boolean).join('\n');
@@ -192,7 +191,7 @@ function planFromSource_(src) {
 
     rows.push({
       link: band,
-      link2: extra[0] || '',
+      link2: extra.join('\n'),
       values: [
         id, ticket, subject || taskText || '(без темы)', date, OLD_SIDE_TO_PRODUCT[side] || side,
         get(OLD.CUSTOMER), get(OLD.LANGS), deadline, v[OLD.DUE - 1] instanceof Date ? v[OLD.DUE - 1] : get(OLD.DUE),

@@ -84,6 +84,7 @@ function buildForm() {
 function resetForm() {
   const tpl = els.template.value;
   els.form.reset();
+  els.link2.style.height = '';
   els.template.value = tpl; // выбранный шаблон остаётся выбранным, но поля — с нуля
   els.date.value = today();
   if (settings.manager && lists.managers.includes(settings.manager)) els.manager.value = settings.manager;
@@ -271,6 +272,13 @@ els.copyPreview.addEventListener('click', async () => {
   setTimeout(() => { els.copyPreview.textContent = 'Скопировать'; }, 1500);
 });
 
+// «Ещё ссылки» растёт по мере вставки: каждая ссылка — своя строка
+function growLinks() {
+  els.link2.style.height = 'auto';
+  els.link2.style.height = `${els.link2.scrollHeight + 2}px`;
+}
+els.link2.addEventListener('input', growLinks);
+
 els.pasteLink.addEventListener('click', async () => {
   try {
     els.link.value = await readClipboard();
@@ -290,7 +298,7 @@ els.form.addEventListener('submit', async (e) => {
   const task = {
     ticket: ticketNum ? `LOCAL-${ticketNum}` : '',
     contractor: els.contractor.value, subject: els.subject.value.trim(),
-    link: els.link.value.trim(), link2: els.link2.value.trim(),
+    link: els.link.value.trim(), link2: els.link2.value.split(/[\s,;]+/).filter(Boolean).join('\n'),
     date: els.date.value, product: els.product.value, customer: els.customer.value.trim(),
     deadline: els.deadline.value, exactDeadline: els.exactDeadline.value,
     status: els.status.value, deliveryStatus: els.deliveryStatus.value,
