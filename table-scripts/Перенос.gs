@@ -277,7 +277,7 @@ function writeArchiveSheet_(name, rows) {
     if (!sh) {
       sh = ss.insertSheet(name);
       sh.getRange(1, 1, 1, TASK_COLS).setValues(getTasksSheet().getRange(1, 1, 1, TASK_COLS).getValues())
-        .setBackground('#2D3340').setFontColor('#FFFFFF').setFontWeight('bold').setFontFamily('Arial').setWrap(true);
+        .setBackground('#2D3340').setFontColor('#FFFFFF').setFontWeight('bold').setFontFamily(FONT).setWrap(true);
       sh.setFrozenRows(1);
     }
     const start = Math.max(sh.getLastRow(), 1) + 1;
@@ -291,7 +291,7 @@ function writeArchiveSheet_(name, rows) {
         .setRichTextValues(part.map(p => [buildSubjectRich_(String(p.values[COL.SUBJECT - 1]), p.link, p.link2)]));
     }
     const n = sh.getLastRow() - 1;
-    sh.getRange(2, 1, n, TASK_COLS).setFontFamily('Arial').setFontSize(10).setVerticalAlignment('top');
+    sh.getRange(2, 1, n, TASK_COLS).setFontFamily(FONT).setFontSize(10).setVerticalAlignment('middle').setWrap(true);
     sh.getRange(2, COL.DATE, n, 1).setNumberFormat('dd.mm.yyyy');
     sh.getRange(2, COL.DUE, n, 1).setNumberFormat('dd.mm.yyyy');
     sh.getRange(2, COL.TOTAL, n, 1).setNumberFormat('#,##0.00');

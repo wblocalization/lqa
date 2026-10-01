@@ -498,6 +498,7 @@ function personByEmail_(nameCol) {
 
 const HEAD_BG = '#2D3340';
 const INK = '#1F2328';
+const FONT = 'Roboto'; // родной шрифт Google Таблиц
 
 // Светлые пары [фон, текст] — продукты, менеджеры, стороны, переводчики
 const BADGE_PALETTE = [
@@ -660,7 +661,7 @@ function insertTopRow_(sh, ncols, fallback) {
     src.copyTo(dst, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
   } else {
     sh.getRange(2, 1, 1, ncols).setBackground(null).setFontColor(INK).setFontWeight('normal')
-      .setFontFamily('Arial').setFontSize(10).setVerticalAlignment('top').setWrap(true);
+      .setFontFamily(FONT).setFontSize(10).setVerticalAlignment('middle').setWrap(true);
     if (sh.getName() === TASKS_SHEET) sh.getRange(2, COL.SUBJECT).setFontWeight('bold');
     fallback();
   }
@@ -1986,7 +1987,7 @@ function refreshColorRules_() {
 
 function styleHeader_(sh, ncols) {
   sh.getRange(1, 1, 1, ncols).setBackground(HEAD_BG).setFontColor('#FFFFFF').setFontWeight('bold')
-    .setFontFamily('Arial').setFontSize(10).setVerticalAlignment('middle').setWrap(true);
+    .setFontFamily(FONT).setFontSize(10).setVerticalAlignment('middle').setWrap(true);
   sh.setRowHeight(1, 36);
 }
 
@@ -2008,12 +2009,15 @@ function designTasksSheet_(sh) {
   sh.getRange(1, COL.DUE).setValue('Срок сдачи'); // было «Точный дедлайн (дата сдачи заказчику)» — вводило в заблуждение
   sh.setFrozenRows(1);
   sh.setFrozenColumns(3);
-  [110, 100, 330, 90, 160, 150, 260, 100, 100, 100, 150, 110, 110, 160, 160, 60, 220]
+  // Ширина — чтобы продукт, языки и дедлайн помещались, а шапка не рвала слова («Примерны / й дедлайн»)
+  [115, 105, 380, 92, 215, 175, 330, 150, 100, 115, 205, 110, 140, 170, 170, 60, 260]
     .forEach((w, i) => sh.setColumnWidth(i + 1, w));
 
   // Данные: один шрифт, без старой ручной раскраски — цвета ставят правила ниже
   const body = sh.getRange(2, 1, maxRows - 1, TASK_COLS);
-  body.setBackground(null).setFontFamily('Arial').setFontSize(10).setVerticalAlignment('top').setWrap(true);
+  // По центру строки и с переносом: в коротких строках текст не «липнет» к верху, длинный не обрезается
+  body.setBackground(null).setFontFamily(FONT).setFontSize(10).setVerticalAlignment('middle')
+    .setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
   [COL.ID, COL.TICKET, COL.DATE, COL.PRODUCT, COL.CUSTOMER, COL.DEADLINE, COL.DUE, COL.STATUS, COL.ESTIMATE,
    COL.TOTAL, COL.CONTRACTOR, COL.MANAGER, COL.DELIVERY, COL.SP, COL.COMMENT].forEach(c => {
     sh.getRange(2, c, maxRows - 1, 1).setFontColor(INK).setFontWeight('normal');
@@ -2060,7 +2064,7 @@ function designTranslatorsSheet_(sh) {
   [90, 150, 170, 320, 180, 190, 190, 120, 240].forEach((w, i) => sh.setColumnWidth(i + 1, w));
 
   const body = sh.getRange(2, 1, maxRows - 1, TR_COLS);
-  body.setBackground(null).setFontFamily('Arial').setFontSize(10).setVerticalAlignment('top').setWrap(true)
+  body.setBackground(null).setFontFamily(FONT).setFontSize(10).setVerticalAlignment('middle').setWrap(true)
     .setHorizontalAlignment('left');
   [TCOL.DATE, TCOL.SIDE, TCOL.RAZDEL, TCOL.CUSTOMER, TCOL.TRANSLATOR, TCOL.EDITOR, TCOL.READY, TCOL.COMMENT]
     .forEach(c => sh.getRange(2, c, maxRows - 1, 1).setFontColor(INK).setFontWeight('normal'));
@@ -2157,7 +2161,7 @@ function writeGuide_(sheetName, title, lead, blocks) {
 
   // Фон страницы и белые карточки
   if (sh.getMaxRows() < lastRow + 2) sh.insertRowsAfter(sh.getMaxRows(), lastRow + 2 - sh.getMaxRows());
-  sh.getRange(1, 1, lastRow + 2, 7).setBackground(GUIDE_BG).setFontFamily('Arial').setFontSize(10)
+  sh.getRange(1, 1, lastRow + 2, 7).setBackground(GUIDE_BG).setFontFamily(FONT).setFontSize(10)
     .setFontColor(INK).setVerticalAlignment('middle').setWrap(true);
   cards.forEach(([r, c, nr, nc]) => {
     sh.getRange(r, c, nr, nc).setBackground('#FFFFFF')

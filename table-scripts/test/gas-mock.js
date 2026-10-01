@@ -281,7 +281,7 @@ function makeContext(fixture, opts = {}) {
       newConditionalFormatRule: () => new CfBuilder(),
       newFilterCriteria: () => chain({ setHiddenValues(v) { this.hidden = v; return this; }, whenTextContains(v) { this.contains = v; return this; }, build() { return this; } }),
       CopyPasteType: { PASTE_FORMAT: 'PASTE_FORMAT', PASTE_DATA_VALIDATION: 'PASTE_DATA_VALIDATION' },
-      WrapStrategy: { CLIP: 'CLIP' }, BorderStyle: { SOLID: 'SOLID' }
+      WrapStrategy: { CLIP: 'CLIP', WRAP: 'WRAP' }, BorderStyle: { SOLID: 'SOLID' }
     },
     DocumentApp: { create: () => { throw new Error('DocumentApp not mocked'); }, ParagraphHeading: {} },
     Session: { getScriptTimeZone: () => 'Europe/Moscow', getActiveUser: () => ({ getEmail: () => userEmail }) },
