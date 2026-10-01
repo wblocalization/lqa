@@ -1,7 +1,7 @@
 import * as pdfjs from './vendor/pdf.min.mjs';
 import { parseEstimate, formatMoney } from './parser.js';
 import { settings, isConfigured, api, esc, readClipboard, DEFAULT_DISK_FOLDER } from './core.js';
-import { uploadToDisk, folderNameFromSubject } from './disk.js';
+import { uploadToDisk, listDiskPdfs, folderNameFromSubject } from './disk.js';
 
 pdfjs.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('vendor/pdf.worker.min.mjs');
 
@@ -189,10 +189,20 @@ els.form.addEventListener('submit', async (e) => {
     let where = '';
     if (!link) {
       const folders = diskFolders();
+      // Подрядчик прислал новую смету — в папке уже лежит старая: заменить или оставить обе
+      setStatus('Смотрю папку на ВБ Диске…');
+      const existing = await listDiskPdfs(folders);
+      let remove = [], keepBoth = false;
+      if (existing.length) {
+        const replace = confirm(`В папке на ВБ Диске уже есть: ${existing.join(', ')}.\n\n` +
+          'ОК — заменить новой сметой (старая уйдёт в корзину ВБ Диска, её можно восстановить)\n' +
+          'Отмена — оставить и старую, и новую');
+        if (replace) remove = existing; else keepBoth = true;
+      }
       setStatus(`Загружаю на ВБ Диск: ${folders.join(' / ')}…`);
-      const up = await uploadToDisk(current.file, folders);
+      const up = await uploadToDisk(current.file, folders, { remove, keepBoth });
       link = up.link;
-      where = ` · PDF в «${folders.join(' / ')}»`;
+      where = ` · ${up.name} в «${folders.join(' / ')}»`;
       els.link.value = link;
       updateDiskHint();
     }
