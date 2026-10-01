@@ -113,9 +113,24 @@
     const contractor = $('#contractor').value, product = $('#product').value;
     const codes = checkedLangs().map(l => LISTS.langCodes[l]).filter(Boolean);
     const prefix = `[${id}]` + (contractor ? `[${contractor}]` : '') + codes.map(c => `[${c}]`).join('') + (product ? `[${product}]` : '');
-    const s = $('#subject').value.trim();
+    const s = subjectText();
     return s ? prefix + ' ' + s : prefix;
   }
+
+  /** «Перевод строчек … от» → «… от 01.10»: дата из поля «Дата» (по умолчанию сегодня). */
+  function withDate(s) {
+    const [, m, d] = $('#date').value.split('-');
+    return d && m ? s.replace(/(^|\s)(от)\s*$/i, '$1$2 ' + d + '.' + m) : s;
+  }
+  function subjectText() { return withDate($('#subject').value.trim()); }
+
+  // Ушли из поля — «от» в конце сразу превращается в «от 01.10»
+  $('#subject').addEventListener('blur', () => {
+    const v = subjectText();
+    if (v !== $('#subject').value.trim()) { $('#subject').value = v; updatePreview(); }
+  });
+  // Поменяли дату — «от 22.09» в теме меняется на неё же
+  $('#date').addEventListener('change', () => { $('#subject').value = withToday($('#subject').value); updatePreview(); });
 
   function updatePreview() {
     if (!LISTS) return;
@@ -172,7 +187,7 @@
     $('#customer').value = t.customer;
     $('#deadline').value = t.deadline;
     $('#comment').value = t.comment;
-    $('#subject').value = withToday(t.subject);
+    $('#subject').value = withDate(withToday(t.subject));
     $('#link').value = '';
     $$('#langs input').forEach(cb => { cb.checked = t.languages.includes(cb.value); });
     setMsg($('#msg'), 'Заполнено по шаблону «' + t.name + '». Вставьте ссылку на Band и проверьте тему.');
@@ -251,7 +266,7 @@
     const ticket = $('#ticketNum').value.trim().replace(/^local-?\s*/i, '');
     if (ticket && !/^\d+$/.test(ticket)) return setMsg($('#msg'), 'В тикете — только номер, например 1234', 'err');
     const task = {
-      ticket: ticket ? 'LOCAL-' + ticket : '', contractor: $('#contractor').value, subject: $('#subject').value,
+      ticket: ticket ? 'LOCAL-' + ticket : '', contractor: $('#contractor').value, subject: subjectText(),
       link: $('#link').value, link2: $('#link2').value, date: $('#date').value, product: $('#product').value,
       customer: $('#customer').value, deadline: $('#deadline').value, exactDeadline: $('#exactDeadline').value,
       status: $('#status').value, deliveryStatus: $('#deliveryStatus').value, estimateLink: $('#estimateLink').value,

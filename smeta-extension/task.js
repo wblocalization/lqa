@@ -148,7 +148,7 @@ els.template.addEventListener('change', () => {
   els.customer.value = t.customer;
   els.deadline.value = t.deadline;
   els.comment.value = t.comment;
-  els.subject.value = withToday(t.subject);
+  els.subject.value = withDate(withToday(t.subject));
   els.link.value = '';
   checkedLangInputs(false).forEach((cb) => { cb.checked = t.languages.includes(cb.value); });
   setMsg(`Заполнено по шаблону «${t.name}». Вставьте ссылку на Band и проверьте тему.`);
@@ -243,9 +243,24 @@ function buildSubject(id) {
   const codes = checkedLangInputs().map((cb) => lists.langCodes[cb.value]).filter(Boolean);
   const prefix = `[${id}]` + (contractor ? `[${contractor}]` : '') + codes.map((c) => `[${c}]`).join('') +
     (product ? `[${product}]` : '');
-  const subject = els.subject.value.trim();
+  const subject = subjectText();
   return subject ? `${prefix} ${subject}` : prefix;
 }
+
+/** «Перевод строчек … от» → «… от 01.10»: дата из поля «Дата» (по умолчанию сегодня). */
+function withDate(s) {
+  const [, m, d] = els.date.value.split('-');
+  return d && m ? s.replace(/(^|\s)(от)\s*$/i, `$1$2 ${d}.${m}`) : s;
+}
+const subjectText = () => withDate(els.subject.value.trim());
+
+// Ушли из поля — «от» в конце сразу превращается в «от 01.10», чтобы было видно, что уйдёт в тему
+els.subject.addEventListener('blur', () => {
+  const v = subjectText();
+  if (v !== els.subject.value.trim()) { els.subject.value = v; updatePreview(); }
+});
+// Поменяли дату — «от 22.09» в теме меняется на неё же
+els.date.addEventListener('change', () => { els.subject.value = withToday(els.subject.value); updatePreview(); });
 
 function updatePreview() {
   if (!lists) return;
@@ -297,7 +312,7 @@ els.form.addEventListener('submit', async (e) => {
 
   const task = {
     ticket: ticketNum ? `LOCAL-${ticketNum}` : '',
-    contractor: els.contractor.value, subject: els.subject.value.trim(),
+    contractor: els.contractor.value, subject: subjectText(),
     link: els.link.value.trim(), link2: els.link2.value.split(/[\s,;]+/).filter(Boolean).join('\n'),
     date: els.date.value, product: els.product.value, customer: els.customer.value.trim(),
     deadline: els.deadline.value, exactDeadline: els.exactDeadline.value,
