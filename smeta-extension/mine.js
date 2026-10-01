@@ -121,22 +121,39 @@ els.found.addEventListener('click', (e) => {
   openEditor({ row: t.row, id: t.id }, afterSave);
 });
 
+// Статус меняется сразу: закрытая задача пропадает из списка, а сохранение идёт в фоне.
+// Не получилось — задача возвращается на место и видно ошибку.
+const CLOSED = ['Отдано', 'Отменено'];
 els.list.addEventListener('change', async (e) => {
   const sel = e.target.closest('select[data-i]');
   if (!sel) return;
-  const t = data.tasks[Number(sel.dataset.i)];
-  sel.disabled = true;
-  setMsg('Сохраняю…');
+  const i = Number(sel.dataset.i);
+  const t = data.tasks[i];
+  const prev = t.status;
+  const status = sel.value;
+  const closed = CLOSED.includes(status);
+  t.status = status;
+  if (closed) {
+    data.tasks.splice(i, 1);
+    if (t.overdue) data.overdue--;
+  }
+  render();
+  setMsg(`${t.id || 'Задача'}: «${status || 'пусто'}» — сохраняю…`);
   try {
-    const r = await api({ action: 'setStatus', row: t.row, id: t.id, origSubject: t.subject, status: sel.value });
+    const r = await api({ action: 'setStatus', row: t.row, id: t.id, origSubject: t.subject, status });
     if (!r.ok) throw new Error(r.error);
-    await loadMine(); // закрытые пропадут из списка, строки могли сдвинуться
-    setMsg(`${t.id || 'Задача'}: статус «${sel.value || 'пусто'}» ✓`, 'ok');
+    setMsg(`${t.id || 'Задача'}: статус «${status || 'пусто'}» ✓`, 'ok');
   } catch (err) {
-    setMsg(`Не сохранилось: ${err.message}`, 'err');
-    sel.disabled = false;
+    t.status = prev;
+    if (closed) {
+      data.tasks.splice(Math.min(i, data.tasks.length), 0, t);
+      if (t.overdue) data.overdue++;
+    }
+    render();
+    setMsg(`${t.id || 'Задача'}: не сохранилось — ${err.message}`, 'err');
   }
 });
+
 
 els.manager.addEventListener('change', async () => {
   if (!settings.manager) await saveSettings({ manager: els.manager.value, user: els.manager.value });
