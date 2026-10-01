@@ -9,8 +9,10 @@ async function refreshBadge() {
   await loadSettings();
   if (!isConfigured() || !settings.manager) return;
   try {
-    const r = await api({ action: 'myTasks', manager: settings.manager });
+    const r = await api({ action: 'myTasks', manager: settings.manager, filter: 'open' });
     if (!r.ok) return;
+    // Заодно запоминаем список: вкладка «Мои задачи» покажет его сразу
+    if (r.manager) await chrome.storage.local.set({ [`mine:${r.manager}:open`]: { ...r, filter: 'open' } });
     chrome.action.setBadgeText({ text: r.overdue ? String(r.overdue) : '' });
     chrome.action.setBadgeBackgroundColor({ color: '#C0262D' });
   } catch {

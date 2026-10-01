@@ -401,6 +401,9 @@ test('Мои задачи и статус из расширения', () => {
   assert.ok(done.tasks.some(x => x.id === t.id) && done.tasks.every(x => x.status === 'Отдано'));
   assert.ok(done.tasks.every(x => !x.overdue), 'у закрытых нет «просрочено»');
   const all = call({ action: 'myTasks', manager: 'Анастасия Лисовая', filter: 'all' });
+  // Ссылки читаются только для показанных строк — но у каждой задачи та же, что в таблице
+  all.tasks.forEach(x => assert.equal(x.link, G.linksFromRich_(tasks().getRange(x.row, 3).getRichTextValue()).link, x.id));
+  assert.ok(all.tasks.some(x => x.link), 'хотя бы у одной задачи есть ссылка');
   const c = all.counts;
   assert.equal(c.all, all.tasks.length + all.more);
   assert.ok(c.open + c.done + c.cancelled <= c.all && c.done >= 1, JSON.stringify(c));

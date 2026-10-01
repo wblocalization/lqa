@@ -1088,7 +1088,6 @@ function getMyOpenTasks(manager, filter) {
   if (!manager) return { manager: '', filter: filter, tasks: [], overdue: 0, counts: {}, statuses: [], managers: getListsData().managers };
   const sh = getTasksSheet();
   const rows = readRows_(sh, TASK_COLS);
-  const links = subjectLinks_(sh);
   const today = today_();
   const tasks = [];
   const counts = { open: 0, done: 0, cancelled: 0, all: 0 };
@@ -1109,14 +1108,20 @@ function getMyOpenTasks(manager, filter) {
       ticket: str_(r[COL.TICKET - 1]), status: status, deadline: str_(r[COL.DEADLINE - 1]),
       date: fmtDate_(date, 'dd.MM.yy'), due: fmtDate_(due, 'dd.MM'), overdue: late,
       dueToday: isOpen && dueTime !== null && dueTime >= today.getTime() && dueTime < today.getTime() + 86400000,
-      link: links[i] ? links[i].link : '',
       sort: filter === 'open' ? (dueTime === null ? Infinity : dueTime) : -(date instanceof Date ? date.getTime() : 0)
     });
   });
   tasks.sort((a, b) => a.sort - b.sort);
   tasks.forEach(t => { delete t.sort; });
+  const shown = filter === 'open' ? tasks : tasks.slice(0, MY_TASKS_LIMIT);
+  // Ссылки на Band — только для показанных строк: читать оформление темы у всех тысяч строк долго
+  if (shown.length) {
+    const from = Math.min.apply(null, shown.map(t => t.row)), to = Math.max.apply(null, shown.map(t => t.row));
+    const rich = sh.getRange(from, COL.SUBJECT, to - from + 1, 1).getRichTextValues();
+    shown.forEach(t => { t.link = linksFromRich_(rich[t.row - from][0]).link; });
+  }
   const lists = getListsData();
-  return { manager: manager, filter: filter, tasks: filter === 'open' ? tasks : tasks.slice(0, MY_TASKS_LIMIT),
+  return { manager: manager, filter: filter, tasks: shown,
     more: filter === 'open' ? 0 : Math.max(0, tasks.length - MY_TASKS_LIMIT),
     counts: counts, overdue: overdue, statuses: lists.statuses, managers: lists.managers };
 }

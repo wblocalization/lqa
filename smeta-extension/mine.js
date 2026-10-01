@@ -35,17 +35,41 @@ export async function loadMine() {
     els.summary.textContent = 'Заполните настройки (⚙️), чтобы видеть свои задачи.';
     return;
   }
-  els.summary.textContent = 'Загружаю…';
+  // Сначала — список с прошлого раза (мгновенно), потом тихо обновляем из таблицы
+  const manager = viewing || settings.manager || '';
+  const key = `mine:${manager}:${filter}`;
+  const seq = ++loadSeq;
+  let cached = null;
+  try { cached = (await chrome.storage.local.get(key))[key]; } catch { /* нет — просто ждём таблицу */ }
+  if (cached && seq === loadSeq) {
+    data = cached;
+    render();
+    els.summary.textContent += ' · обновляю…';
+  } else {
+    els.summary.textContent = 'Загружаю…';
+  }
   setMsg('');
   try {
-    const r = await api({ action: 'myTasks', manager: viewing || settings.manager || '', filter });
+    const r = await api({ action: 'myTasks', manager, filter });
     if (!r.ok) throw new Error(r.error);
+    if (seq !== loadSeq) return; // пока грузили, переключили фильтр или менеджера
     data = r;
     render();
   } catch (e) {
-    els.summary.textContent = '';
-    setMsg(`Не получилось загрузить задачи: ${e.message}`, 'err');
+    if (seq !== loadSeq) return;
+    if (cached) els.summary.textContent = els.summary.textContent.replace(' · обновляю…', '');
+    else els.summary.textContent = '';
+    setMsg(`Не получилось ${cached ? 'обновить' : 'загрузить'} задачи: ${e.message}`, 'err');
   }
+}
+
+let loadSeq = 0;
+
+/** Запоминаем, что показали, — в следующий раз список появится сразу. */
+function saveCache() {
+  if (!data || !data.manager) return;
+  const key = `mine:${data.manager}:${data.filter || 'open'}`;
+  chrome.storage.local.set({ [key]: data }).catch(() => {});
 }
 
 function render() {
@@ -58,6 +82,7 @@ function render() {
     return;
   }
   renderFilter();
+  saveCache();
   const n = data.tasks.length;
   const more = data.more ? ` (показаны последние ${n} из ${n + data.more})` : '';
   els.summary.textContent = n
