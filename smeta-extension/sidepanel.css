@@ -267,3 +267,5 @@ form { display: flex; flex-direction: column; gap: 16px; }
 .seg .n { font-weight: 400; color: var(--ink-soft); }
 #eTop { padding: 9px 12px; border-radius: 8px; background: var(--soft); text-align: left; }
 #eTop.err { background: var(--err-soft); }
+
+.field-note { margin: -2px 0 8px; font-size: 12.5px; color: var(--ink-soft); }
