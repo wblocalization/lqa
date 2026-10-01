@@ -2642,7 +2642,7 @@ function applyMigration_(plan) {
  * но проверьте, что там ещё нет своей функции doPost.
  */
 
-// ID таблицы — кусок адреса между /d/ и /edit.
+// ID таблицы — кусок адреса между /d/ и /edit. Нужен, только если Smeta.gs — отдельный проект, а не внутри таблицы.
 const SMETA_SPREADSHEET_ID = '';
 
 const SMETA_TASKS_SHEET = '📌 Задачи (менеджеры)';
@@ -2810,10 +2810,15 @@ function smetaLog_(who, taskId, field, before, after) {
     before === undefined ? '' : before, after]);
 }
 
+/**
+ * Скрипт лежит в самой таблице — берём её, ID не нужен. openById требует отдельного разрешения Google
+ * («нет разрешения на вызов SpreadsheetApp.openById»), поэтому только для отдельного проекта.
+ */
 function smetaSpreadsheet_() {
-  return SMETA_SPREADSHEET_ID
-    ? SpreadsheetApp.openById(SMETA_SPREADSHEET_ID)
-    : SpreadsheetApp.getActiveSpreadsheet();
+  const active = SpreadsheetApp.getActiveSpreadsheet();
+  if (active) return active;
+  if (!SMETA_SPREADSHEET_ID) throw new Error('Скрипт не в таблице: впишите SMETA_SPREADSHEET_ID в Smeta.gs');
+  return SpreadsheetApp.openById(SMETA_SPREADSHEET_ID);
 }
 
 function smetaJson_(obj) {

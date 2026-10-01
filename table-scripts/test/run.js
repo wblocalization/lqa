@@ -273,7 +273,11 @@ test('Расширение (Smeta.gs): добавить задачу и запи
   const last = log().getRange(log().getLastRow(), 1, 1, 7).getValues()[0];
   assert.equal(last[1], 'Расширение (Настя)');
   assert.equal(ctx.SCRIPT_LOCK_HELD, false); assert.ok(!ctx.__lockHeld);
+  // Как у Насти: openById без разрешения — скрипт в таблице, поэтому он не нужен
+  const openById = ctx.SpreadsheetApp.openById;
+  ctx.SpreadsheetApp.openById = () => { throw new Error('У вас нет разрешения на вызов функции "SpreadsheetApp.openById"'); };
   const look = call({ action: 'lookup', task: add.id });
+  ctx.SpreadsheetApp.openById = openById;
   assert.ok(look.found, JSON.stringify(look));
   const w = call({ action: 'write', task: add.id, total: 1234.5, link: 'https://disk/x' });
   assert.ok(w.ok, JSON.stringify(w));
