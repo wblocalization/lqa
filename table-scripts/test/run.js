@@ -409,6 +409,35 @@ function xlsxSource() {
   return JSON.parse(JSON.stringify(parse(XLSX, wb)));
 }
 
+// Файл в формате новой таблицы (TASKS_XLSX): задачи с сентября + лист «Данные до сентября 2026»
+test('Перенос из файла с колонками новой таблицы: задачи и архив', { skip: !process.env.TASKS_XLSX }, () => {
+  const XLSX = require(process.env.XLSX_MODULE || 'xlsx');
+  const html = fs.readFileSync(__dirname + '/../MigrateDialog.html', 'utf8');
+  const code = html.split('// xlsx-parse:start')[1].split('// xlsx-parse:end')[0];
+  const parse = new Function('XLSX', 'wb', code + '\nreturn tasksFileFromWorkbook(XLSX, wb);');
+  const wb = XLSX.read(new Uint8Array(fs.readFileSync(process.env.TASKS_XLSX)), { type: 'array', cellNF: true, cellDates: false });
+  const src = JSON.parse(JSON.stringify(parse(XLSX, wb)));
+  same(src.sheets.map(x => [x.name, x.archive]), [['С сентября 2026', false], ['Данные до сентября 2026', true]]);
+  const before = tasks().getLastRow();
+  const p = G.migrationPreviewFromTasksFile(src);
+  assert.ok(p.main > 300 && p.archives[0].count > 3000, JSON.stringify(p));
+  const r = G.migrationApplyFromTasksFile(src);
+  assert.equal(tasks().getLastRow() - before, r.added);
+  const arch = ss.getSheetByName('Данные до сентября 2026');
+  assert.equal(arch.getLastRow() - 1, r.archived);
+  // Ссылки: тема — Band, «(ссылка 2)» из комментария, смета — «Ссылка на смету …»
+  const row = rowOf('LIT-26-2188');
+  const rt = tasks().getRange(row, 3).getRichTextValue();
+  assert.equal(G.linksFromRich_(rt).link, 'https://band.wb.ru/wb/pl/tpw8mh66tpd7ung4siq9g96hoh');
+  assert.equal(G.linksFromRich_(rt).link2.split('\n').length, 2, rt.getText());
+  assert.ok(!/Доп\. ссылка|Ещё ссылки/.test(tasks().getRange(row, 17).getValue()));
+  same([tasks().getRange(row, 11).getValue(), G.getTaskForEdit(row).estimateLink], ['Ссылка на смету LIT-26-2188', 'https://disk.wb.ru/f/83009693']);
+  assert.ok(tasks().getRange(row, 4).getValue() instanceof CDate);
+  // Повторно — ничего не задваивается
+  const again = G.migrationPreviewFromTasksFile(src);
+  same([again.main, again.archives[0].count], [0, 0]);
+});
+
 test('Перенос из файла Excel даёт то же, что по ссылке', { skip: !oldFixture || !process.env.OLD_XLSX }, () => {
   const byLink = G.planMigration_(others[OLD_ID]);
   const byFile = G.planFromSource_(G.sourceFromUpload_(xlsxSource()));

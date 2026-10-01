@@ -94,15 +94,19 @@ function sourceFromUpload_(src) {
   const values = src.values.map(row => {
     const out = [];
     for (let c = 0; c < OLD_COLS; c++) {
-      const v = row[c];
-      if (v && typeof v === 'object' && v.d) {
-        const p = String(v.d).split('-').map(Number);
-        out.push(new Date(p[0], p[1] - 1, p[2]));
-      } else out.push(v == null ? '' : v);
+      out.push(uploadValue_(row[c]));
     }
     return out;
   });
   return { values: values, links: (src.links || []).map(l => l || ''), merges: src.merges || [] };
+}
+
+function uploadValue_(v) {
+  if (v && typeof v === 'object' && v.d) {
+    const p = String(v.d).split('-').map(Number);
+    return new Date(p[0], p[1] - 1, p[2]);
+  }
+  return v == null ? '' : v;
 }
 
 function numOrEmpty_(v) {
@@ -150,16 +154,8 @@ function planFromSource_(src) {
     }
   });
 
-  // Что уже есть в новой таблице: по номеру, а строки без номера — по теме, дате и ссылке
-  const tasks = getTasksSheet();
-  const existing = {}, existingKeys = {};
-  const cur = readRows_(tasks, COL.DATE);
-  const curLinks = subjectLinks_(tasks);
-  const keyOf = (subject, date, link) => [stripLinkMarkers_(subject), fmtDate_(date, 'yyyy-MM-dd') || str_(date), link || ''].join('|');
-  cur.forEach((r, i) => {
-    if (str_(r[COL.ID - 1])) existing[str_(r[COL.ID - 1])] = true;
-    else existingKeys[keyOf(r[COL.SUBJECT - 1], r[COL.DATE - 1], curLinks[i] && curLinks[i].link)] = true;
-  });
+  const idx = existingTaskIndex_(getTasksSheet());
+  const existing = idx.ids, existingKeys = idx.keys, keyOf = taskKey_;
 
   const rows = [];
   let skippedExisting = 0, skippedEmpty = 0, from = null, to = null;
@@ -208,6 +204,102 @@ function planFromSource_(src) {
     rows: rows, skippedExisting: skippedExisting, skippedEmpty: skippedEmpty,
     from: fmtDate_(from, 'dd.MM.yyyy') || '—', to: fmtDate_(to, 'dd.MM.yyyy') || '—'
   };
+}
+
+/** Что уже есть на листе: по номеру, а строки без номера — по теме, дате и ссылке. */
+function taskKey_(subject, date, link) {
+  return [stripLinkMarkers_(subject), fmtDate_(date, 'yyyy-MM-dd') || str_(date), link || ''].join('|');
+}
+
+function existingTaskIndex_(sh) {
+  const ids = {}, keys = {};
+  if (!sh || sh.getLastRow() < 2) return { ids: ids, keys: keys };
+  const cur = readRows_(sh, COL.DATE);
+  const curLinks = subjectLinks_(sh);
+  cur.forEach((r, i) => {
+    if (str_(r[COL.ID - 1])) ids[str_(r[COL.ID - 1])] = true;
+    else keys[taskKey_(r[COL.SUBJECT - 1], r[COL.DATE - 1], curLinks[i] && curLinks[i].link)] = true;
+  });
+  return { ids: ids, keys: keys };
+}
+
+// ==================== ФАЙЛ В ФОРМАТЕ НОВОЙ ТАБЛИЦЫ ====================
+// Например, «Перенос — задачи из старой таблицы.xlsx»: листы с теми же колонками, что «📌 Задачи (менеджеры)».
+// Листы «Данные до …» / «Архив…» уходят на отдельный лист с тем же названием, остальные — в задачи.
+
+/** src: { sheets: [{ name, archive, rows: [{ values: 17 значений, link, link2 }] }] } */
+function tasksFilePlan_(src) {
+  if (!src || !Array.isArray(src.sheets)) throw new Error('Файл не прочитался');
+  const ss = SpreadsheetApp.getActive();
+  const plan = { main: [], mainSkipped: 0, archives: [] };
+  const mainIdx = existingTaskIndex_(getTasksSheet());
+  src.sheets.forEach(sheet => {
+    const idx = sheet.archive ? existingTaskIndex_(ss.getSheetByName(sheet.name)) : mainIdx;
+    const target = sheet.archive ? { name: str_(sheet.name), rows: [], skipped: 0 } : null;
+    (sheet.rows || []).forEach(r => {
+      const values = [];
+      for (let c = 0; c < TASK_COLS; c++) values.push(uploadValue_((r.values || [])[c]));
+      if (!values.some(v => v !== '')) return;
+      values[COL.TOTAL - 1] = numOrEmpty_(values[COL.TOTAL - 1]);
+      values[COL.SP - 1] = numOrEmpty_(values[COL.SP - 1]);
+      values[COL.SUBJECT - 1] = stripLinkMarkers_(values[COL.SUBJECT - 1]);
+      const id = str_(values[COL.ID - 1]);
+      const row = { values: values, link: str_(r.link), link2: extraLinks_(r.link2).join('\n') };
+      const known = id ? idx.ids[id] : idx.keys[taskKey_(values[COL.SUBJECT - 1], values[COL.DATE - 1], row.link)];
+      if (known) { if (target) target.skipped++; else plan.mainSkipped++; return; }
+      (target ? target.rows : plan.main).push(row);
+    });
+    if (target) plan.archives.push(target);
+  });
+  return plan;
+}
+
+function migrationPreviewFromTasksFile(src) {
+  const plan = tasksFilePlan_(src);
+  return {
+    main: plan.main.length, mainSkipped: plan.mainSkipped,
+    archives: plan.archives.map(a => ({ name: a.name, count: a.rows.length, skipped: a.skipped }))
+  };
+}
+
+function migrationApplyFromTasksFile(src) {
+  const plan = tasksFilePlan_(src);
+  plan.archives.forEach(a => { if (a.rows.length) writeArchiveSheet_(a.name, a.rows); });
+  if (plan.main.length) applyMigration_({ rows: plan.main });
+  return { added: plan.main.length, archived: plan.archives.reduce((n, a) => n + a.rows.length, 0) };
+}
+
+/** Архив: отдельный лист с теми же колонками. Без выпадающих списков и правил — просто для истории. */
+function writeArchiveSheet_(name, rows) {
+  withScriptLock_(() => {
+    const ss = SpreadsheetApp.getActive();
+    let sh = ss.getSheetByName(name);
+    if (!sh) {
+      sh = ss.insertSheet(name);
+      sh.getRange(1, 1, 1, TASK_COLS).setValues(getTasksSheet().getRange(1, 1, 1, TASK_COLS).getValues())
+        .setBackground('#2D3340').setFontColor('#FFFFFF').setFontWeight('bold').setFontFamily('Arial').setWrap(true);
+      sh.setFrozenRows(1);
+    }
+    const start = Math.max(sh.getLastRow(), 1) + 1;
+    const need = start + rows.length - 1 - sh.getMaxRows();
+    if (need > 0) sh.insertRowsAfter(sh.getMaxRows(), need);
+    const CHUNK = 1000;
+    for (let off = 0; off < rows.length; off += CHUNK) {
+      const part = rows.slice(off, off + CHUNK);
+      sh.getRange(start + off, 1, part.length, TASK_COLS).setValues(part.map(p => p.values));
+      sh.getRange(start + off, COL.SUBJECT, part.length, 1)
+        .setRichTextValues(part.map(p => [buildSubjectRich_(String(p.values[COL.SUBJECT - 1]), p.link, p.link2)]));
+    }
+    const n = sh.getLastRow() - 1;
+    sh.getRange(2, 1, n, TASK_COLS).setFontFamily('Arial').setFontSize(10).setVerticalAlignment('top');
+    sh.getRange(2, COL.DATE, n, 1).setNumberFormat('dd.mm.yyyy');
+    sh.getRange(2, COL.DUE, n, 1).setNumberFormat('dd.mm.yyyy');
+    sh.getRange(2, COL.TOTAL, n, 1).setNumberFormat('#,##0.00');
+    SpreadsheetApp.flush();
+    sh.getRange(2, 1, n, TASK_COLS).sort({ column: COL.DATE, ascending: false });
+    estimateLinksToLabels_(sh);
+    logChange('Перенос истории', '', '', '', rows.length + ' строк на лист «' + name + '»');
+  });
 }
 
 /** Дописывает строки под текущими задачами и оформляет лист. */
