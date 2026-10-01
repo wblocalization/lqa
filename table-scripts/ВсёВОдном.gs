@@ -2682,6 +2682,8 @@ function doPost(e) {
     // Запросы из расширения выполняются от имени владельца таблицы, поэтому «кто я» берём только из настроек расширения
     if (req.action === 'checkDuplicates') { requireTableScript_(); return smetaJson_({ ok: true, duplicates: findDuplicateTasks(req.task || {}) }); }
     if (req.action === 'myTasks') { requireTableScript_(); return smetaJson_(Object.assign({ ok: true }, getMyOpenTasks(req.manager || '*'))); }
+    if (req.action === 'searchTasks') return smetaJson_(searchTasks_(req));
+    if (req.action === 'getTask') return smetaJson_(getTask_(req));
   } catch (err) {
     return smetaJson_({ ok: false, error: String(err && err.message || err) });
   }
@@ -2698,6 +2700,7 @@ function doPost(e) {
     if (req.action === 'write') return smetaJson_(smetaWrite_(req));
     if (req.action === 'addTask') return smetaJson_(addTask_(req));
     if (req.action === 'setStatus') return smetaJson_(setStatus_(req));
+    if (req.action === 'saveTask') return smetaJson_(saveTask_(req));
     return smetaJson_({ ok: false, error: 'Неизвестное действие' });
   } catch (err) {
     return smetaJson_({ ok: false, error: String(err && err.message || err) });
@@ -2874,6 +2877,37 @@ function addTask_(req) {
 }
 
 /** Быстрая смена статуса из вкладки «Мои задачи». */
+/** Поиск любой задачи для правки: номер, тикет, тема, ник, комментарий. */
+function searchTasks_(req) {
+  requireTableScript_();
+  const q = String(req.query || '').trim();
+  if (!q) return { ok: true, tasks: [] }; // пустой поиск в таблице показывает «мои» владельца — здесь не нужно
+  return { ok: true, tasks: searchTasks(q) };
+}
+
+/** Задача целиком для формы правки. Строки могли сдвинуться — ищем по номеру. */
+function getTask_(req) {
+  requireTableScript_();
+  const sh = getTasksSheet();
+  const id = String(req.id || '').trim();
+  const row = id || req.origSubject != null ? locateTaskRow_(sh, Number(req.row), id, req.origSubject) : Number(req.row);
+  return { ok: true, task: getTaskForEdit(row) };
+}
+
+function saveTask_(req) {
+  requireTableScript_();
+  const t = req.task || {};
+  [t.link, t.estimateLink].concat(String(t.link2 || '').split(/[\s,;]+/)).forEach(function (u) {
+    if (u && !/^https?:\/\//i.test(String(u))) throw new Error('Ссылка должна начинаться с http: ' + u);
+  });
+  LOG_ACTOR = 'Расширение' + (req.user ? ' (' + req.user + ')' : '');
+  try {
+    return saveTaskEdits(t);
+  } finally {
+    LOG_ACTOR = '';
+  }
+}
+
 function setStatus_(req) {
   requireTableScript_();
   LOG_ACTOR = 'Расширение' + (req.user ? ' (' + req.user + ')' : '');

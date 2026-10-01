@@ -396,6 +396,21 @@ test('Мои задачи и статус из расширения', () => {
   same([last[1], last[4], last[6]], ['Расширение (Настя)', 'Статус', 'Отдано']);
   const dup = call({ action: 'checkDuplicates', task: { subject: 'x', link: 'https://band/lit4' } });
   assert.equal(dup.duplicates.length, 1);
+  // Правка из расширения: поиск → задача целиком → сохранение (в журнал — от расширения)
+  same(call({ action: 'searchTasks', query: '' }).tasks, []);
+  const f = call({ action: 'searchTasks', query: 'LIT-1' });
+  assert.ok(f.ok && f.tasks.some(x => x.id === 'LIT-1'), JSON.stringify(f).slice(0, 200));
+  const hit = f.tasks.find(x => x.id === 'LIT-1');
+  const got = call({ action: 'getTask', row: hit.row + 5, id: 'LIT-1' }); // строка сдвинулась — найдёт по номеру
+  assert.ok(got.ok && got.task.id === 'LIT-1' && got.task.link === 'https://band/one', JSON.stringify(got).slice(0, 200));
+  const saved = call({ action: 'saveTask', user: 'Настя', task: { ...got.task, sp: 7, link2: 'https://band/two\nhttps://band/three' } });
+  assert.ok(saved.ok, JSON.stringify(saved));
+  const edited = call({ action: 'getTask', row: got.task.row, id: 'LIT-1' }).task;
+  same([edited.sp, edited.link2], [7, 'https://band/two\nhttps://band/three']);
+  assert.equal(log().getRange(log().getLastRow(), 2).getValue(), 'Расширение (Настя)');
+  const bad = call({ action: 'saveTask', task: { ...edited, link2: 'не ссылка' } });
+  assert.ok(!bad.ok && /http/.test(bad.error));
+  call({ action: 'saveTask', task: { ...edited, link2: 'https://band/two' } }); // как было
 });
 
 // Файл Excel старой таблицы: OLD_XLSX=путь, XLSX_MODULE=путь к пакету xlsx (SheetJS), как в окне переноса

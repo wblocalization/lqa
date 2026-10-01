@@ -1,10 +1,12 @@
 // Вкладка «Мои»: открытые задачи менеджера, статус меняется прямо здесь.
 import { settings, saveSettings, isConfigured, api, esc } from './core.js';
+import { openEditor } from './edit.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
   manager: $('#mManager'), refresh: $('#mRefresh'), summary: $('#mSummary'),
   list: $('#mList'), msg: $('#mMsg'), badge: $('#mineBadge'),
+  searchForm: $('#mSearchForm'), search: $('#mSearch'), found: $('#mFound'),
 };
 
 let data = null;
@@ -62,13 +64,62 @@ function render() {
     return `<div class="mine-item${t.overdue ? ' overdue' : ''}">
       <div class="title">${title}</div>
       <div class="meta">${esc(t.id || '—')}${t.ticket ? ' · ' + esc(t.ticket) : ''} · ${due}</div>
-      <select data-i="${i}" aria-label="Статус">
-        <option value="">— статус —</option>
-        ${data.statuses.map((s) => `<option value="${esc(s)}"${s === t.status ? ' selected' : ''}>${esc(s)}</option>`).join('')}
-      </select>
+      <div class="row-actions">
+        <select data-i="${i}" aria-label="Статус">
+          <option value="">— статус —</option>
+          ${data.statuses.map((s) => `<option value="${esc(s)}"${s === t.status ? ' selected' : ''}>${esc(s)}</option>`).join('')}
+        </select>
+        <button class="btn ghost small" type="button" data-edit="${i}">Изменить</button>
+      </div>
     </div>`;
   }).join('');
 }
+
+// ---------- Правка ----------
+/** После сохранения — обновить списки и сказать, что получилось. */
+async function afterSave(text) {
+  await loadMine();
+  if (els.search.value.trim()) await runSearch();
+  setMsg(text, 'ok');
+}
+
+els.list.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-edit]');
+  if (!b) return;
+  const t = data.tasks[Number(b.dataset.edit)];
+  openEditor({ row: t.row, id: t.id, origSubject: t.subject }, afterSave);
+});
+
+// Поиск любой задачи — не только своих открытых
+let found = [];
+async function runSearch() {
+  const q = els.search.value.trim();
+  if (!q) { els.found.hidden = true; return; }
+  els.found.hidden = false;
+  els.found.innerHTML = '<p class="muted">Ищу…</p>';
+  try {
+    const r = await api({ action: 'searchTasks', query: q });
+    if (!r.ok) throw new Error(r.error);
+    found = r.tasks;
+    els.found.innerHTML = found.length
+      ? found.map((t, i) => `<div class="mine-item">
+          <div class="title">${esc(t.title)}</div>
+          <div class="row-actions"><span class="meta" style="flex:1">${esc(t.id || '—')}${t.ticket ? ' · ' + esc(t.ticket) : ''} · ${esc(t.date)}${t.status ? ' · ' + esc(t.status) : ''}</span>
+          <button class="btn ghost small" type="button" data-found="${i}">Изменить</button></div>
+        </div>`).join('')
+      : '<p class="muted">Ничего не нашлось.</p>';
+  } catch (e) {
+    els.found.innerHTML = `<p class="status err">Не получилось найти: ${esc(e.message)}</p>`;
+  }
+}
+els.searchForm.addEventListener('submit', (e) => { e.preventDefault(); runSearch(); });
+els.search.addEventListener('search', () => { if (!els.search.value) els.found.hidden = true; }); // крестик в поле
+els.found.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-found]');
+  if (!b) return;
+  const t = found[Number(b.dataset.found)];
+  openEditor({ row: t.row, id: t.id }, afterSave);
+});
 
 els.list.addEventListener('change', async (e) => {
   const sel = e.target.closest('select[data-i]');

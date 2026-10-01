@@ -140,13 +140,68 @@
   </section>
 
   <section id="tabMine" role="tabpanel" hidden>
-    <div class="mine-head">
-      <select id="mManager" aria-label="Менеджер"></select>
-      <button id="mRefresh" class="btn ghost small" type="button">Обновить</button>
+    <div id="mineView">
+      <form id="mSearchForm" class="with-btn mine-search">
+        <input id="mSearch" type="search" placeholder="Найти любую задачу: номер, тикет, тема…" autocomplete="off">
+        <button class="btn ghost" type="submit">Найти</button>
+      </form>
+      <div id="mFound" class="mine-list" hidden></div>
+      <div class="mine-head">
+        <select id="mManager" aria-label="Менеджер"></select>
+        <button id="mRefresh" class="btn ghost small" type="button">Обновить</button>
+      </div>
+      <p id="mSummary" class="muted"></p>
+      <div id="mList" class="mine-list"></div>
+      <p id="mMsg" class="status" role="status"></p>
     </div>
-    <p id="mSummary" class="muted"></p>
-    <div id="mList" class="mine-list"></div>
-    <p id="mMsg" class="status" role="status"></p>
+
+    <form id="editForm" class="task-form" hidden>
+      <div class="edit-head">
+        <button id="eBack" class="btn ghost small" type="button">← Назад</button>
+        <b id="eTitle"></b>
+      </div>
+      <label><span>Тема письма <span class="req">*</span></span>
+        <textarea id="eSubject" rows="2" required></textarea>
+      </label>
+      <label>Ссылка на Band <input id="eLink" type="url" placeholder="https://band.wb.ru/…"></label>
+      <label>Ещё ссылки на Band <span class="opt">каждая с новой строки</span>
+        <textarea id="eLink2" rows="1"></textarea>
+      </label>
+      <div class="two">
+        <label>Тикет
+          <span class="prefixed"><span>LOCAL-</span><input id="eTicketNum" type="text" inputmode="numeric" placeholder="1234"></span>
+        </label>
+        <label>Дата <input id="eDate" type="date"></label>
+      </div>
+      <div class="two">
+        <label>Продукт <select id="eProduct"></select></label>
+        <label>Ник заказчика <input id="eCustomer" type="text" placeholder="@nick"></label>
+      </div>
+      <fieldset class="langs">
+        <legend>Языки</legend>
+        <div id="eLangs"></div>
+      </fieldset>
+      <div class="two">
+        <label>Примерный дедлайн <select id="eDeadline"></select></label>
+        <label>Срок сдачи <input id="eExactDeadline" type="date"></label>
+      </div>
+      <div class="two">
+        <label>Статус <select id="eStatus"></select></label>
+        <label>Статус отдачи <select id="eDeliveryStatus"></select></label>
+      </div>
+      <div class="two">
+        <label>Подрядчик <select id="eContractor"></select></label>
+        <label>Менеджер <select id="eManager"></select></label>
+      </div>
+      <label>Смета (ссылка) <input id="eEstimateLink" type="url"></label>
+      <div class="two">
+        <label>Итого с НДС <input id="eTotal" type="number" step="0.01" min="0"></label>
+        <label>SP <input id="eSp" type="number" step="1" min="0"></label>
+      </div>
+      <label>Комментарий <textarea id="eComment" rows="2"></textarea></label>
+      <button id="eSave" class="btn primary" type="submit">Сохранить изменения</button>
+      <p id="eMsg" class="status" role="status"></p>
+    </form>
   </section>
 
   <section id="tabSmeta" role="tabpanel" hidden>
