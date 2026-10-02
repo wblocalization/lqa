@@ -166,7 +166,7 @@ function matches(f, status) {
 
 /** Счётчики в фильтре: задача перешла из одного статуса в другой. */
 function recount(from, to) {
-  if (!data.counts) return;
+  if (!data || !data.counts) return;
   ['open', 'done', 'cancelled'].forEach((f) => {
     if (matches(f, from)) data.counts[f]--;
     if (matches(f, to)) data.counts[f]++;
@@ -174,7 +174,7 @@ function recount(from, to) {
 }
 
 function renderFilter() {
-  const c = data.counts || {};
+  const c = (data && data.counts) || {}; // список ещё не загрузился — фильтр без цифр
   els.filter.querySelectorAll('button').forEach((b) => {
     const f = b.dataset.f;
     b.setAttribute('aria-pressed', String(f === filter));
