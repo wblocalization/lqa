@@ -56,6 +56,7 @@
             <label class="field">Менеджер<select id="f_manager"></select></label>
           </div>
           <label class="field">Комментарий<textarea id="f_comment"></textarea></label>
+          <label class="field">Жалобы на заказчика<textarea id="f_complaints"></textarea></label>
         </div>
       </details>
       <details class="more" id="historyBox">
@@ -133,7 +134,7 @@
     renderStatus();
     const set = (id, v) => { $('#f_' + id).value = v == null ? '' : v; };
     ['exactDeadline', 'sp', 'subject', 'link', 'link2', 'ticket', 'date', 'product', 'customer', 'deadline',
-     'estimateLink', 'total', 'deliveryStatus', 'contractor', 'manager', 'comment'].forEach(k => set(k, t[k]));
+     'estimateLink', 'total', 'deliveryStatus', 'contractor', 'manager', 'comment', 'complaints'].forEach(k => set(k, t[k]));
 
     const langs = t.languages.split(',').map(s => s.trim()).filter(Boolean);
     const known = [].concat(LISTS.languages.regular, LISTS.languages.shtat, LISTS.languages.rare);
@@ -172,7 +173,7 @@
       languages: chipValues($('#f_langs')).join(', ')
     };
     ['exactDeadline', 'sp', 'subject', 'link', 'link2', 'ticket', 'date', 'product', 'customer', 'deadline',
-     'estimateLink', 'total', 'deliveryStatus', 'contractor', 'manager', 'comment'].forEach(k => { task[k] = get(k); });
+     'estimateLink', 'total', 'deliveryStatus', 'contractor', 'manager', 'comment', 'complaints'].forEach(k => { task[k] = get(k); });
     const btn = $('#saveBtn');
     btn.disabled = true;
     setMsg($('#msg'), 'Сохраняю…');

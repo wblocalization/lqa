@@ -177,7 +177,6 @@ function planFromSource_(src) {
     const comment = [
       get(OLD.COMMENT),
       taskText && !ticketMatch && taskText !== subject ? 'Задача: ' + taskText : '',
-      get(OLD.COMPLAINTS) ? 'Жалобы на заказчика: ' + get(OLD.COMPLAINTS) : ''
     ].filter(Boolean).join('\n');
 
     if (!id && existingKeys[keyOf(subject || taskText || '(без темы)', v[OLD.DATE - 1], band)]) { skippedExisting++; continue; }
@@ -192,7 +191,7 @@ function planFromSource_(src) {
         id, ticket, subject || taskText || '(без темы)', date, OLD_SIDE_TO_PRODUCT[side] || side,
         get(OLD.CUSTOMER), get(OLD.LANGS), deadline, v[OLD.DUE - 1] instanceof Date ? v[OLD.DUE - 1] : get(OLD.DUE),
         get(OLD.STATUS), get(OLD.ESTIMATE), numOrEmpty_(v[OLD.TOTAL - 1]), get(OLD.CONTRACTOR), get(OLD.MANAGER),
-        get(OLD.DELIVERY), numOrEmpty_(v[OLD.SP - 1]), comment
+        get(OLD.DELIVERY), numOrEmpty_(v[OLD.SP - 1]), comment, get(OLD.COMPLAINTS)
       ]
     });
     if (date instanceof Date) {

@@ -78,7 +78,7 @@
    * Возвращает { kind: 'tasks', sheets: [{ name, archive, rows: [{ values, link, link2 }] }] } или null.
    */
   function tasksFileFromWorkbook(XLSX, wb) {
-    const COLS = 17, SUBJ = 2, EST = 10, COMMENT = 16;
+    const COLS = 18, SUBJ = 2, EST = 10, COMMENT = 16; // A..R, R — жалобы на заказчика
     const sheets = [];
     wb.SheetNames.forEach(name => {
       const ws = wb.Sheets[name];

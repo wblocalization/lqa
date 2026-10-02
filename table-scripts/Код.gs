@@ -20,9 +20,11 @@ const TRANSLATOR_GUIDE_SHEET = '👥 Инструкция (переводчик�
 // Лист менеджеров, колонки A..Q
 const COL = {
   ID: 1, TICKET: 2, SUBJECT: 3, DATE: 4, PRODUCT: 5, CUSTOMER: 6, LANGS: 7, DEADLINE: 8, DUE: 9,
-  STATUS: 10, ESTIMATE: 11, TOTAL: 12, CONTRACTOR: 13, MANAGER: 14, DELIVERY: 15, SP: 16, COMMENT: 17
+  STATUS: 10, ESTIMATE: 11, TOTAL: 12, CONTRACTOR: 13, MANAGER: 14, DELIVERY: 15, SP: 16, COMMENT: 17,
+  COMPLAINTS: 18
 };
-const TASK_COLS = 17;
+const TASK_COLS = 18;
+const COMPLAINTS_HEADER = 'Жалобы на заказчика';
 
 // Лист переводчиков, колонки A..I
 const TCOL = { DATE: 1, SIDE: 2, RAZDEL: 3, TASK: 4, CUSTOMER: 5, TRANSLATOR: 6, EDITOR: 7, READY: 8, COMMENT: 9 };
@@ -44,7 +46,18 @@ function extraLinks_(s) {
 }
 
 function getTasksSheet() {
-  return findSheet_(TASKS_SHEET, n => n.indexOf('задачи') !== -1 && n.indexOf('перевод') === -1);
+  const sh = findSheet_(TASKS_SHEET, n => n.indexOf('задачи') !== -1 && n.indexOf('перевод') === -1);
+  if (sh && !TASK_SHEET_CHECKED) ensureTaskColumns_(sh);
+  return sh;
+}
+
+// Колонка R «Жалобы на заказчика» появилась позже — в старом листе её может не быть: добавляем один раз за запуск
+var TASK_SHEET_CHECKED = false;
+function ensureTaskColumns_(sh) {
+  TASK_SHEET_CHECKED = true;
+  if (sh.getMaxColumns() < TASK_COLS) sh.insertColumnsAfter(sh.getMaxColumns(), TASK_COLS - sh.getMaxColumns());
+  const head = sh.getRange(1, COL.COMPLAINTS);
+  if (!str_(head.getValue())) head.setValue(COMPLAINTS_HEADER);
 }
 
 function getTranslatorsSheet() {
@@ -863,7 +876,7 @@ function buildTaskSubject_(id, task, lists) {
 }
 
 function submitNewTaskFromDialog(task) {
-  ['contractor', 'product', 'deadline', 'status', 'deliveryStatus', 'manager', 'subject', 'customer', 'comment', 'link', 'link2', 'estimateLink']
+  ['contractor', 'product', 'deadline', 'status', 'deliveryStatus', 'manager', 'subject', 'customer', 'comment', 'complaints', 'link', 'link2', 'estimateLink']
     .forEach(k => { task[k] = str_(task[k]); });
   if (!task.contractor) throw new Error('Выберите подрядчика');
 
@@ -878,7 +891,7 @@ function submitNewTaskFromDialog(task) {
       parseIsoDate_(task.date), task.product, task.customer, (task.languages || []).join(', '),
       task.deadline, parseIsoDate_(task.exactDeadline), task.status,
       task.estimateLink, task.total ? Number(task.total) : '', task.contractor, task.manager,
-      task.deliveryStatus, task.sp ? Number(task.sp) : '', task.comment
+      task.deliveryStatus, task.sp ? Number(task.sp) : '', task.comment, task.complaints
     ];
     sh.getRange(row, 1, 1, TASK_COLS).setValues([values]);
     if (task.link || task.link2) sh.getRange(row, COL.SUBJECT).setRichTextValue(buildSubjectRich_(subject, task.link, task.link2));
@@ -910,7 +923,7 @@ function searchTasks(query) {
   rows.forEach((r, i) => {
     if (!r[COL.SUBJECT - 1]) return;
     if (q) {
-      const hay = [r[COL.ID - 1], r[COL.TICKET - 1], r[COL.SUBJECT - 1], r[COL.CUSTOMER - 1], r[COL.COMMENT - 1]]
+      const hay = [r[COL.ID - 1], r[COL.TICKET - 1], r[COL.SUBJECT - 1], r[COL.CUSTOMER - 1], r[COL.COMMENT - 1], r[COL.COMPLAINTS - 1]]
         .map(v => String(v || '').toLowerCase()).join(' ');
       if (hay.indexOf(q) === -1) return;
     } else if (me && str_(r[COL.MANAGER - 1]) !== me) {
@@ -940,7 +953,8 @@ function getTaskForEdit(row) {
     status: str_(r[COL.STATUS - 1]), estimateLink: estimateUrl_(sh.getRange(row, COL.ESTIMATE).getRichTextValue(), r[COL.ESTIMATE - 1]),
     total: r[COL.TOTAL - 1] === '' ? '' : r[COL.TOTAL - 1], contractor: str_(r[COL.CONTRACTOR - 1]),
     manager: str_(r[COL.MANAGER - 1]), deliveryStatus: str_(r[COL.DELIVERY - 1]),
-    sp: r[COL.SP - 1] === '' ? '' : r[COL.SP - 1], comment: str_(r[COL.COMMENT - 1])
+    sp: r[COL.SP - 1] === '' ? '' : r[COL.SP - 1], comment: str_(r[COL.COMMENT - 1]),
+    complaints: str_(r[COL.COMPLAINTS - 1])
   };
 }
 
@@ -970,7 +984,7 @@ const TASK_FIELD_NAMES = {};
 [['ID', '№ задачи'], ['TICKET', 'Тикет'], ['SUBJECT', 'Тема письма'], ['DATE', 'Дата'], ['PRODUCT', 'Продукт'],
  ['CUSTOMER', 'Ник заказчика'], ['LANGS', 'Языки'], ['DEADLINE', 'Дедлайн'], ['DUE', 'Срок сдачи'], ['STATUS', 'Статус'],
  ['ESTIMATE', 'Смета'], ['TOTAL', 'Итого с НДС'], ['CONTRACTOR', 'Подрядчик'], ['MANAGER', 'Менеджер'],
- ['DELIVERY', 'Статус отдачи'], ['SP', 'SP'], ['COMMENT', 'Комментарий']]
+ ['DELIVERY', 'Статус отдачи'], ['SP', 'SP'], ['COMMENT', 'Комментарий'], ['COMPLAINTS', COMPLAINTS_HEADER]]
   .forEach(([k, name]) => { TASK_FIELD_NAMES[COL[k]] = name; });
 
 function cellText_(v) {
@@ -1000,6 +1014,7 @@ function saveTaskEdits(task) {
     set(COL.DELIVERY, str_(task.deliveryStatus));
     set(COL.SP, task.sp === '' || task.sp == null ? '' : Number(task.sp));
     set(COL.COMMENT, str_(task.comment));
+    if (task.complaints !== undefined) set(COL.COMPLAINTS, str_(task.complaints)); // старые окна поле не присылают — не трогаем
 
     const id = str_(old[COL.ID - 1]);
     for (let c = COL.TICKET; c <= TASK_COLS; c++) {
@@ -2051,7 +2066,7 @@ function designTasksSheet_(sh) {
   sh.setFrozenRows(1);
   sh.setFrozenColumns(3);
   // Ширина — чтобы продукт, языки и дедлайн помещались, а шапка не рвала слова («Примерны / й дедлайн»)
-  [115, 105, 380, 92, 215, 175, 330, 150, 100, 115, 205, 110, 140, 170, 170, 60, 260]
+  [115, 105, 380, 92, 215, 175, 330, 150, 100, 115, 205, 110, 140, 170, 170, 60, 260, 240]
     .forEach((w, i) => sh.setColumnWidth(i + 1, w));
 
   // Данные: один шрифт, без старой ручной раскраски — цвета ставят правила ниже
@@ -2060,7 +2075,7 @@ function designTasksSheet_(sh) {
   body.setBackground(null).setFontFamily(FONT).setFontSize(10).setVerticalAlignment('middle')
     .setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
   [COL.ID, COL.TICKET, COL.DATE, COL.PRODUCT, COL.CUSTOMER, COL.DEADLINE, COL.DUE, COL.STATUS, COL.ESTIMATE,
-   COL.TOTAL, COL.CONTRACTOR, COL.MANAGER, COL.DELIVERY, COL.SP, COL.COMMENT].forEach(c => {
+   COL.TOTAL, COL.CONTRACTOR, COL.MANAGER, COL.DELIVERY, COL.SP, COL.COMMENT, COL.COMPLAINTS].forEach(c => {
     sh.getRange(2, c, maxRows - 1, 1).setFontColor(INK).setFontWeight('normal');
   });
   sh.getRange(2, COL.ID, maxRows - 1, 1).setFontWeight('bold');
@@ -2091,7 +2106,10 @@ function designTasksSheet_(sh) {
   groupColumns_(sh, COL.ESTIMATE, 2);   // Смета, Итого
   groupColumns_(sh, COL.DELIVERY, 3);   // Статус отдачи, SP, Комментарий
   sh.autoResizeRows(2, n);
-  if (!sh.getFilter()) sh.getDataRange().createFilter();
+  // Фильтр, созданный до колонки «Жалобы», её не видит — пересоздаём на всю ширину
+  const filter = sh.getFilter();
+  if (filter && filter.getRange().getNumColumns() < TASK_COLS) filter.remove();
+  if (!sh.getFilter()) sh.getRange(1, 1, sh.getLastRow(), TASK_COLS).createFilter();
 }
 
 function designTranslatorsSheet_(sh) {

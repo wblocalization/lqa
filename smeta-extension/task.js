@@ -12,7 +12,7 @@ const els = {
   product: $('#tProduct'), date: $('#tDate'), deadline: $('#tDeadline'), exactDeadline: $('#tExactDeadline'),
   customer: $('#tCustomer'), langs: $('#tLangs'), manager: $('#tManager'), status: $('#tStatus'),
   link2: $('#tLink2'), deliveryStatus: $('#tDeliveryStatus'), estimateLink: $('#tEstimateLink'),
-  total: $('#tTotal'), sp: $('#tSp'), comment: $('#tComment'),
+  total: $('#tTotal'), sp: $('#tSp'), comment: $('#tComment'), complaints: $('#tComplaints'),
   preview: $('#tPreview'), copyPreview: $('#tCopyPreview'), submit: $('#tSubmit'), msg: $('#tMsg'),
 };
 
@@ -332,7 +332,7 @@ els.form.addEventListener('submit', async (e) => {
     deadline: els.deadline.value, exactDeadline: els.exactDeadline.value,
     status: els.status.value, deliveryStatus: els.deliveryStatus.value,
     estimateLink: els.estimateLink.value.trim(), total: els.total.value, sp: els.sp.value,
-    manager: els.manager.value, comment: els.comment.value.trim(),
+    manager: els.manager.value, comment: els.comment.value.trim(), complaints: els.complaints.value.trim(),
     languages: checkedLangInputs().map((cb) => cb.value),
   };
 

@@ -209,7 +209,7 @@ class Range {
     sorted.forEach((x, i) => { this.sh.cells[this.r - 1 + i] = x.row; });
     return this;
   }
-  createFilter() { this.sh.filter = chain({ criteria: {}, remove: () => { this.sh.filter = null; }, setColumnFilterCriteria: (col, cr) => { this.sh.filter.criteria[col] = cr; } }); return this.sh.filter; }
+  createFilter() { const rng = this; this.sh.filter = chain({ criteria: {}, getRange: () => rng, remove: () => { this.sh.filter = null; }, setColumnFilterCriteria: (col, cr) => { this.sh.filter.criteria[col] = cr; } }); return this.sh.filter; }
   protect() { return chain({}); }
   merge() { this.sh.merges.push(this.a1()); (this.sh.mergeList = this.sh.mergeList || []).push([this.r, this.c, this.nr, this.nc]); return this; }
   fmt(k, v) { this.each((r, c) => { const cell = this.sh.cell(r, c); (cell.f = cell.f || {})[k] = v; }); return this; }

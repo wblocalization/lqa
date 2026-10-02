@@ -71,6 +71,7 @@ test('setupDesign: оформление без ошибок', () => {
   G.setupDesign();
   const sh = tasks();
   assert.equal(sh.getRange(1, 9).getValue(), 'Срок сдачи');
+  assert.equal(sh.getRange(1, 18).getValue(), 'Жалобы на заказчика', 'колонка R «Жалобы»');
   assert.equal(sh.frozenRows, 1); assert.equal(sh.frozenCols, 3);
   assert.ok(sh.cf.length > 30, 'правил цветов: ' + sh.cf.length);
   assert.ok(sh.cf.every(r => /!.1:/.test(r.ranges[0])), 'правила должны начинаться с 1-й строки');
@@ -178,6 +179,21 @@ test('Несколько доп. ссылок: «(ссылка 2)», «(ссыл
   assert.ok(!rt3.getText().includes('доп. ссылка'));
   same(G.linksFromRich_(rt3).link2.split('\n'), ['https://band/two', 'https://band/three']);
   G.saveTaskEdits({ ...G.getTaskForEdit(rowOf('LIT-1')), link2: 'https://band/two' }); // как было для следующих проверок
+  G.deleteTask(row, id, tasks().getRange(row, 3).getValue());
+});
+
+test('Жалобы на заказчика: добавление, правка, старые окна не стирают', () => {
+  const id = G.submitNewTaskFromDialog({ contractor: 'LogrusIT', subject: 'С жалобой', languages: [], complaints: 'Прислал задачу после 19:00' });
+  const row = rowOf(id);
+  assert.equal(tasks().getRange(row, 18).getValue(), 'Прислал задачу после 19:00');
+  const t = G.getTaskForEdit(row);
+  assert.equal(t.complaints, 'Прислал задачу после 19:00');
+  G.saveTaskEdits({ ...t, complaints: 'Не отвечает в Band' });
+  const last = log().getRange(log().getLastRow(), 1, 1, 7).getValues()[0];
+  same([last[4], last[5], last[6]], ['Жалобы на заказчика', 'Прислал задачу после 19:00', 'Не отвечает в Band']);
+  const old = { ...G.getTaskForEdit(row) }; delete old.complaints; // окно старой версии поля не знает
+  G.saveTaskEdits({ ...old, comment: 'ок' });
+  assert.equal(tasks().getRange(row, 18).getValue(), 'Не отвечает в Band');
   G.deleteTask(row, id, tasks().getRange(row, 3).getValue());
 });
 
@@ -508,6 +524,9 @@ test('Перенос истории из старой таблицы', { skip: !
   same(G.linksFromRich_(tasks().getRange(multi, 3).getRichTextValue()),
     { link: 'https://band.wb.ru/wb/pl/tpw8mh66tpd7ung4siq9g96hoh', link2: 'https://band.wb.ru/wb/pl/tjfa9pqwnprk3eorhzjinzkhjy\nhttps://band.wb.ru/wb/pl/mytom1ojftg3789opd3c7ioe1o' });
   assert.match(tasks().getRange(multi, 3).getValue(), / \(ссылка 2\) \(ссылка 3\)$/);
+  // «Жалобы на заказчика» — в свою колонку, а не в комментарий
+  const complained = rows.findIndex(r => r[0] === 'LIT-25-159') + 1;
+  same([tasks().getRange(complained, 18).getValue(), /Жалобы/.test(tasks().getRange(complained, 17).getValue())], ['Прислал задачу после 19:00', false]);
   // Смета из старой таблицы — тоже «Ссылка на смету номер» со ссылкой
   same([tasks().getRange(multi, 11).getValue(), G.getTaskForEdit(multi).estimateLink], ['Ссылка на смету LIT-26-2188', 'https://disk.wb.ru/f/83009693']);
   assert.ok(!/Ещё ссылки/.test(tasks().getRange(multi, 17).getValue()));

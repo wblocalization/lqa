@@ -232,6 +232,7 @@ function addTask_(req) {
     customer: str(t.customer), deadline: str(t.deadline), exactDeadline: str(t.exactDeadline),
     status: str(t.status), deliveryStatus: str(t.deliveryStatus), estimateLink: str(t.estimateLink),
     total: str(t.total), sp: str(t.sp), manager: str(t.manager), comment: str(t.comment),
+    complaints: str(t.complaints),
     languages: (Array.isArray(t.languages) ? t.languages : []).map(str).filter(Boolean),
   };
   if (!task.contractor) return { ok: false, error: 'Выберите подрядчика' };

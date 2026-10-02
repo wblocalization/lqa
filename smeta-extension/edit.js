@@ -8,7 +8,7 @@ const els = {
   product: $('#eProduct'), customer: $('#eCustomer'), langs: $('#eLangs'), deadline: $('#eDeadline'),
   exactDeadline: $('#eExactDeadline'), status: $('#eStatus'), deliveryStatus: $('#eDeliveryStatus'),
   contractor: $('#eContractor'), manager: $('#eManager'), estimateLink: $('#eEstimateLink'),
-  total: $('#eTotal'), sp: $('#eSp'), comment: $('#eComment'), save: $('#eSave'), msg: $('#eMsg'), top: $('#eTop'),
+  total: $('#eTotal'), sp: $('#eSp'), comment: $('#eComment'), complaints: $('#eComplaints'), save: $('#eSave'), msg: $('#eMsg'), top: $('#eTop'),
 };
 
 let lists = null;    // справочники из таблицы — один раз
@@ -100,6 +100,7 @@ function fill(t) {
   els.total.value = t.total;
   els.sp.value = t.sp;
   els.comment.value = t.comment;
+  els.complaints.value = t.complaints || '';
   fillSelect(els.product, lists.products, t.product);
   fillSelect(els.deadline, lists.deadlines, t.deadline);
   fillSelect(els.status, lists.statuses, t.status);
@@ -129,7 +130,7 @@ els.form.addEventListener('submit', async (e) => {
     customer: els.customer.value.trim(), deadline: els.deadline.value, exactDeadline: els.exactDeadline.value,
     status: els.status.value, deliveryStatus: els.deliveryStatus.value, contractor: els.contractor.value,
     manager: els.manager.value, estimateLink: els.estimateLink.value.trim(), total: els.total.value,
-    sp: els.sp.value, comment: els.comment.value.trim(),
+    sp: els.sp.value, comment: els.comment.value.trim(), complaints: els.complaints.value.trim(),
     languages: keepOrder(String(current.languages || '').split(',').map((x) => x.trim()).filter(Boolean),
       [...els.langs.querySelectorAll('input:checked')].map((cb) => cb.value)).join(', '),
   };

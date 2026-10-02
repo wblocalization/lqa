@@ -64,7 +64,7 @@
     </div>
 
     <details class="more">
-      <summary>Ещё поля: смета, итого, SP, статус отдачи, комментарий</summary>
+      <summary>Ещё поля: смета, итого, SP, статус отдачи, комментарий, жалобы</summary>
       <div class="stack">
         <label class="field">Смета (ссылка)<input type="url" id="estimateLink"></label>
         <div class="three">
@@ -73,6 +73,7 @@
           <label class="field">Статус отдачи<select id="deliveryStatus"></select></label>
         </div>
         <label class="field">Комментарий<input type="text" id="comment"></label>
+        <label class="field">Жалобы на заказчика<input type="text" id="complaints" placeholder="несоблюдение процессов, грубость, неверная информация…"></label>
       </div>
     </details>
     <div id="msg" class="msg"></div>
@@ -270,7 +271,7 @@
       link: $('#link').value, link2: $('#link2').value, date: $('#date').value, product: $('#product').value,
       customer: $('#customer').value, deadline: $('#deadline').value, exactDeadline: $('#exactDeadline').value,
       status: $('#status').value, deliveryStatus: $('#deliveryStatus').value, estimateLink: $('#estimateLink').value,
-      total: $('#total').value, sp: $('#sp').value, manager: $('#manager').value, comment: $('#comment').value,
+      total: $('#total').value, sp: $('#sp').value, manager: $('#manager').value, comment: $('#comment').value, complaints: $('#complaints').value,
       languages: checkedLangs()
     };
     const btn = $('#submitBtn');
