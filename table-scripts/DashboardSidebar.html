@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<?!= include('Общее') ?>
+<script src="https://www.gstatic.com/charts/loader.js"></script>
+<style>
+  .row { display: flex; gap: 8px; align-items: end; }
+  .row .field { flex: 1; }
+  .chart { width: 100%; height: 240px; margin-bottom: 8px; }
+  .overdue .line { font-size: 12px; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <label class="field">Год<select id="year"></select></label>
+    <label class="field">Месяц<select id="month">
+      <option value="">Весь год</option><option value="1">Январь</option><option value="2">Февраль</option><option value="3">Март</option>
+      <option value="4">Апрель</option><option value="5">Май</option><option value="6">Июнь</option><option value="7">Июль</option>
+      <option value="8">Август</option><option value="9">Сентябрь</option><option value="10">Октябрь</option>
+      <option value="11">Ноябрь</option><option value="12">Декабрь</option></select></label>
+    <button class="btn primary" id="reload" type="button">Обновить</button>
+  </div>
+  <div id="msg" class="msg"></div>
+
+  <div class="tiles" id="tiles"></div>
+  <div id="overdueBox" class="group overdue" hidden><h4>Просрочено сейчас</h4><div id="overdue"></div></div>
+
+  <h3>По менеджерам, SP</h3><div class="chart" id="c_managers"></div>
+  <h3>По менеджерам, ₽</h3><div class="chart" id="c_managers_money"></div>
+  <h3>По подрядчикам, ₽</h3><div class="chart" id="c_contractors"></div>
+  <h3>По продуктам, задач</h3><div class="chart" id="c_products"></div>
+  <h3>По языкам, упоминаний</h3><div class="chart" id="c_langs"></div>
+  <h3>По месяцам (последние 12): задачи и SP</h3><div class="chart" id="c_months"></div>
+  <h3>По годам: задачи и SP</h3><div class="chart" id="c_years"></div>
+
+<script>
+  const COLORS = ['#2563EB', '#94A3B8'];
+  run('getDashboardYears').then(years => {
+    fillSelect($('#year'), years.map(String), 'Всё время');
+  });
+  // Цифры показываем сразу; графики — когда загрузится библиотека Google Charts
+  let lastData = null, chartsReady = false;
+  if (window.google && google.charts) {
+    google.charts.load('current', { packages: ['corechart'] });
+    google.charts.setOnLoadCallback(() => { chartsReady = true; if (lastData) drawCharts(lastData); });
+  } else {
+    $$('.chart').forEach(el => { el.innerHTML = '<div class="small muted">Графики не загрузились — проверьте интернет и нажмите «Обновить».</div>'; el.style.height = 'auto'; });
+  }
+  load();
+  $('#reload').addEventListener('click', load);
+  $('#year').addEventListener('change', load);
+  $('#month').addEventListener('change', () => { if ($('#year').value) load(); });
+
+  function load() {
+    setMsg($('#msg'), 'Считаю…');
+    run('getDashboardData', $('#year').value, $('#year').value ? $('#month').value : '')
+      .then(render).then(() => setMsg($('#msg'), ''))
+      .catch(e => setMsg($('#msg'), 'Не получилось посчитать: ' + e.message, 'err'));
+  }
+
+  function tile(num, lbl, bad) {
+    return `<div class="tile${bad ? ' bad' : ''}"><div class="num">${esc(num)}</div><div class="lbl">${esc(lbl)}</div></div>`;
+  }
+
+  function render(d) {
+    $('#tiles').innerHTML = tile(d.totalTasks, 'задач') + tile(d.totalSp, 'SP') + tile(money(d.totalMoney), '₽ с НДС') +
+      tile(d.overdueCount, 'просрочено сейчас', d.overdueCount > 0);
+    $('#overdueBox').hidden = !d.overdue.length;
+    $('#overdue').innerHTML = d.overdue.map(o =>
+      `<div class="line"><span><b>${esc(o.id)}</b> ${esc(o.title)}</span><span class="v">${esc(o.due)} · ${esc(o.manager)}</span></div>`).join('');
+    lastData = d;
+    if (chartsReady) drawCharts(d);
+  }
+
+  function drawCharts(d) {
+    bar('c_managers', d.managers, 'Менеджер', 'SP');
+    bar('c_managers_money', d.managersMoney, 'Менеджер', '₽');
+    bar('c_contractors', d.contractorsMoney, 'Подрядчик', '₽');
+    bar('c_products', d.products, 'Продукт', 'Задачи');
+    bar('c_langs', d.languages, 'Язык', 'Упоминаний');
+    columns('c_months', d.byMonth, 'Месяц');
+    columns('c_years', d.byYear, 'Год');
+  }
+
+  function bar(id, rows, a, b) {
+    const dt = new google.visualization.DataTable();
+    dt.addColumn('string', a); dt.addColumn('number', b);
+    const data = rows.filter(r => r[1] > 0).sort((x, y) => y[1] - x[1]).slice(0, 10);
+    if (!data.length) { document.getElementById(id).innerHTML = '<div class="small muted">Нет данных за период</div>'; return; }
+    data.forEach(r => dt.addRow(r));
+    new google.visualization.BarChart(document.getElementById(id)).draw(dt, {
+      legend: 'none', colors: [COLORS[0]], chartArea: { width: '58%', height: '82%' },
+      hAxis: { textStyle: { fontSize: 10 } }, vAxis: { textStyle: { fontSize: 10 } }
+    });
+  }
+
+  function columns(id, rows, a) {
+    const dt = new google.visualization.DataTable();
+    dt.addColumn('string', a); dt.addColumn('number', 'Задачи'); dt.addColumn('number', 'SP');
+    rows.forEach(r => dt.addRow(r));
+    new google.visualization.ColumnChart(document.getElementById(id)).draw(dt, {
+      legend: { position: 'top' }, colors: COLORS, chartArea: { width: '84%', height: '70%' },
+      hAxis: { textStyle: { fontSize: 9 } }, vAxis: { textStyle: { fontSize: 10 } }
+    });
+  }
+</script>
+</body>
+</html>

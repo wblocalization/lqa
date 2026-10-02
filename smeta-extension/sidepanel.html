@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Задачи и сметы</title>
+<link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+<header class="top">
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" data-tab="task" aria-controls="tabTask" aria-selected="true" type="button">Новая задача</button>
+    <button class="tab" role="tab" data-tab="mine" aria-controls="tabMine" aria-selected="false" type="button">Мои задачи <span id="mineBadge" class="tab-badge" hidden></span></button>
+    <button class="tab" role="tab" data-tab="smeta" aria-controls="tabSmeta" aria-selected="false" type="button">Смета</button>
+  </nav>
+  <button id="openSettings" class="icon-btn" type="button" title="Настройки" aria-label="Настройки">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.09a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+  </button>
+</header>
+
+<main>
+  <section id="settings" class="card settings" hidden>
+    <h2>Настройки</h2>
+    <label>Адрес веб-приложения
+      <input id="setUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec">
+    </label>
+    <label>Токен
+      <input id="setToken" type="password" autocomplete="off">
+    </label>
+    <label>Кто вы <span class="opt">будете менеджером в новых задачах и во вкладке «Мои»</span>
+      <span class="with-btn">
+        <select id="setManager"><option value="">Сначала адрес и токен</option></select>
+        <button id="retryManagers" class="btn ghost small" type="button" title="Загрузить список ещё раз">↻</button>
+      </span>
+    </label>
+    <p id="setManagerMsg" class="status err" hidden></p>
+    <label>Папка для смет на ВБ Диске <span class="opt">путь или ссылка на папку из адресной строки диска; внутри — папка с темой письма</span>
+      <input id="setDiskFolder" type="text" placeholder="localization/Сметы">
+    </label>
+    <div class="row-btns">
+      <button id="closeSettings" class="btn ghost" type="button">Отмена</button>
+      <button id="saveSettings" class="btn" type="button">Сохранить</button>
+    </div>
+  </section>
+
+  <section id="tabTask" role="tabpanel">
+    <p id="taskLoading" class="muted center" hidden></p>
+
+    <form id="taskForm" class="task-form" hidden>
+      <div class="preview-box">
+        <div class="preview-txt"><span class="eyebrow">Тема письма</span><p id="tPreview" class="preview"></p></div>
+        <button id="tCopyPreview" class="btn ghost small" type="button">Скопировать</button>
+      </div>
+      <div class="tpl">
+        <label>Шаблон
+          <span class="with-btn">
+            <select id="tTemplate"><option value="">— без шаблона —</option></select>
+            <button id="tSaveTpl" class="btn ghost" type="button" title="Запомнить подрядчика, тикет, продукт, языки и т. д.">Сохранить</button>
+          </span>
+        </label>
+        <div class="tpl-actions">
+          <button id="tDelTpl" class="link-btn" type="button" hidden>Удалить шаблон</button>
+          <button id="tExportTpl" class="link-btn" type="button">Скачать шаблоны</button>
+          <button id="tImportTpl" class="link-btn" type="button">Загрузить из файла</button>
+          <input id="tImportFile" type="file" accept=".json,application/json" hidden>
+        </div>
+      </div>
+
+      <div class="two">
+        <label><span>Подрядчик <span class="req">*</span></span>
+          <select id="tContractor" required></select>
+        </label>
+        <label>Тикет
+          <span class="prefixed"><span>LOCAL-</span><input id="tTicketNum" type="text" inputmode="numeric" placeholder="1234"></span>
+        </label>
+      </div>
+
+      <label><span>Тема письма <span class="req">*</span></span>
+        <input id="tSubject" type="text" required placeholder="Только суть, номер добавится сам">
+      </label>
+
+      <label>Ссылка на Band
+        <span class="with-btn">
+          <input id="tLink" type="url" placeholder="https://band.wb.ru/…">
+          <button id="tPasteLink" class="btn ghost" type="button">Вставить</button>
+        </span>
+      </label>
+
+      <label>Ещё ссылки на Band <span class="opt">если переписок несколько</span>
+        <textarea id="tLink2" rows="1" placeholder="каждая с новой строки — в таблице станут «(ссылка 2)», «(ссылка 3)» после темы"></textarea>
+      </label>
+
+      <div class="two">
+        <label>Продукт <select id="tProduct"></select></label>
+        <label>Дата <input id="tDate" type="date"></label>
+      </div>
+
+      <div class="two">
+        <label>Дедлайн <select id="tDeadline"></select></label>
+        <label>Срок сдачи <input id="tExactDeadline" type="date"></label>
+      </div>
+
+      <label>Ник заказчика
+        <input id="tCustomer" type="text" placeholder="@nick">
+      </label>
+
+      <fieldset class="langs">
+        <legend>Языки</legend>
+        <div id="tLangs"></div>
+      </fieldset>
+
+      <div class="two">
+        <label>Менеджер <select id="tManager"></select></label>
+        <label>Статус <select id="tStatus"></select></label>
+      </div>
+
+      <details class="more">
+        <summary>Ещё поля</summary>
+        <label>Статус отдачи <select id="tDeliveryStatus"></select></label>
+        <label>Смета (ссылка) <input id="tEstimateLink" type="url"></label>
+        <div class="two">
+          <label>Итого с НДС, ₽ <input id="tTotal" type="number" step="0.01" min="0"></label>
+          <label>SP <input id="tSp" type="number" step="1" min="0"></label>
+        </div>
+        <label>Комментарий <input id="tComment" type="text"></label>
+        <label>Жалобы на заказчика <input id="tComplaints" type="text" placeholder="несоблюдение процессов, грубость…"></label>
+      </details>
+
+
+
+      <button id="tSubmit" class="btn primary" type="submit">Добавить задачу</button>
+    </form>
+
+    <section id="taskDone" class="done" hidden>
+      <span class="done-check" aria-hidden="true">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      </span>
+      <h2>Добавлено: <span id="taskDoneId"></span></h2>
+      <p id="taskDoneSubject" class="done-subject"></p>
+      <button id="taskCopyDone" class="btn ghost" type="button">Скопировать тему</button>
+      <button id="taskAgain" class="btn primary" type="button">Ещё задача</button>
+    </section>
+
+    <p id="tMsg" class="status" role="status"></p>
+  </section>
+
+  <section id="tabMine" role="tabpanel" hidden>
+    <div id="mineView">
+      <form id="mSearchForm" class="with-btn mine-search">
+        <input id="mSearch" type="search" placeholder="Найти любую задачу: номер, тикет, тема…" autocomplete="off">
+        <button class="btn ghost" type="submit">Найти</button>
+      </form>
+      <div id="mFound" class="mine-list" hidden></div>
+      <div class="mine-head">
+        <select id="mManager" aria-label="Менеджер"></select>
+        <button id="mRefresh" class="btn ghost small" type="button">Обновить</button>
+      </div>
+      <div id="mFilter" class="seg" role="tablist" aria-label="Какие задачи показать">
+        <button type="button" data-f="open">Открытые</button>
+        <button type="button" data-f="done">Отданные</button>
+        <button type="button" data-f="cancelled">Отменённые</button>
+        <button type="button" data-f="all">Все</button>
+      </div>
+      <p id="mSummary" class="muted"></p>
+      <div id="mList" class="mine-list"></div>
+      <p id="mMsg" class="status" role="status"></p>
+    </div>
+
+    <form id="editForm" class="task-form" hidden>
+      <div class="edit-head">
+        <button id="eBack" class="btn ghost small" type="button">← Назад</button>
+        <b id="eTitle"></b>
+      </div>
+      <p id="eTop" class="status" role="status" hidden></p>
+      <label><span>Тема письма <span class="req">*</span></span>
+        <textarea id="eSubject" rows="2" required></textarea>
+      </label>
+      <label>Ссылка на Band <input id="eLink" type="url" placeholder="https://band.wb.ru/…"></label>
+      <label>Ещё ссылки на Band <span class="opt">каждая с новой строки</span>
+        <textarea id="eLink2" rows="1"></textarea>
+      </label>
+      <div class="two">
+        <label>Тикет
+          <span class="prefixed"><span>LOCAL-</span><input id="eTicketNum" type="text" inputmode="numeric" placeholder="1234"></span>
+        </label>
+        <label>Дата <input id="eDate" type="date"></label>
+      </div>
+      <div class="two">
+        <label>Продукт <select id="eProduct"></select></label>
+        <label>Ник заказчика <input id="eCustomer" type="text" placeholder="@nick"></label>
+      </div>
+      <fieldset class="langs">
+        <legend>Языки</legend>
+        <div id="eLangs"></div>
+      </fieldset>
+      <div class="two">
+        <label>Примерный дедлайн <select id="eDeadline"></select></label>
+        <label>Срок сдачи <input id="eExactDeadline" type="date"></label>
+      </div>
+      <div class="two">
+        <label>Статус <select id="eStatus"></select></label>
+        <label>Статус отдачи <select id="eDeliveryStatus"></select></label>
+      </div>
+      <div class="two">
+        <label>Подрядчик <select id="eContractor"></select></label>
+        <label>Менеджер <select id="eManager"></select></label>
+      </div>
+      <label>Смета (ссылка) <input id="eEstimateLink" type="url"></label>
+      <div class="two">
+        <label>Итого с НДС <input id="eTotal" type="number" step="0.01" min="0"></label>
+        <label>SP <input id="eSp" type="number" step="1" min="0"></label>
+      </div>
+      <label>Комментарий <textarea id="eComment" rows="2"></textarea></label>
+      <label>Жалобы на заказчика <textarea id="eComplaints" rows="2"></textarea></label>
+      <button id="eSave" class="btn primary" type="submit">Сохранить изменения</button>
+      <p id="eMsg" class="status" role="status"></p>
+    </form>
+  </section>
+
+  <section id="tabSmeta" role="tabpanel" hidden>
+    <section id="empty">
+      <label id="drop" class="drop">
+        <input id="file" type="file" accept="application/pdf,.pdf" hidden>
+        <span class="drop-icon" aria-hidden="true">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="m9 15 3-3 3 3"/></svg>
+        </span>
+        <strong>Перетащите PDF сметы</strong>
+        <span>или нажмите, чтобы выбрать</span>
+      </label>
+      <p class="muted center">Номер возьмётся из имени файла (всё до «-РВБ»), сумма с НДС — из сметы</p>
+    </section>
+
+    <form id="form" hidden>
+      <div class="file-chip">
+        <span class="pdf-badge">PDF</span>
+        <span id="fileName" class="file-name"></span>
+        <button id="reset" class="icon-btn small" type="button" title="Другая смета" aria-label="Другая смета">✕</button>
+      </div>
+
+      <div class="card amount">
+        <label for="total" class="eyebrow">Итого с НДС</label>
+        <div class="amount-line">
+          <input id="total" type="text" inputmode="decimal" required>
+          <span class="cur">₽</span>
+        </div>
+        <p id="totalHint" class="hint"></p>
+      </div>
+
+      <div class="card">
+        <label for="task" class="eyebrow">Задача</label>
+        <input id="task" class="task-input" type="text" required placeholder="Номер из имени файла" autocomplete="off">
+        <div id="rowInfo" class="rowinfo" hidden></div>
+      </div>
+
+      <div class="card">
+        <label for="link" class="eyebrow">Ссылка на ВБ Диск</label>
+        <p class="field-note">Оставьте пустым, если хотите автоматическую загрузку на ВБ Диск</p>
+        <div class="with-btn">
+          <input id="link" type="url" placeholder="https://disk.wb.ru/…">
+          <button id="pasteLink" class="btn ghost" type="button" title="Вставить из буфера">Вставить</button>
+        </div>
+      </div>
+
+      <p id="diskHint" class="hint"></p>
+      <button id="submit" class="btn primary" type="submit">Загрузить на ВБ Диск и записать</button>
+    </form>
+
+    <section id="done" class="done" hidden>
+      <span class="done-check" aria-hidden="true">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      </span>
+      <h2>Записано</h2>
+      <p id="doneText"></p>
+      <button id="again" class="btn primary" type="button">Ещё одна смета</button>
+    </section>
+
+    <p id="status" class="status" role="status"></p>
+  </section>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>
