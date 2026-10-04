@@ -1686,7 +1686,7 @@ function sendMonthEndReminders() {
   const checks = [
     [COL.TICKET, 'Тикет'], [COL.DATE, 'Дата'], [COL.PRODUCT, 'Продукт'], [COL.CUSTOMER, 'Ник заказчика'],
     [COL.LANGS, 'Языки'], [COL.DEADLINE, 'Дедлайн'], [COL.DUE, 'Срок сдачи'], [COL.STATUS, 'Статус'],
-    [COL.ESTIMATE, 'Смета'], [COL.CONTRACTOR, 'Подрядчик'], [COL.MANAGER, 'Менеджер'],
+    [COL.ESTIMATE, 'Смета'], [COL.TOTAL, 'Итого с НДС'], [COL.CONTRACTOR, 'Подрядчик'], [COL.MANAGER, 'Менеджер'],
     [COL.DELIVERY, 'Статус отдачи'], [COL.SP, 'SP']
   ];
   const now = new Date();
