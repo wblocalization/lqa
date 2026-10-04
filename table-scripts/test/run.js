@@ -325,10 +325,13 @@ test('Фильтры', () => {
 
 test('Мои задачи: с Sheets API — личное представление, без него — общий фильтр', () => {
   const reqs = [];
-  ctx.Sheets = { Spreadsheets: { batchUpdate: (body, id) => {
-    reqs.push(body.requests[0]);
-    return { replies: [{ addFilterView: { filterView: { filterViewId: 777 } } }] };
-  } } };
+  let existing = [];
+  ctx.Sheets = { Spreadsheets: {
+    get: () => ({ sheets: [{ properties: { sheetId: tasks().getSheetId() }, filterViews: existing }] }),
+    batchUpdate: (body, id) => {
+      reqs.push(body.requests[0]);
+      return { replies: [{ addFilterView: { filterView: { filterViewId: 777 } } }] };
+    } } };
   try {
     G.showAllTasks();
     G.showMyTasks();
@@ -339,6 +342,10 @@ test('Мои задачи: с Sheets API — личное представлен
     same(tasks().filter && tasks().filter.criteria, {}, 'общий фильтр не тронут');
     G.showMyTasks(); // второй раз — то же представление обновляется, а не плодится
     assert.equal(reqs[1].updateFilterView.filter.filterViewId, 777);
+    // Представление уже есть в таблице, а номер не запомнен — берём его, а не создаём второе с тем же названием
+    existing = [{ filterViewId: 555, title: 'Задачи: Ольга Шешина' }];
+    ctx.__prompt = 'Ольга Шешина'; G.filterByManager(); ctx.__prompt = '';
+    assert.equal(reqs.at(-1).updateFilterView.filter.filterViewId, 555);
   } finally { delete ctx.Sheets; }
   G.showMyTasks(); // сервис не включён — как раньше, общий фильтр
   assert.ok(!tasks().filter.criteria[14].hidden.includes('Анастасия Лисовая'));

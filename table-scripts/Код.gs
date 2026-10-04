@@ -708,6 +708,14 @@ function filterTasksByManager_(name) {
   SpreadsheetApp.getActive().toast('Показаны задачи: ' + name + ' — общим фильтром, его видят все в таблице. Вернуть: «👁 Показать все задачи». ' + why, 'Фильтр', 15);
 }
 
+/** Номер представления фильтра с таким названием на листе (0 — нет). */
+function findFilterViewId_(ssId, sheetId, title) {
+  const res = Sheets.Spreadsheets.get(ssId, { fields: 'sheets(properties.sheetId,filterViews(filterViewId,title))' });
+  const sheet = (res.sheets || []).find(x => x.properties && x.properties.sheetId === sheetId);
+  const found = sheet && (sheet.filterViews || []).find(v => v.title === title);
+  return found ? Number(found.filterViewId) : 0;
+}
+
 /** Личное представление «Задачи: имя» (одно на менеджера, обновляется) и окно со ссылкой на него. */
 function openManagerView_(sh, name) {
   const ss = SpreadsheetApp.getActive();
@@ -719,6 +727,7 @@ function openManagerView_(sh, name) {
     filterSpecs: [{ columnIndex: COL.MANAGER - 1, filterCriteria: { condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: name }] } } }]
   };
   let id = Number(props.getProperty(key)) || 0;
+  if (!id) id = findFilterViewId_(ss.getId(), sh.getSheetId(), view.title); // уже есть (например, с прошлой попытки)
   if (id) {
     try {
       view.filterViewId = id;
@@ -728,8 +737,8 @@ function openManagerView_(sh, name) {
   if (!id) {
     const res = Sheets.Spreadsheets.batchUpdate({ requests: [{ addFilterView: { filter: view } }] }, ss.getId());
     id = res.replies[0].addFilterView.filterView.filterViewId;
-    props.setProperty(key, String(id));
   }
+  props.setProperty(key, String(id));
   // «?view» меняет адрес целиком — страница перезагрузится в этой же вкладке уже с представлением
   // (если поменять только часть после #, Таблицы могут не переключиться).
   const base = ss.getUrl().replace(/\/edit.*$/, '') + '/edit';
