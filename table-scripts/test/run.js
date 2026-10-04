@@ -32,6 +32,8 @@ const tasks = () => ss.getSheetByName('📌 Задачи (менеджеры)');
 const tr = () => ss.getSheetByName('✍️ Задачи (переводчики)');
 const log = () => ss.getSheetByName('📝 Журнал');
 const rowOf = id => tasks().getRange('A1:A200').getValues().findIndex(r => r[0] === id) + 1;
+// «Журнал» убран: ни одна операция не должна в него писать
+const logRows0 = log() ? log().getLastRow() : 0;
 let passed = 0;
 function test(name, opts, fn) {
   if (typeof opts === 'function') { fn = opts; opts = {}; }
@@ -106,8 +108,6 @@ test('Добавить задачу: номер LIT-26-2232, тема, ссыл�
   assert.equal(r[15], 3);
   same(G.linksFromRich_(sh.getRange(2, 3).getRichTextValue()), { link: 'https://band/a', link2: 'https://band/b' });
   assert.ok(sh.getRange(2, 5).getDataValidation(), 'списки скопированы в новую строку');
-  const last = log().getRange(log().getLastRow(), 1, 1, 7).getValues()[0];
-  assert.equal(last[2], 'Создание задачи'); assert.equal(last[3], 'LIT-26-2232'); assert.equal(last[1], 'nastya@wb.ru');
   assert.equal(G.generateNextTaskId(sh, 'LogrusIT'), 'LIT-26-2233');
   assert.equal(G.generateNextTaskId(sh, 'Бюро переводов'), 'BP-26-367');
 });
@@ -138,8 +138,6 @@ test('Правка попадает в нужную задачу, даже ес�
   const r = tasks().getRange(row + 1, 1, 1, 17).getValues()[0];
   assert.equal(r[0], 'LIT-7'); assert.equal(r[9], 'В работе'); assert.equal(r[15], 5); assert.equal(r[6], 'Грузинский, Армянский');
   assert.notEqual(tasks().getRange(row, 10).getValue(), 'В работе', 'соседняя задача не тронута');
-  const entries = log().getDataRange().getValues().filter(x => x[3] === 'LIT-7' && x[2] === 'Правка').map(x => x[4]);
-  assert.ok(entries.includes('Статус') && entries.includes('SP') && entries.includes('Языки'), entries.join());
 });
 
 test('Правка не теряет доп. ссылку', () => {
@@ -189,8 +187,7 @@ test('Жалобы на заказчика: добавление, правка, 
   const t = G.getTaskForEdit(row);
   assert.equal(t.complaints, 'Прислал задачу после 19:00');
   G.saveTaskEdits({ ...t, complaints: 'Не отвечает в Band' });
-  const last = log().getRange(log().getLastRow(), 1, 1, 7).getValues()[0];
-  same([last[4], last[5], last[6]], ['Жалобы на заказчика', 'Прислал задачу после 19:00', 'Не отвечает в Band']);
+  assert.equal(G.getTaskForEdit(row).complaints, 'Не отвечает в Band');
   const old = { ...G.getTaskForEdit(row) }; delete old.complaints; // окно старой версии поля не знает
   G.saveTaskEdits({ ...old, comment: 'ок' });
   assert.equal(tasks().getRange(row, 18).getValue(), 'Не отвечает в Band');
@@ -200,8 +197,7 @@ test('Жалобы на заказчика: добавление, правка, 
 test('Очистка поля тоже попадает в журнал', () => {
   const t = G.getTaskForEdit(rowOf('LIT-1'));
   G.saveTaskEdits({ ...t, comment: '' });
-  const last = log().getRange(log().getLastRow(), 1, 1, 7).getValues()[0];
-  assert.equal(last[4], 'Комментарий'); assert.equal(last[5], 'поправили'); assert.equal(last[6], '');
+  assert.equal(G.getTaskForEdit(rowOf('LIT-1')).comment, '');
 });
 
 test('Удаление: удаляется именно та задача, даже после сдвига', () => {
@@ -286,8 +282,6 @@ test('Расширение (Smeta.gs): добавить задачу и запи
   const add = call({ action: 'addTask', user: 'Настя', task: { contractor: 'LogrusIT', subject: 'Из расширения', ticket: 'LOCAL-1116', languages: ['Грузинский'] } });
   assert.ok(add.ok, JSON.stringify(add));
   assert.equal(add.id, prev.id);
-  const last = log().getRange(log().getLastRow(), 1, 1, 7).getValues()[0];
-  assert.equal(last[1], 'Расширение (Настя)');
   assert.equal(ctx.SCRIPT_LOCK_HELD, false); assert.ok(!ctx.__lockHeld);
   // Как у Насти: openById без разрешения — скрипт в таблице, поэтому он не нужен
   const openById = ctx.SpreadsheetApp.openById;
@@ -308,9 +302,8 @@ test('Расширение (Smeta.gs): добавить задачу и запи
   // Окно правки видит адрес, а сохранение без изменений не пишет в журнал «Смета»
   const t = G.getTaskForEdit(r);
   assert.equal(t.estimateLink, 'https://disk/x');
-  const logBefore = log().getLastRow();
   G.saveTaskEdits(t);
-  assert.ok(!log().getRange(logBefore + 1, 1, Math.max(1, log().getLastRow() - logBefore), 7).getValues().some(x => x[4] === 'Смета'));
+  assert.equal(G.getTaskForEdit(r).estimateLink, 'https://disk/x');
   G.saveTaskEdits({ ...t, estimateLink: 'https://disk/z' });
   same([tasks().getRange(r, 11).getValue(), G.getTaskForEdit(r).estimateLink], ['Ссылка на смету ' + add.id, 'https://disk/z']);
   // Адрес, вписанный руками, тоже становится «Ссылка на смету номер»
@@ -330,14 +323,12 @@ test('Фильтры', () => {
   G.showInProgressTranslatorTasks(); G.showAllTranslatorTasks();
 });
 
-test('Правка прямо в листе: журнал, цветные языки, новая строка получает номер и списки', () => {
+test('Правка прямо в листе: цветные языки, новая строка получает номер и списки', () => {
   const sh = tasks();
   const row = rowOf('LIT-7');
   const old = sh.getRange(row, 10).getValue();
   sh.getRange(row, 10).setValue('Холд');
   G.onEdit({ range: sh.getRange(row, 10), oldValue: old, value: 'Холд' });
-  let last = log().getRange(log().getLastRow(), 1, 1, 7).getValues()[0];
-  same([last[2], last[3], last[4], last[5], last[6]], ['Правка в таблице', 'LIT-7', 'Статус', old, 'Холд']);
 
   sh.getRange(row, 7).setValue('Грузинский, Узбекский');
   G.onEdit({ range: sh.getRange(row, 7), oldValue: 'x', value: 'Грузинский, Узбекский' });
@@ -352,19 +343,12 @@ test('Правка прямо в листе: журнал, цветные язы
   sh.getRange(r, 13).setValue('LogrusIT');
   G.onEdit({ range: sh.getRange(r, 13), value: 'LogrusIT' });
   assert.match(String(sh.getRange(r, 1).getValue()), /^LIT-26-\d+$/);
-  last = log().getRange(log().getLastRow(), 1, 1, 7).getValues()[0];
-  assert.ok(['Создание задачи (в таблице)', 'Правка в таблице'].includes(last[2]));
-
-  // Дата: в событии приходит числом — в журнал пишется датой
-  assert.equal(G.editedText_('46296', true), '01.10.2026');
 
   // Переводчики
   const t = tr(); const tr2 = t.getLastRow() + 1;
   t.getRange(tr2, 4).setValue('Руками');
   G.onEdit({ range: t.getRange(tr2, 4), value: 'Руками' });
   assert.ok(t.getRange(tr2, 8).getDataValidation());
-  last = log().getRange(log().getLastRow(), 1, 1, 7).getValues()[0];
-  assert.equal(last[2], 'Правка в таблице (переводчик)');
 
   // «Списки» — обновляются цвета, без ошибок
   G.onEdit({ range: ss.getSheetByName('Списки').getRange('E20') });
@@ -427,8 +411,6 @@ test('Мои задачи и статус из расширения', () => {
   const dates = all.tasks.map(x => x.date).filter(Boolean);
   assert.ok(dates.length, 'у задач есть дата');
   assert.equal(call({ action: 'myTasks', manager: 'Анастасия Лисовая', filter: 'cancelled' }).tasks.filter(x => x.status !== 'Отменено').length, 0);
-  const last = log().getRange(log().getLastRow(), 1, 1, 7).getValues()[0];
-  same([last[1], last[4], last[6]], ['Расширение (Настя)', 'Статус', 'Отдано']);
   const ids = call({ action: 'previewTaskIds' });
   assert.ok(ids.ok && ids.ids.LogrusIT === G.previewNextTaskId('LogrusIT'), JSON.stringify(ids));
   const dup = call({ action: 'checkDuplicates', task: { subject: 'x', link: 'https://band/lit4' } });
@@ -444,7 +426,6 @@ test('Мои задачи и статус из расширения', () => {
   assert.ok(saved.ok, JSON.stringify(saved));
   const edited = call({ action: 'getTask', row: got.task.row, id: 'LIT-1' }).task;
   same([edited.sp, edited.link2], [7, 'https://band/two\nhttps://band/three']);
-  assert.equal(log().getRange(log().getLastRow(), 2).getValue(), 'Расширение (Настя)');
   const bad = call({ action: 'saveTask', task: { ...edited, link2: 'не ссылка' } });
   assert.ok(!bad.ok && /http/.test(bad.error));
   call({ action: 'saveTask', task: { ...edited, link2: 'https://band/two' } }); // как было
@@ -589,4 +570,8 @@ if (process.env.GUIDE_HTML) {
   }
   fs.writeFileSync(process.env.GUIDE_HTML, html + '</table>');
 }
+test('Журнал больше не пишется', () => {
+  assert.equal(log() ? log().getLastRow() : 0, logRows0);
+  assert.equal(typeof G.logChange, 'undefined');
+});
 console.log(`\n${passed} проверок пройдено`);

@@ -37,7 +37,7 @@ function diskFolderFromInput(value) {
   }
   return v.split('/').map((x) => x.trim()).filter(Boolean).join('/');
 }
-// «Кто вы» — менеджер из «Списков»: подставляется в новые задачи, во вкладку «Мои задачи» и в «Журнал».
+// «Кто вы» — менеджер из «Списков»: подставляется в новые задачи и во вкладку «Мои задачи».
 let managersSeq = 0;
 async function loadManagers() {
   const seq = ++managersSeq;

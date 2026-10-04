@@ -111,7 +111,7 @@ function fill(t) {
   grow(els.link2);
 }
 
-/** Языки в прежнем порядке, новые — в конце: иначе «Журнал» записал бы правку, которой не было. */
+/** Языки в прежнем порядке, новые — в конце, как в таблице. */
 function keepOrder(before, checked) {
   return before.filter((l) => checked.includes(l)).concat(checked.filter((l) => !before.includes(l)));
 }

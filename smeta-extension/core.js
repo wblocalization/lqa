@@ -21,7 +21,7 @@ const API_TIMEOUT_MS = 30000;
 
 export const isConfigured = () => Boolean(settings.url && settings.token);
 
-/** conf — адрес и токен, если они ещё не сохранены (окно настроек). В «Журнал» пишется, кто вы. */
+/** conf — адрес и токен, если они ещё не сохранены (окно настроек). */
 export async function api(payload, conf = settings) {
   if (!conf.url || !conf.token) throw new Error('Заполните адрес и токен в настройках');
   // Не ждём вечно: если таблица молчит — честно говорим об этом

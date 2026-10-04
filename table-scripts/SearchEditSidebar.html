@@ -59,10 +59,6 @@
           <label class="field">Жалобы на заказчика<textarea id="f_complaints"></textarea></label>
         </div>
       </details>
-      <details class="more" id="historyBox">
-        <summary>История изменений</summary>
-        <div id="history" class="small muted"></div>
-      </details>
     </div>
     <div id="msg" class="msg"></div>
   </div>
@@ -148,12 +144,6 @@
     $('#editor').hidden = false;
     $('#foot').hidden = false;
     setMsg($('#msg'), '');
-    $('#history').textContent = 'Загружаю…';
-    run('getTaskHistory', t.id).then(list => {
-      $('#history').innerHTML = list.length
-        ? list.map(h => `<div style="padding:3px 0;border-bottom:1px dashed #E2E5E9"><b>${esc(h.date)}</b> — ${esc(h.who)} — ${esc(h.action)}${h.field ? ' (' + esc(h.field) + ')' : ''}</div>`).join('')
-        : 'Изменений пока не было.';
-    }).catch(() => { $('#history').textContent = 'Историю загрузить не получилось.'; });
   }
 
   $('#copySubject').addEventListener('click', () => {

@@ -2,7 +2,7 @@
  * Код.gs — таблица задач локализации.
  *
  * Листы:  «📌 Задачи (менеджеры)», «✍️ Задачи (переводчики)», «Списки»,
- *         «Справочник разделов», «📝 Журнал», две инструкции.
+ *         «Справочник разделов», две инструкции.
  * Окна:   Общее.html (стили и помощники для всех окон) + по файлу на окно.
  * Первый запуск: «⚙️ Настройки → 🎨 Оформить таблицу».
  *************************************************************/
@@ -13,7 +13,6 @@ const TASKS_SHEET = '📌 Задачи (менеджеры)';
 const TRANSLATORS_SHEET = '✍️ Задачи (переводчики)';
 const LISTS_SHEET = 'Списки';
 const SECTIONS_SHEET = 'Справочник разделов';
-const LOG_SHEET = '📝 Журнал';
 const MANAGER_GUIDE_SHEET = '📋 Инструкция (менеджеры)';
 const TRANSLATOR_GUIDE_SHEET = '👥 Инструкция (переводчики)';
 
@@ -143,8 +142,8 @@ function onOpen() {
 /**
  * Правки прямо в листе (без окон):
  *  - «Списки» — сразу обновляем цвета (выпадающие списки подтягиваются сами);
- *  - лист задач — языки красятся, новая строка получает выпадающие списки и номер, правка идёт в «Журнал»;
- *  - лист переводчиков — новая строка получает выпадающие списки, правка идёт в «Журнал».
+ *  - лист задач — языки красятся, новая строка получает выпадающие списки и номер;
+ *  - лист переводчиков — новая строка получает выпадающие списки.
  */
 function onEdit(e) {
   if (!e || !e.range) return;
@@ -154,13 +153,6 @@ function onEdit(e) {
     else if (name === TASKS_SHEET) onTasksEdit_(e);
     else if (name === TRANSLATORS_SHEET) onTranslatorsEdit_(e);
   } catch (err) {}
-}
-
-/** Значение из события правки в читаемый вид (даты приходят числом). */
-function editedText_(v, isDate) {
-  if (v === undefined || v === null) return '';
-  if (isDate && /^\d+(\.\d+)?$/.test(String(v))) return fmtDate_(new Date(Math.round((Number(v) - 25569) * 86400000)), 'dd.MM.yyyy');
-  return String(v);
 }
 
 function onTasksEdit_(e) {
@@ -181,7 +173,6 @@ function onTasksEdit_(e) {
         const id = generateNextTaskId(sh, str_(r[COL.CONTRACTOR - 1]));
         sh.getRange(row + i, COL.ID).setValue(id);
         r[COL.ID - 1] = id;
-        logChange('Создание задачи (в таблице)', id, 'Тема письма', '', str_(r[COL.SUBJECT - 1]));
       });
     }
     if (col <= COL.LANGS && lastCol >= COL.LANGS) colorizeLanguagesCell(sh, row + i);
@@ -190,26 +181,13 @@ function onTasksEdit_(e) {
       sh.getRange(row + i, COL.ESTIMATE).setRichTextValue(estimateRich_(r[COL.ESTIMATE - 1], r[COL.ID - 1]));
     }
   });
-
-  // Одна ячейка — пишем в журнал, что было и что стало
-  if (n === 1 && col === lastCol && col !== COL.ID) {
-    const isDate = col === COL.DATE || col === COL.DUE;
-    const before = editedText_(e.oldValue, isDate), after = cellText_(values[0][col - 1]);
-    if (before !== after) logChange('Правка в таблице', str_(values[0][COL.ID - 1]), TASK_FIELD_NAMES[col], before, after);
-  }
 }
 
 function onTranslatorsEdit_(e) {
   const range = e.range, sh = range.getSheet();
-  const row = range.getRow(), col = range.getColumn();
+  const row = range.getRow();
   if (row < 2) return;
   if (!sh.getRange(row, TCOL.READY).getDataValidation()) applyTranslatorValidations_(sh, row, range.getNumRows());
-  if (range.getNumRows() === 1 && range.getNumColumns() === 1) {
-    const r = sh.getRange(row, 1, 1, TR_COLS).getValues()[0];
-    const names = ['Дата', 'Сторона', 'Раздел', 'Задача', 'Заказчик', 'Переводчик', 'Редактор', 'Готовность', 'Комментарий'];
-    const before = editedText_(e.oldValue, col === TCOL.DATE), after = cellText_(r[col - 1]);
-    if (before !== after) logChange('Правка в таблице (переводчик)', str_(r[TCOL.TASK - 1]), names[col - 1], before, after);
-  }
 }
 
 // Старые пункты меню — теперь всё делает «Оформить таблицу».
@@ -899,7 +877,6 @@ function submitNewTaskFromDialog(task) {
     if (values[COL.LANGS - 1]) colorizeLanguagesCell(sh, row);
     colorizeRowDirectly(sh, row);
 
-    logChange('Создание задачи', id, 'Тема письма', '', subject);
     return id;
   });
 }
@@ -980,13 +957,6 @@ function locateTaskRow_(sh, row, id, origSubject) {
   throw new Error('Задача ' + (id || '«' + shortSubject_(origSubject) + '»') + ' не найдена — возможно, её удалили или изменили. Найдите её заново.');
 }
 
-const TASK_FIELD_NAMES = {};
-[['ID', '№ задачи'], ['TICKET', 'Тикет'], ['SUBJECT', 'Тема письма'], ['DATE', 'Дата'], ['PRODUCT', 'Продукт'],
- ['CUSTOMER', 'Ник заказчика'], ['LANGS', 'Языки'], ['DEADLINE', 'Дедлайн'], ['DUE', 'Срок сдачи'], ['STATUS', 'Статус'],
- ['ESTIMATE', 'Смета'], ['TOTAL', 'Итого с НДС'], ['CONTRACTOR', 'Подрядчик'], ['MANAGER', 'Менеджер'],
- ['DELIVERY', 'Статус отдачи'], ['SP', 'SP'], ['COMMENT', 'Комментарий'], ['COMPLAINTS', COMPLAINTS_HEADER]]
-  .forEach(([k, name]) => { TASK_FIELD_NAMES[COL[k]] = name; });
-
 function cellText_(v) {
   return v instanceof Date ? fmtDate_(v, 'dd.MM.yyyy') : String(v == null ? '' : v);
 }
@@ -1017,12 +987,6 @@ function saveTaskEdits(task) {
     if (task.complaints !== undefined) set(COL.COMPLAINTS, str_(task.complaints)); // старые окна поле не присылают — не трогаем
 
     const id = str_(old[COL.ID - 1]);
-    for (let c = COL.TICKET; c <= TASK_COLS; c++) {
-      if (c === COL.SUBJECT) continue;
-      if (cellText_(old[c - 1]) !== cellText_(next[c - 1])) {
-        logChange('Правка', id, TASK_FIELD_NAMES[c], cellText_(old[c - 1]), cellText_(next[c - 1]));
-      }
-    }
     sh.getRange(row, COL.TICKET).setValue(next[COL.TICKET - 1]);
     sh.getRange(row, COL.DATE, 1, TASK_COLS - COL.DATE + 1).setValues([next.slice(COL.DATE - 1)]);
     if (next[COL.ESTIMATE - 1]) sh.getRange(row, COL.ESTIMATE).setRichTextValue(estimateRich_(next[COL.ESTIMATE - 1], id));
@@ -1034,7 +998,6 @@ function saveTaskEdits(task) {
     const newExtra = extraLinks_(task.link2).join('\n');
     if (subject !== oldSubject || str_(task.link) !== oldLinks.link || newExtra !== oldLinks.link2) {
       sh.getRange(row, COL.SUBJECT).setRichTextValue(buildSubjectRich_(subject, str_(task.link), str_(task.link2)));
-      logChange('Правка', id, 'Тема письма', oldSubject, subject);
     }
     colorizeLanguagesCell(sh, row);
     return { ok: true, row: row };
@@ -1045,8 +1008,6 @@ function deleteTask(row, id, origSubject) {
   return withScriptLock_(() => {
     const sh = getTasksSheet();
     const r = locateTaskRow_(sh, Number(row), str_(id), origSubject);
-    const subject = sh.getRange(r, COL.SUBJECT).getValue();
-    logChange('Удаление задачи', str_(id), 'Тема письма', subject, '');
     sh.deleteRow(r);
     return true;
   });
@@ -1148,39 +1109,9 @@ function setTaskStatus(row, id, origSubject, status) {
     const sh = getTasksSheet();
     const r = locateTaskRow_(sh, Number(row), str_(id), origSubject);
     const cell = sh.getRange(r, COL.STATUS);
-    const before = str_(cell.getValue());
     cell.setValue(str_(status));
-    if (before !== str_(status)) logChange('Правка', str_(id), 'Статус', before, str_(status));
     return { ok: true, row: r };
   });
-}
-
-// ==================== ЖУРНАЛ ====================
-
-// Кто действует, если это не человек в таблице (например, расширение). Заполняет Smeta.gs.
-var LOG_ACTOR = '';
-
-function logChange(action, refId, field, oldVal, newVal) {
-  try {
-    const log = SpreadsheetApp.getActive().getSheetByName(LOG_SHEET);
-    let who = LOG_ACTOR;
-    if (!who) { try { who = Session.getActiveUser().getEmail(); } catch (e) {} }
-    log.appendRow([new Date(), who || '(неизвестно)', action, refId, field || '',
-      oldVal == null ? '' : oldVal, newVal == null ? '' : newVal]);
-  } catch (e) {}
-}
-
-function getTaskHistory(refId) {
-  if (!refId) return [];
-  try {
-    const log = SpreadsheetApp.getActive().getSheetByName(LOG_SHEET);
-    const data = log.getDataRange().getValues();
-    return data.filter((r, i) => i > 0 && str_(r[3]) === refId && r[0] instanceof Date)
-      .sort((a, b) => b[0] - a[0]).slice(0, 10)
-      .map(r => ({ date: fmtDate_(r[0], 'dd.MM.yy HH:mm'), who: str_(r[1]), action: str_(r[2]), field: str_(r[4]) }));
-  } catch (e) {
-    return [];
-  }
 }
 
 // ==================== ЗАЩИТА ====================
@@ -1780,7 +1711,6 @@ function submitNewTranslatorTask(task) {
     if (values[TCOL.TASK - 1] && str_(task.link)) {
       sh.getRange(row, TCOL.TASK).setRichTextValue(SpreadsheetApp.newRichTextValue().setText(values[TCOL.TASK - 1]).setLinkUrl(str_(task.link)).build());
     }
-    logChange('Создание задачи (переводчик)', '', 'Задача', '', values[TCOL.TASK - 1]);
     return true;
   });
 }
@@ -1856,7 +1786,6 @@ function saveTranslatorTaskEdits(task) {
     if (values[TCOL.TASK - 1] && str_(task.link)) {
       sh.getRange(row, TCOL.TASK).setRichTextValue(SpreadsheetApp.newRichTextValue().setText(values[TCOL.TASK - 1]).setLinkUrl(str_(task.link)).build());
     }
-    logChange('Правка (переводчик)', '', 'Задача', '', values[TCOL.TASK - 1]);
     return { ok: true, row: row, origKey: translatorRowKey_(values) };
   });
 }
@@ -1865,7 +1794,6 @@ function deleteTranslatorTask(row, key) {
   return withScriptLock_(() => {
     const sh = getTranslatorsSheet();
     const r = locateTranslatorRow_(sh, Number(row), key);
-    logChange('Удаление задачи (переводчик)', '', 'Задача', sh.getRange(r, TCOL.TASK).getValue(), '');
     sh.deleteRow(r);
     return true;
   });
@@ -2307,10 +2235,10 @@ function writeManagerGuide_() {
         '«📋 Менеджеры → 🔍 Поиск и правка».',
         'Впишите номер, кусок темы, тикет или ник — выберите задачу. Пустой поиск показывает ваши задачи.',
         'Статус меняется одной кнопкой, остальное — в блоках ниже.',
-        '«Сохранить». Все правки попадают в «📝 Журнал».'],
+        '«Сохранить».'],
         hint: 'Удалить задачу — внизу окна, спросит подтверждение. Отменить удаление нельзя.' },
       { icon: '✏️', title: 'Можно править прямо в листе', rows: [
-        ['Статус, сроки, SP…', 'Меняйте прямо в ячейке — цвета обновятся сами, правка попадёт в «📝 Журнал».'],
+        ['Статус, сроки, SP…', 'Меняйте прямо в ячейке — цвета обновятся сами.'],
         ['Языки', 'Через запятую, как в других строках: «Грузинский, Казахский». Цвет появится сам.'],
         ['Новая задача', 'Можно вписать в пустую строку: как только есть тема и подрядчик, появится номер.']],
         hint: 'Через «➕ Добавить задачу» всё равно удобнее: тема письма соберётся сама, её можно сразу скопировать.' },
@@ -2334,7 +2262,7 @@ function writeManagerGuide_() {
           ['Новая задача', 'Добавить задачу, не открывая таблицу. Шаблоны, номер и тема письма — сами; «от» в конце темы превращается в сегодняшнюю дату.'],
           ['Мои задачи', 'Только ваши: просрочки сверху, фильтр «Открытые · Отданные · Отменённые · Все», статус — в один клик, «Изменить» — правка задачи целиком. На иконке — число просроченных.'],
           ['Смета', 'Перетащите PDF — номер задачи берётся из имени файла. Поле ссылки пустое — расширение само загрузит PDF на ВБ Диск и запишет ссылку в таблицу.']],
-        hint: 'Расширение работает только с этой таблицей и ВБ Диском — больше данные никуда не уходят. Правки из расширения попадают в «📝 Журнал» с пометкой «Расширение».' },
+        hint: 'Расширение работает только с этой таблицей и ВБ Диском — больше данные никуда не уходят. Кто и что менял — видно в «Файл → История версий».' },
       { icon: '✉️', title: 'Письма, которые приходят сами', wide: true, rows: [
         ['Понедельник, 9:00', 'Сводка ваших открытых задач.'],
         ['Каждый день, 9:00', 'Просроченные и со сроком сегодня или завтра.'],

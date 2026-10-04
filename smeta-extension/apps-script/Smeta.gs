@@ -1,7 +1,6 @@
 /**
  * Приёмник для расширения «Сметы → таблица».
- * Принимает номер задачи, итог с НДС и ссылку на смету и пишет их в лист задач менеджеров,
- * а в «📝 Журнал» — что поменялось.
+ * Принимает номер задачи, итог с НДС и ссылку на смету и пишет их в лист задач менеджеров.
  *
  * Ещё умеет добавлять задачи менеджеров из расширения (вкладка «Задача»). Для этого файл должен
  * лежать в проекте самой таблицы: он вызывает те же функции, что и окно «➕ Добавить задачу».
@@ -16,7 +15,6 @@
 const SMETA_SPREADSHEET_ID = '';
 
 const SMETA_TASKS_SHEET = '📌 Задачи (менеджеры)';
-const SMETA_LOG_SHEET = '📝 Журнал';
 const SMETA_H = {
   task: '№ задачи',
   subject: 'Тема письма',
@@ -131,9 +129,6 @@ function smetaWrite_(req) {
     SpreadsheetApp.newRichTextValue().setText('Ссылка на смету' + (rowId ? ' ' + rowId : '')).setLinkUrl(link).build());
   sheet.getRange(t.row, t.col.total + 1).setValue(Math.round(total * 100) / 100);
 
-  const who = 'Расширение смет' + (req.user ? ' (' + req.user + ')' : '');
-  smetaLog_(who, t.taskId, SMETA_H.link, oldLink, link);
-  smetaLog_(who, t.taskId, SMETA_H.total, oldTotal, total);
   return { ok: true, row: t.row };
 }
 
@@ -172,13 +167,6 @@ function smetaFindTask_(task) {
     }
   }
   return null;
-}
-
-function smetaLog_(who, taskId, field, before, after) {
-  const log = smetaSpreadsheet_().getSheetByName(SMETA_LOG_SHEET);
-  if (!log) return;
-  log.appendRow([new Date(), who, 'Смета из расширения', taskId, field,
-    before === undefined ? '' : before, after]);
 }
 
 /**
@@ -243,14 +231,7 @@ function addTask_(req) {
     if (u && !/^https?:\/\//i.test(u)) throw new Error('Ссылка должна начинаться с http: ' + u);
   });
 
-  // В «Журнал» пишем, что задачу добавили из расширения и кто.
-  LOG_ACTOR = 'Расширение' + (req.user ? ' (' + req.user + ')' : '');
-  try {
-    const id = submitNewTaskFromDialog(task);
-    return { ok: true, id: id };
-  } finally {
-    LOG_ACTOR = '';
-  }
+  return { ok: true, id: submitNewTaskFromDialog(task) };
 }
 
 /** Быстрая смена статуса из вкладки «Мои задачи». */
@@ -277,20 +258,10 @@ function saveTask_(req) {
   [t.link, t.estimateLink].concat(String(t.link2 || '').split(/[\s,;]+/)).forEach(function (u) {
     if (u && !/^https?:\/\//i.test(String(u))) throw new Error('Ссылка должна начинаться с http: ' + u);
   });
-  LOG_ACTOR = 'Расширение' + (req.user ? ' (' + req.user + ')' : '');
-  try {
-    return saveTaskEdits(t);
-  } finally {
-    LOG_ACTOR = '';
-  }
+  return saveTaskEdits(t);
 }
 
 function setStatus_(req) {
   requireTableScript_();
-  LOG_ACTOR = 'Расширение' + (req.user ? ' (' + req.user + ')' : '');
-  try {
-    return setTaskStatus(req.row, req.id, req.origSubject, req.status);
-  } finally {
-    LOG_ACTOR = '';
-  }
+  return setTaskStatus(req.row, req.id, req.origSubject, req.status);
 }

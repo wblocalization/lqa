@@ -297,7 +297,6 @@ function writeArchiveSheet_(name, rows) {
     SpreadsheetApp.flush();
     sh.getRange(2, 1, n, TASK_COLS).sort({ column: COL.DATE, ascending: false });
     estimateLinksToLabels_(sh);
-    logChange('Перенос истории', '', '', '', rows.length + ' строк на лист «' + name + '»');
   });
 }
 
@@ -317,7 +316,6 @@ function applyMigration_(plan) {
       sh.getRange(start + off, COL.SUBJECT, part.length, 1)
         .setRichTextValues(part.map(p => [buildSubjectRich_(String(p.values[COL.SUBJECT - 1]), p.link, p.link2)]));
     }
-    logChange('Перенос истории', '', '', '', n + ' задач из старой таблицы');
 
     // Весь лист — по дате, свежие сверху. Сортировка устойчивая: строки одной задачи
     // (одна дата) остаются рядом и в прежнем порядке. Строки без даты уходят вниз.
