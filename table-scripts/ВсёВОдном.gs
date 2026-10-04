@@ -706,7 +706,12 @@ function filterTasksByManager_(name) {
   const sh = getTasksSheet();
   let why = 'В Apps Script не включён сервис «Google Sheets API» (Сервисы → + → Google Sheets API).';
   if (typeof Sheets !== 'undefined' && Sheets.Spreadsheets) {
-    try { return openManagerView_(sh, name); } catch (e) { why = 'Личное представление не открылось: ' + e.message; }
+    try { return openManagerView_(sh, name); } catch (e) {
+      why = '';
+      SpreadsheetApp.getUi().alert('Личное представление не открылось',
+        'Google ответил:\n\n' + e.message + '\n\nПока показываю задачи общим фильтром — его видят все в таблице. ' +
+        'Вернуть: «👁 Показать все задачи». Пришлите, пожалуйста, скрин этого окна.', SpreadsheetApp.getUi().ButtonSet.OK);
+    }
   }
   const values = readRows_(sh, TASK_COLS).map(r => str_(r[COL.MANAGER - 1])).filter(Boolean);
   const hidden = values.filter((v, i) => v !== name && values.indexOf(v) === i);
