@@ -704,14 +704,15 @@ function showAllTasks() {
  */
 function filterTasksByManager_(name) {
   const sh = getTasksSheet();
+  let why = 'В Apps Script не включён сервис «Google Sheets API» (Сервисы → + → Google Sheets API).';
   if (typeof Sheets !== 'undefined' && Sheets.Spreadsheets) {
-    try { return openManagerView_(sh, name); } catch (e) { /* не вышло — общий фильтр, как раньше */ }
+    try { return openManagerView_(sh, name); } catch (e) { why = 'Личное представление не открылось: ' + e.message; }
   }
   const values = readRows_(sh, TASK_COLS).map(r => str_(r[COL.MANAGER - 1])).filter(Boolean);
   const hidden = values.filter((v, i) => v !== name && values.indexOf(v) === i);
   const filter = resetFilter_(sh);
   if (hidden.length) filter.setColumnFilterCriteria(COL.MANAGER, SpreadsheetApp.newFilterCriteria().setHiddenValues(hidden).build());
-  SpreadsheetApp.getActive().toast('Показаны задачи: ' + name + '. Фильтр видят все в таблице. Вернуть: «👁 Показать все задачи».', 'Фильтр', 8);
+  SpreadsheetApp.getActive().toast('Показаны задачи: ' + name + ' — общим фильтром, его видят все в таблице. Вернуть: «👁 Показать все задачи». ' + why, 'Фильтр', 15);
 }
 
 /** Личное представление «Задачи: имя» (одно на менеджера, обновляется) и окно со ссылкой на него. */
