@@ -335,7 +335,7 @@ test('Мои задачи: с Sheets API — личное представлен
     const add = reqs[0].addFilterView.filter;
     same([add.title, add.filterSpecs[0].columnIndex, add.filterSpecs[0].filterCriteria.condition.values[0].userEnteredValue],
       ['Задачи: Анастасия Лисовая', 13, 'Анастасия Лисовая']);
-    assert.ok(calls.html.at(-1).includes('fvid=777'), 'ссылка на представление');
+    assert.ok(calls.html.at(-1).includes('fvid=777') && calls.html.at(-1).includes('target="_top"'), 'ссылка на представление в этой же вкладке');
     same(tasks().filter && tasks().filter.criteria, {}, 'общий фильтр не тронут');
     G.showMyTasks(); // второй раз — то же представление обновляется, а не плодится
     assert.equal(reqs[1].updateFilterView.filter.filterViewId, 777);

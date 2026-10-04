@@ -736,15 +736,20 @@ function openManagerView_(sh, name) {
     id = res.replies[0].addFilterView.filterView.filterViewId;
     props.setProperty(key, String(id));
   }
-  const url = ss.getUrl().replace(/\/edit.*$/, '') + '/edit#gid=' + sh.getSheetId() + '&fvid=' + id;
+  // «?view» меняет адрес целиком — страница перезагрузится в этой же вкладке уже с представлением
+  // (если поменять только часть после #, Таблицы могут не переключиться).
+  const base = ss.getUrl().replace(/\/edit.*$/, '') + '/edit';
+  const hash = '#gid=' + sh.getSheetId() + '&fvid=' + id;
   const html = HtmlService.createHtmlOutput(
     '<div style="font:14px/1.5 Roboto,Arial,sans-serif;color:#1F2328">' +
     '<p style="margin:0 0 12px">Задачи <b>' + esc_(name) + '</b> — в личном представлении: у каждого своё, другим не мешает.</p>' +
-    '<a href="' + url + '" target="_blank" onclick="setTimeout(function(){google.script.host.close()},300)" ' +
+    '<a href="' + base + '?view=' + id + hash + '" target="_top" ' +
     'style="display:inline-block;background:#2563EB;color:#fff;padding:9px 16px;border-radius:8px;font-weight:700;text-decoration:none">Открыть мои задачи</a>' +
-    '<p style="margin:12px 0 0;color:#5F6B7A;font-size:12px">Откроется в новой вкладке. Ссылка постоянная — её можно сохранить в закладки. ' +
-    'Выйти из представления — крестик справа на тёмной полосе над таблицей.</p></div>'
-  ).setWidth(380).setHeight(190);
+    '<p style="margin:12px 0 0;color:#5F6B7A;font-size:12px">Таблица перезагрузится уже с твоими задачами. Не сработало — ' +
+    '<a href="' + base + hash + '" target="_blank" style="color:#2563EB">открыть в новой вкладке</a>. ' +
+    'Выйти из представления — крестик справа на тёмной полосе над таблицей. Вернуться в него можно и без меню: ' +
+    '«Данные → Режимы фильтрации».</p></div>'
+  ).setWidth(400).setHeight(215);
   SpreadsheetApp.getUi().showModalDialog(html, 'Мои задачи');
   return id;
 }
