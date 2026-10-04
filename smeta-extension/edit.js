@@ -1,5 +1,6 @@
 // Правка задачи из расширения: то же, что «Поиск и правка» в таблице.
 import { api, esc, getLists } from './core.js';
+import { makeLinkList } from './links.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
@@ -38,11 +39,7 @@ function renderLangs(checked) {
       `<span>${esc(l.replace(/^ШТАТ /, ''))}</span></label>`).join('') + '</div></div>').join('');
 }
 
-function grow(el) {
-  el.style.height = 'auto';
-  el.style.height = `${el.scrollHeight + 2}px`;
-}
-els.link2.addEventListener('input', () => grow(els.link2));
+makeLinkList(els.link2);
 
 function close() {
   els.form.hidden = true;
@@ -60,6 +57,7 @@ export async function openEditor(ref, done) {
   els.view.hidden = true;
   els.form.hidden = false;
   els.form.reset();
+  els.link2.value = '';
   els.title.textContent = ref.id || 'Задача';
   els.save.disabled = true;
   els.langs.innerHTML = '';
@@ -108,7 +106,6 @@ function fill(t) {
   fillSelect(els.contractor, lists.contractors, t.contractor);
   fillSelect(els.manager, lists.managers, t.manager);
   renderLangs(String(t.languages || '').split(',').map((s) => s.trim()).filter(Boolean));
-  grow(els.link2);
 }
 
 /** Языки в прежнем порядке, новые — в конце, как в таблице. */

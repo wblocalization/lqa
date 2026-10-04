@@ -87,6 +87,7 @@ class Sheet {
     this.cf = []; this.filter = null; this.frozenRows = 0; this.frozenCols = 0; this.groups = {}; this.merges = [];
     this.mergeRects = []; // [row, col, numRows, numCols]
   }
+  getSheetId() { return this.ss.sheets.indexOf(this) + 100; }
   cell(r, c) {
     while (this.cells.length < r) this.cells.push([]);
     const row = this.cells[r - 1];
@@ -237,6 +238,7 @@ class Spreadsheet {
     });
   }
   getId() { return this.id; }
+  getUrl() { return 'https://docs.google.com/spreadsheets/d/' + this.id + '/edit'; }
   getSheetByName(n) { return this.sheets.find(s => s.name === n) || null; }
   getSheets() { return this.sheets; }
   insertSheet(name, idx) { const sh = new Sheet(this, name, [], 1000, 26); this.sheets.splice(idx ?? this.sheets.length, 0, sh); return sh; }
@@ -294,7 +296,8 @@ function makeContext(fixture, opts = {}) {
     CacheService: { getDocumentCache: () => ({ get: k => cache[k] || null, put: (k, v) => { cache[k] = v; } }) },
     MailApp: { sendEmail: m => calls.mail.push(m) },
     ScriptApp: { getProjectTriggers: () => [], deleteTrigger() {}, newTrigger: h => chain({ timeBased() { return this; }, create() { calls.triggers.push(h); } }), WeekDay: { MONDAY: 1 } },
-    HtmlService: { createHtmlOutputFromFile: n => { throw new Error('нет HTML-файла ' + n); }, createTemplateFromFile: n => { throw new Error('нет HTML-файла ' + n); }, createTemplate: src => ({ src, evaluate: () => chain({}) }) },
+    HtmlService: { createHtmlOutputFromFile: n => { throw new Error('нет HTML-файла ' + n); }, createTemplateFromFile: n => { throw new Error('нет HTML-файла ' + n); }, createTemplate: src => ({ src, evaluate: () => chain({}) }),
+      createHtmlOutput: html => { calls.html = (calls.html || []).concat(html); return chain({}); } },
     ContentService: { MimeType: { JSON: 1 }, createTextOutput: s => ({ setMimeType: () => s }) },
     Logger: console,
     __setEmail: e => { userEmail = e; },

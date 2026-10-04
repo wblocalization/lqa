@@ -85,9 +85,10 @@
         </span>
       </label>
 
-      <label>Ещё ссылки на Band <span class="opt">если переписок несколько</span>
-        <textarea id="tLink2" rows="1" placeholder="каждая с новой строки — в таблице станут «(ссылка 2)», «(ссылка 3)» после темы"></textarea>
-      </label>
+      <div class="field-group">
+        <span class="field-label">Ещё ссылки на Band <span class="opt">если переписок несколько</span></span>
+        <div id="tLink2"></div>
+      </div>
 
       <div class="two">
         <label>Продукт <select id="tProduct"></select></label>
@@ -175,9 +176,10 @@
         <textarea id="eSubject" rows="2" required></textarea>
       </label>
       <label>Ссылка на Band <input id="eLink" type="url" placeholder="https://band.wb.ru/…"></label>
-      <label>Ещё ссылки на Band <span class="opt">каждая с новой строки</span>
-        <textarea id="eLink2" rows="1"></textarea>
-      </label>
+      <div class="field-group">
+        <span class="field-label">Ещё ссылки на Band</span>
+        <div id="eLink2"></div>
+      </div>
       <div class="two">
         <label>Тикет
           <span class="prefixed"><span>LOCAL-</span><input id="eTicketNum" type="text" inputmode="numeric" placeholder="1234"></span>

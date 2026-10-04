@@ -1,5 +1,6 @@
 // Вкладка «Новая задача»: то же, что окно «➕ Добавить задачу» в таблице, только без захода в таблицу.
 import { settings, isConfigured, api, esc, readClipboard, getLists } from './core.js';
+import { makeLinkList } from './links.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
@@ -87,7 +88,7 @@ function buildForm() {
 function resetForm() {
   const tpl = els.template.value;
   els.form.reset();
-  els.link2.style.height = '';
+  els.link2.value = '';
   els.template.value = tpl; // выбранный шаблон остаётся выбранным, но поля — с нуля
   els.date.value = today();
   if (settings.manager && lists.managers.includes(settings.manager)) els.manager.value = settings.manager;
@@ -301,12 +302,7 @@ els.copyPreview.addEventListener('click', async () => {
   setTimeout(() => { els.copyPreview.textContent = 'Скопировать'; }, 1500);
 });
 
-// «Ещё ссылки» растёт по мере вставки: каждая ссылка — своя строка
-function growLinks() {
-  els.link2.style.height = 'auto';
-  els.link2.style.height = `${els.link2.scrollHeight + 2}px`;
-}
-els.link2.addEventListener('input', growLinks);
+makeLinkList(els.link2);
 
 els.pasteLink.addEventListener('click', async () => {
   try {

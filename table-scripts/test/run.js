@@ -323,6 +323,28 @@ test('Фильтры', () => {
   G.showInProgressTranslatorTasks(); G.showAllTranslatorTasks();
 });
 
+test('Мои задачи: с Sheets API — личное представление, без него — общий фильтр', () => {
+  const reqs = [];
+  ctx.Sheets = { Spreadsheets: { batchUpdate: (body, id) => {
+    reqs.push(body.requests[0]);
+    return { replies: [{ addFilterView: { filterView: { filterViewId: 777 } } }] };
+  } } };
+  try {
+    G.showAllTasks();
+    G.showMyTasks();
+    const add = reqs[0].addFilterView.filter;
+    same([add.title, add.filterSpecs[0].columnIndex, add.filterSpecs[0].filterCriteria.condition.values[0].userEnteredValue],
+      ['Задачи: Анастасия Лисовая', 13, 'Анастасия Лисовая']);
+    assert.ok(calls.html.at(-1).includes('fvid=777'), 'ссылка на представление');
+    same(tasks().filter && tasks().filter.criteria, {}, 'общий фильтр не тронут');
+    G.showMyTasks(); // второй раз — то же представление обновляется, а не плодится
+    assert.equal(reqs[1].updateFilterView.filter.filterViewId, 777);
+  } finally { delete ctx.Sheets; }
+  G.showMyTasks(); // сервис не включён — как раньше, общий фильтр
+  assert.ok(!tasks().filter.criteria[14].hidden.includes('Анастасия Лисовая'));
+  G.showAllTasks();
+});
+
 test('Правка прямо в листе: цветные языки, новая строка получает номер и списки', () => {
   const sh = tasks();
   const row = rowOf('LIT-7');

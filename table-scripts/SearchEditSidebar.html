@@ -28,7 +28,7 @@
         <div class="stack">
           <label class="field">Тема письма<input type="text" id="f_subject"></label>
           <label class="field">Ссылка на Band<input type="url" id="f_link"></label>
-          <label class="field">Ещё ссылки на Band<textarea id="f_link2" rows="2" placeholder="каждая с новой строки"></textarea></label>
+          <div class="field">Ещё ссылки на Band<div id="f_link2"></div></div>
           <div class="two">
             <label class="field">Тикет<input type="text" id="f_ticket" placeholder="LOCAL-1234"></label>
             <label class="field">Дата<input type="date" id="f_date"></label>
@@ -145,6 +145,8 @@
     $('#foot').hidden = false;
     setMsg($('#msg'), '');
   }
+
+  makeLinkList($('#f_link2'));
 
   $('#copySubject').addEventListener('click', () => {
     if (!current) return;

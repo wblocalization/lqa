@@ -180,4 +180,48 @@
     document.execCommand('copy');
     sel.removeAllRanges(); holder.remove();
   }
+  /**
+   * «Ещё ссылки на Band» — отдельное поле на каждую ссылку: заполнили последнее — появляется следующее,
+   * опустевшее пропадает, вставка нескольких ссылок раскладывается по полям.
+   * root.value — ссылки через перевод строки, как раньше в textarea.
+   */
+  function makeLinkList(root, firstNumber) {
+    firstNumber = firstNumber || 2;
+    const inputs = () => [...root.querySelectorAll('input')];
+    const make = (val) => { const el = document.createElement('input'); el.type = 'url'; el.value = val || ''; return el; };
+    const renumber = () => inputs().forEach((el, i) => { el.placeholder = 'ссылка ' + (i + firstNumber) + ' — https://band.wb.ru/…'; });
+    const tidy = () => {
+      inputs().slice(0, -1).forEach(el => { if (!el.value.trim() && el !== document.activeElement) el.remove(); });
+      const rest = inputs();
+      if (!rest.length || rest[rest.length - 1].value.trim()) root.appendChild(make());
+      renumber();
+    };
+    root.style.display = 'flex'; root.style.flexDirection = 'column'; root.style.gap = '6px';
+    root.addEventListener('input', e => {
+      const all = inputs();
+      if (e.target === all[all.length - 1] && e.target.value.trim()) { root.appendChild(make()); renumber(); }
+    });
+    root.addEventListener('focusout', () => setTimeout(tidy, 0));
+    root.addEventListener('paste', e => {
+      const parts = ((e.clipboardData && e.clipboardData.getData('text')) || '').split(/[\s,;]+/).filter(Boolean);
+      if (parts.length < 2 || e.target.tagName !== 'INPUT') return;
+      e.preventDefault();
+      e.target.value = parts.shift();
+      let after = e.target;
+      parts.forEach(p => { const el = make(p); after.after(el); after = el; });
+      tidy();
+    });
+    Object.defineProperty(root, 'value', {
+      configurable: true,
+      get: () => inputs().map(el => el.value.trim()).filter(Boolean).join('\n'),
+      set: v => {
+        root.innerHTML = '';
+        String(v || '').split(/[\s,;]+/).filter(Boolean).forEach(u => root.appendChild(make(u)));
+        root.appendChild(make());
+        renumber();
+      }
+    });
+    root.value = '';
+    return root;
+  }
 </script>

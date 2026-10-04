@@ -43,8 +43,8 @@
 
     <label class="field"><span>Тема <span class="req">*</span></span><input type="text" id="subject" placeholder="Только суть — номер и коды добавятся сами"></label>
     <label class="field">Ссылка на Band<input type="url" id="link" placeholder="https://band.wb.ru/…"></label>
-    <label class="field">Ещё ссылки на Band <span class="muted" style="font-weight:400">если переписок несколько</span>
-      <textarea id="link2" rows="1" style="min-height:0;resize:none;overflow:hidden" placeholder="каждая с новой строки — в таблице станут «(ссылка 2)», «(ссылка 3)» после темы"></textarea></label>
+    <div class="field">Ещё ссылки на Band <span class="muted" style="font-weight:400">если переписок несколько</span>
+      <div id="link2"></div></div>
 
     <div class="two">
       <label class="field">Продукт<select id="product"></select></label>
@@ -190,6 +190,7 @@
     $('#comment').value = t.comment;
     $('#subject').value = withDate(withToday(t.subject));
     $('#link').value = '';
+    $('#link2').value = '';
     $$('#langs input').forEach(cb => { cb.checked = t.languages.includes(cb.value); });
     setMsg($('#msg'), 'Заполнено по шаблону «' + t.name + '». Вставьте ссылку на Band и проверьте тему.');
     updatePreview();
@@ -247,12 +248,7 @@
     }).catch(e => setMsg($('#msg'), 'Не получилось загрузить: ' + e.message, 'err'));
   });
 
-  // «Ещё ссылки» растёт по мере вставки: каждая ссылка — своя строка
-  $('#link2').addEventListener('input', () => {
-    const t = $('#link2');
-    t.style.height = 'auto';
-    t.style.height = (t.scrollHeight + 2) + 'px';
-  });
+  makeLinkList($('#link2'));
 
   $('#copyBtn').addEventListener('click', () => {
     copyText($('#preview').textContent).then(() => {

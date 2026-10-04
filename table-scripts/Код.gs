@@ -685,13 +685,56 @@ function showAllTasks() {
   SpreadsheetApp.getActive().toast('Показаны все задачи');
 }
 
+/**
+ * Задачи одного менеджера. Если в Apps Script включён сервис «Google Sheets API» (Sheets), это личное
+ * представление фильтра: у каждого своё, другим не мешает, ссылку можно положить в закладки.
+ * Без сервиса — обычный фильтр, но он общий: его видят все, кто сейчас в таблице.
+ */
 function filterTasksByManager_(name) {
   const sh = getTasksSheet();
+  if (typeof Sheets !== 'undefined' && Sheets.Spreadsheets) {
+    try { return openManagerView_(sh, name); } catch (e) { /* не вышло — общий фильтр, как раньше */ }
+  }
   const values = readRows_(sh, TASK_COLS).map(r => str_(r[COL.MANAGER - 1])).filter(Boolean);
   const hidden = values.filter((v, i) => v !== name && values.indexOf(v) === i);
   const filter = resetFilter_(sh);
   if (hidden.length) filter.setColumnFilterCriteria(COL.MANAGER, SpreadsheetApp.newFilterCriteria().setHiddenValues(hidden).build());
-  SpreadsheetApp.getActive().toast('Показаны задачи: ' + name + '. Вернуть: «👁 Показать все задачи».', 'Фильтр', 6);
+  SpreadsheetApp.getActive().toast('Показаны задачи: ' + name + '. Фильтр видят все в таблице. Вернуть: «👁 Показать все задачи».', 'Фильтр', 8);
+}
+
+/** Личное представление «Задачи: имя» (одно на менеджера, обновляется) и окно со ссылкой на него. */
+function openManagerView_(sh, name) {
+  const ss = SpreadsheetApp.getActive();
+  const props = PropertiesService.getDocumentProperties();
+  const key = 'FILTER_VIEW:' + name;
+  const view = {
+    title: 'Задачи: ' + name,
+    range: { sheetId: sh.getSheetId(), startRowIndex: 0, startColumnIndex: 0, endColumnIndex: TASK_COLS },
+    filterSpecs: [{ columnIndex: COL.MANAGER - 1, filterCriteria: { condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: name }] } } }]
+  };
+  let id = Number(props.getProperty(key)) || 0;
+  if (id) {
+    try {
+      view.filterViewId = id;
+      Sheets.Spreadsheets.batchUpdate({ requests: [{ updateFilterView: { filter: view, fields: '*' } }] }, ss.getId());
+    } catch (e) { id = 0; delete view.filterViewId; } // представление удалили руками — создадим заново
+  }
+  if (!id) {
+    const res = Sheets.Spreadsheets.batchUpdate({ requests: [{ addFilterView: { filter: view } }] }, ss.getId());
+    id = res.replies[0].addFilterView.filterView.filterViewId;
+    props.setProperty(key, String(id));
+  }
+  const url = ss.getUrl().replace(/\/edit.*$/, '') + '/edit#gid=' + sh.getSheetId() + '&fvid=' + id;
+  const html = HtmlService.createHtmlOutput(
+    '<div style="font:14px/1.5 Roboto,Arial,sans-serif;color:#1F2328">' +
+    '<p style="margin:0 0 12px">Задачи <b>' + esc_(name) + '</b> — в личном представлении: у каждого своё, другим не мешает.</p>' +
+    '<a href="' + url + '" target="_blank" onclick="setTimeout(function(){google.script.host.close()},300)" ' +
+    'style="display:inline-block;background:#2563EB;color:#fff;padding:9px 16px;border-radius:8px;font-weight:700;text-decoration:none">Открыть мои задачи</a>' +
+    '<p style="margin:12px 0 0;color:#5F6B7A;font-size:12px">Откроется в новой вкладке. Ссылка постоянная — её можно сохранить в закладки. ' +
+    'Выйти из представления — крестик справа на тёмной полосе над таблицей.</p></div>'
+  ).setWidth(380).setHeight(190);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Мои задачи');
+  return id;
 }
 
 function filterByManager() {
@@ -2250,7 +2293,7 @@ function writeManagerGuide_() {
         hint: 'Срок прошёл, а задача не «Отдано» и не «Отменено» — строка краснеет.' },
       { icon: '🎨', title: 'Цвета статусов', legend: ['Принято', 'В работе', 'Отдано', 'Отменено', 'Холд'] },
       { icon: '👀', title: 'Фильтры (меню «📋 Менеджеры»)', rows: [
-        ['Мои задачи', 'Только ваши. Нужна ваша почта в «Списках», колонка F.'],
+        ['Мои задачи', 'Только ваши — в личном представлении, другим не мешает. Нужна ваша почта в «Списках», колонка F.'],
         ['Одного менеджера', 'Впишите имя — покажутся только его задачи.'],
         ['Скрыть закрытые', 'Прячет «Отдано» и «Отменено».'],
         ['Показать все', 'Сбрасывает любой фильтр.']],
