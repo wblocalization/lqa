@@ -1586,6 +1586,20 @@ function taskCardHtml(item, bg, tagHtml) {
   return '<div style="background:' + bg + ';border-radius:8px;padding:10px 14px;margin-bottom:10px;">' + (tagHtml || '') + '<div>' + subj + '</div></div>';
 }
 
+/** «1 день», «3 дня», «26 дней». */
+function daysWord_(n) {
+  const a = Math.abs(n) % 100, b = a % 10;
+  const w = a > 10 && a < 20 ? 'дней' : b === 1 ? 'день' : b >= 2 && b <= 4 ? 'дня' : 'дней';
+  return n + ' ' + w;
+}
+
+/** По сроку сдачи: раньше — выше; без даты — в конце, в прежнем порядке. */
+function byDue_(a, b) {
+  const da = a.exact instanceof Date ? a.exact.getTime() : Infinity;
+  const db = b.exact instanceof Date ? b.exact.getTime() : Infinity;
+  return da === db ? 0 : da < db ? -1 : 1;
+}
+
 function deadlineLabel(row) {
   if (row.exact instanceof Date) return 'Срок сдачи: ' + fmtDate_(row.exact, 'dd.MM.yyyy');
   if (row.approx) return 'Срочность: ' + row.approx;
@@ -1605,6 +1619,7 @@ function sendWeeklyDigests() {
       rows.push({ subject: stripLinkMarkers_(r[COL.SUBJECT - 1]), link: links[i].link, exact: r[COL.DUE - 1], approx: str_(r[COL.DEADLINE - 1]) });
     });
     if (!rows.length) return;
+    rows.sort(byDue_);
     const cards = rows.map(r => taskCardHtml(r, '#F1F3F5', '<div style="font-size:12px;color:#990000;margin-bottom:4px;">' + esc_(deadlineLabel(r)) + '</div>')).join('');
     MailApp.sendEmail({
       to: m.email,
@@ -1643,13 +1658,14 @@ function sendDueSoonAlerts() {
     });
     const total = overdue.length + dueToday.length + dueTomorrow.length;
     if (!total) return;
+    overdue.sort(byDue_); // самые давние — сверху
 
     let html = '', plain = 'Привет, ' + m.manager + '!\n\n';
     if (overdue.length) {
       html += '<p>Тут накопились просроченные задачки. Обрати внимание и не забудь проставить актуальный статус!</p>';
       overdue.forEach(it => {
         const days = Math.round((today - it.exact) / 86400000);
-        html += taskCardHtml(it, '#FDEDEA', '<div style="font-size:12px;font-weight:bold;color:#990000;">🔴 Просрочено на ' + days + ' дн.</div>');
+        html += taskCardHtml(it, '#FDEDEA', '<div style="font-size:12px;font-weight:bold;color:#990000;">🔴 Просрочено на ' + daysWord_(days) + '</div>');
         plain += '- [ПРОСРОЧЕНО] ' + it.subject + '\n';
       });
     }
@@ -1681,7 +1697,7 @@ function sendMonthEndReminders() {
   const checks = [
     [COL.TICKET, 'Тикет'], [COL.DATE, 'Дата'], [COL.PRODUCT, 'Продукт'], [COL.CUSTOMER, 'Ник заказчика'],
     [COL.LANGS, 'Языки'], [COL.DEADLINE, 'Дедлайн'], [COL.DUE, 'Срок сдачи'], [COL.STATUS, 'Статус'],
-    [COL.ESTIMATE, 'Смета'], [COL.TOTAL, 'Итого с НДС'], [COL.CONTRACTOR, 'Подрядчик'], [COL.MANAGER, 'Менеджер'],
+    [COL.ESTIMATE, 'Смета'], [COL.CONTRACTOR, 'Подрядчик'], [COL.MANAGER, 'Менеджер'],
     [COL.DELIVERY, 'Статус отдачи'], [COL.SP, 'SP']
   ];
   const now = new Date();
