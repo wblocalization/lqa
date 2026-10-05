@@ -716,7 +716,7 @@ function findFilterViewId_(ssId, sheetId, title) {
   return found ? Number(found.filterViewId) : 0;
 }
 
-/** Личное представление «Задачи: имя» (одно на менеджера, обновляется) и окно со ссылкой на него. */
+/** Личный режим фильтрации «Задачи: имя» (один на менеджера, обновляется) и подсказка, где его открыть. */
 function openManagerView_(sh, name) {
   const ss = SpreadsheetApp.getActive();
   const props = PropertiesService.getDocumentProperties();
@@ -739,21 +739,12 @@ function openManagerView_(sh, name) {
     id = res.replies[0].addFilterView.filterView.filterViewId;
   }
   props.setProperty(key, String(id));
-  // «?view» меняет адрес целиком — страница перезагрузится в этой же вкладке уже с представлением
-  // (если поменять только часть после #, Таблицы могут не переключиться).
-  const base = ss.getUrl().replace(/\/edit.*$/, '') + '/edit';
-  const hash = '#gid=' + sh.getSheetId() + '&fvid=' + id;
-  const html = HtmlService.createHtmlOutput(
-    '<div style="font:14px/1.5 Roboto,Arial,sans-serif;color:#1F2328">' +
-    '<p style="margin:0 0 12px">Задачи <b>' + esc_(name) + '</b> — в личном представлении: у каждого своё, другим не мешает.</p>' +
-    '<a href="' + base + '?view=' + id + hash + '" target="_top" ' +
-    'style="display:inline-block;background:#2563EB;color:#fff;padding:9px 16px;border-radius:8px;font-weight:700;text-decoration:none">Открыть мои задачи</a>' +
-    '<p style="margin:12px 0 0;color:#5F6B7A;font-size:12px">Таблица перезагрузится уже с твоими задачами. Не сработало — ' +
-    '<a href="' + base + hash + '" target="_blank" style="color:#2563EB">открыть в новой вкладке</a>. ' +
-    'Выйти из представления — крестик справа на тёмной полосе над таблицей. Вернуться в него можно и без меню: ' +
-    '«Данные → Режимы фильтрации».</p></div>'
-  ).setWidth(400).setHeight(215);
-  SpreadsheetApp.getUi().showModalDialog(html, 'Мои задачи');
+  // Включить представление за человека скрипт не может (Google не даёт), поэтому подсказываем, где оно
+  SpreadsheetApp.getUi().alert('Мои задачи',
+    'Готово: личный режим фильтрации «' + view.title + '».\n\n' +
+    'Открой его: «Данные → Режимы фильтрации → ' + view.title + '». У каждого он свой и другим не мешает.\n\n' +
+    'В следующий раз можно сразу оттуда, без меню. Выйти — крестик справа на тёмной полосе над таблицей.',
+    SpreadsheetApp.getUi().ButtonSet.OK);
   return id;
 }
 
@@ -2313,7 +2304,7 @@ function writeManagerGuide_() {
         hint: 'Срок прошёл, а задача не «Отдано» и не «Отменено» — строка краснеет.' },
       { icon: '🎨', title: 'Цвета статусов', legend: ['Принято', 'В работе', 'Отдано', 'Отменено', 'Холд'] },
       { icon: '👀', title: 'Фильтры (меню «📋 Менеджеры»)', rows: [
-        ['Мои задачи', 'Только ваши — в личном представлении, другим не мешает. Нужна ваша почта в «Списках», колонка F.'],
+        ['Мои задачи', 'Создаёт ваш личный режим фильтрации — откройте его в «Данные → Режимы фильтрации». Другим не мешает. Нужна ваша почта в «Списках», колонка F.'],
         ['Одного менеджера', 'Впишите имя — покажутся только его задачи.'],
         ['Скрыть закрытые', 'Прячет «Отдано» и «Отменено».'],
         ['Показать все', 'Сбрасывает любой фильтр.']],
