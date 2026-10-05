@@ -30,7 +30,7 @@ export function showOverdue(n) {
   chrome.action.setBadgeBackgroundColor({ color: '#C0262D' });
 }
 
-export async function loadMine() {
+export async function loadMine({ keepMsg = false } = {}) {
   if (!isConfigured()) {
     els.summary.textContent = 'Заполните настройки (⚙️), чтобы видеть свои задачи.';
     return;
@@ -42,18 +42,18 @@ export async function loadMine() {
   let cached = null;
   try { cached = (await chrome.storage.local.get(key))[key]; } catch { /* нет — просто ждём таблицу */ }
   if (cached && seq === loadSeq) {
-    data = cached;
+    data = notDeleted(cached);
     render();
     els.summary.textContent += ' · обновляю…';
   } else {
     els.summary.textContent = 'Загружаю…';
   }
-  setMsg('');
+  if (!keepMsg) setMsg('');
   try {
     const r = await api({ action: 'myTasks', manager, filter });
     if (!r.ok) throw new Error(r.error);
     if (seq !== loadSeq) return; // пока грузили, переключили фильтр или менеджера
-    data = r;
+    data = notDeleted(r);
     render();
   } catch (e) {
     if (seq !== loadSeq) return;
@@ -112,16 +112,53 @@ function render() {
 // ---------- Правка ----------
 /** После сохранения — обновить списки и сказать, что получилось. */
 async function afterSave(text) {
-  await loadMine();
-  if (els.search.value.trim()) await runSearch();
   setMsg(text, 'ok');
+  await loadMine({ keepMsg: true });
+  if (els.search.value.trim()) await runSearch();
+}
+
+// Удалённые в этой сессии — чтобы список с прошлого раза (кэш) не показал их снова
+const deleted = new Set();
+const refKey = (t) => `${t.id || ''}|${t.row}`;
+const notDeleted = (d) => (d && d.tasks ? { ...d, tasks: d.tasks.filter((t) => !deleted.has(refKey(t)) && !deleted.has(`${t.id || ''}|*`)) } : d);
+
+/** Задача пропадает из списка сразу, таблица удаляет строку в фоне. Не получилось — список вернётся как был. */
+async function deleteTask(ref) {
+  const label = ref.id || 'Задача';
+  if (ref.id) deleted.add(`${ref.id}|*`);
+  else deleted.add(refKey(ref));
+  const i = data && data.tasks ? data.tasks.findIndex((t) => (ref.id ? t.id === ref.id : t.row === ref.row)) : -1;
+  if (i !== -1) {
+    const [t] = data.tasks.splice(i, 1);
+    if (data.counts) ['open', 'done', 'cancelled', 'all'].forEach((f) => { if (matches(f, t.status) && data.counts[f]) data.counts[f]--; });
+    if (t.overdue) data.overdue--;
+    render();
+  }
+  if (!els.found.hidden && found.length) { found = notDeleted({ tasks: found }).tasks; renderFound(); }
+  setMsg(`${label}: удаляю…`);
+  try {
+    const r = await api({ action: 'deleteTask', ...ref });
+    if (!r.ok && /Неизвестное действие/.test(r.error || '')) {
+      throw new Error('веб-приложение ещё старое. В Apps Script: «Развернуть → Управление развёртываниями → ✏️ → Версия: новая → Развернуть»');
+    }
+    if (!r.ok) throw new Error(r.error);
+    setMsg(`${label}: удалена`, 'ok');
+  } catch (err) {
+    deleted.delete(`${ref.id}|*`);
+    deleted.delete(refKey(ref));
+    setMsg(`${label}: не удалилась — ${err.message}`, 'err');
+  }
+  // Строки в таблице сдвинулись — берём свежий список (сообщение не трогаем)
+  await loadMine({ keepMsg: true });
+  if (els.search.value.trim()) await runSearch();
+  if (!ref.id) deleted.delete(refKey(ref)); // без номера помним по строке, а строки сдвинулись — дальше не нужно
 }
 
 els.list.addEventListener('click', (e) => {
   const b = e.target.closest('button[data-edit]');
   if (!b) return;
   const t = data.tasks[Number(b.dataset.edit)];
-  openEditor({ row: t.row, id: t.id, origSubject: t.subject }, afterSave);
+  openEditor({ row: t.row, id: t.id, origSubject: t.subject }, afterSave, deleteTask);
 });
 
 // Поиск любой задачи — не только своих открытых
@@ -134,17 +171,20 @@ async function runSearch() {
   try {
     const r = await api({ action: 'searchTasks', query: q });
     if (!r.ok) throw new Error(r.error);
-    found = r.tasks;
-    els.found.innerHTML = found.length
-      ? found.map((t, i) => `<div class="mine-item">
-          <div class="title">${esc(t.title)}</div>
-          <div class="row-actions"><span class="meta" style="flex:1">${esc(t.id || '—')}${t.ticket ? ' · ' + esc(t.ticket) : ''} · ${esc(t.date)}${t.status ? ' · ' + esc(t.status) : ''}</span>
-          <button class="btn ghost small" type="button" data-found="${i}">Изменить</button></div>
-        </div>`).join('')
-      : '<p class="muted">Ничего не нашлось.</p>';
+    found = notDeleted(r).tasks;
+    renderFound();
   } catch (e) {
     els.found.innerHTML = `<p class="status err">Не получилось найти: ${esc(e.message)}</p>`;
   }
+}
+function renderFound() {
+  els.found.innerHTML = found.length
+    ? found.map((t, i) => `<div class="mine-item">
+        <div class="title">${esc(t.title)}</div>
+        <div class="row-actions"><span class="meta" style="flex:1">${esc(t.id || '—')}${t.ticket ? ' · ' + esc(t.ticket) : ''} · ${esc(t.date)}${t.status ? ' · ' + esc(t.status) : ''}</span>
+        <button class="btn ghost small" type="button" data-found="${i}">Изменить</button></div>
+      </div>`).join('')
+    : '<p class="muted">Ничего не нашлось.</p>';
 }
 els.searchForm.addEventListener('submit', (e) => { e.preventDefault(); runSearch(); });
 els.search.addEventListener('search', () => { if (!els.search.value) els.found.hidden = true; }); // крестик в поле
@@ -152,7 +192,7 @@ els.found.addEventListener('click', (e) => {
   const b = e.target.closest('button[data-found]');
   if (!b) return;
   const t = found[Number(b.dataset.found)];
-  openEditor({ row: t.row, id: t.id }, afterSave);
+  openEditor({ row: t.row, id: t.id }, afterSave, deleteTask);
 });
 
 // Статус меняется сразу: задача, которая больше не подходит под фильтр, пропадает из списка,

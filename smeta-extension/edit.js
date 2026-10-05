@@ -15,6 +15,7 @@ const els = {
 let lists = null;    // справочники из таблицы — один раз
 let current = null;  // задача, как её отдала таблица (row, id, origSubject — чтобы найти строку при сохранении)
 let onDone = () => {};
+let onDelete = () => {};
 
 function setMsg(text, kind = 'info') {
   els.msg.textContent = text;
@@ -45,15 +46,17 @@ function close() {
   els.form.hidden = true;
   els.view.hidden = false;
   current = null;
+  window.scrollTo(0, 0); // форма длинная — список и сообщение наверху
 }
 els.back.addEventListener('click', close);
 
 /**
  * Открыть задачу на правку. ref — { row, id, origSubject } из списка «Мои задачи» или из поиска.
- * done() вызывается после сохранения — обновить список.
+ * done() вызывается после сохранения — обновить список, del(ref) — после подтверждения удаления.
  */
-export async function openEditor(ref, done) {
+export async function openEditor(ref, done, del) {
   onDone = done || (() => {});
+  onDelete = del || (() => {});
   els.view.hidden = true;
   els.form.hidden = false;
   els.form.reset();
@@ -147,24 +150,13 @@ els.form.addEventListener('submit', async (e) => {
   }
 });
 
-// Удаление — как в «Поиске и правке» таблицы: с подтверждением, отменить нельзя
-els.del.addEventListener('click', async () => {
+// Удаление — как в «Поиске и правке» таблицы: с подтверждением, отменить нельзя.
+// После «ОК» окно сразу закрывается, задача пропадает из списка, а таблица удаляет строку в фоне (см. mine.js).
+els.del.addEventListener('click', () => {
   if (!current) return;
   const name = current.id ? `№ ${current.id}` : `«${current.subject}»`;
   if (!confirm(`Точно удалить задачу ${name}?\n\nСтрока пропадёт из таблицы, отменить нельзя.`)) return;
-  els.save.disabled = els.del.disabled = true;
-  setMsg('Удаляю…');
-  try {
-    const r = await api({ action: 'deleteTask', row: current.row, id: current.id || '', origSubject: current.origSubject });
-    if (!r.ok && /Неизвестное действие/.test(r.error || '')) {
-      throw new Error('веб-приложение ещё старое. В Apps Script: «Развернуть → Управление развёртываниями → ✏️ → Версия: новая → Развернуть»');
-    }
-    if (!r.ok) throw new Error(r.error);
-    const id = current.id;
-    close();
-    onDone(`${id || 'Задача'}: удалена`);
-  } catch (err) {
-    setMsg(`Не удалилось: ${err.message}`, 'err');
-    els.save.disabled = els.del.disabled = false;
-  }
+  const ref = { row: current.row, id: current.id || '', origSubject: current.origSubject };
+  close();
+  onDelete(ref);
 });
