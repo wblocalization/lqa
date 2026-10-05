@@ -156,6 +156,9 @@ els.del.addEventListener('click', async () => {
   setMsg('Удаляю…');
   try {
     const r = await api({ action: 'deleteTask', row: current.row, id: current.id || '', origSubject: current.origSubject });
+    if (!r.ok && /Неизвестное действие/.test(r.error || '')) {
+      throw new Error('веб-приложение ещё старое. В Apps Script: «Развернуть → Управление развёртываниями → ✏️ → Версия: новая → Развернуть»');
+    }
     if (!r.ok) throw new Error(r.error);
     const id = current.id;
     close();
