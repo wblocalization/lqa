@@ -122,6 +122,7 @@ function onOpen() {
 
   ui.createMenu('⚙️ Настройки')
     .addItem('🎨 Оформить таблицу', 'setupDesign')
+    .addItem('👥 Режимы фильтрации для всех менеджеров', 'createAllManagerViews')
     .addItem('🛡 Защитить шапку и справочники', 'protectImportantRanges')
     .addItem('📥 Перенести историю из старой таблицы', 'migrateFromOldTable')
     .addSeparator()
@@ -717,7 +718,8 @@ function findFilterViewId_(ssId, sheetId, title) {
 }
 
 /** Личный режим фильтрации «Задачи: имя» (один на менеджера, обновляется) и подсказка, где его открыть. */
-function openManagerView_(sh, name) {
+/** Создаёт или обновляет режим фильтрации «Задачи: имя»; возвращает { id, title }. */
+function ensureManagerView_(sh, name) {
   const ss = SpreadsheetApp.getActive();
   const props = PropertiesService.getDocumentProperties();
   const key = 'FILTER_VIEW:' + name;
@@ -739,13 +741,35 @@ function openManagerView_(sh, name) {
     id = res.replies[0].addFilterView.filterView.filterViewId;
   }
   props.setProperty(key, String(id));
+  return { id: id, title: view.title };
+}
+
+function openManagerView_(sh, name) {
+  const view = ensureManagerView_(sh, name);
   // Включить представление за человека скрипт не может (Google не даёт), поэтому подсказываем, где оно
   SpreadsheetApp.getUi().alert('Мои задачи',
     'Готово: личный режим фильтрации «' + view.title + '».\n\n' +
     'Открой его: «Данные → Режимы фильтрации → ' + view.title + '». У каждого он свой и другим не мешает.\n\n' +
     'В следующий раз можно сразу оттуда, без меню. Выйти — крестик справа на тёмной полосе над таблицей.',
     SpreadsheetApp.getUi().ButtonSet.OK);
-  return id;
+  return view.id;
+}
+
+/** «⚙️ Настройки»: режимы фильтрации «Задачи: имя» сразу для всех менеджеров из «Списков». */
+function createAllManagerViews() {
+  const ui = SpreadsheetApp.getUi();
+  if (typeof Sheets === 'undefined' || !Sheets.Spreadsheets) {
+    ui.alert('Нужен сервис «Google Sheets API»: в Apps Script слева «Сервисы» → «+» → Google Sheets API → «Добавить».');
+    return;
+  }
+  const sh = getTasksSheet();
+  const done = [], failed = [];
+  getListsData().managers.forEach(name => {
+    try { ensureManagerView_(sh, name); done.push(name); } catch (e) { failed.push(name + ' — ' + e.message); }
+  });
+  ui.alert('Режимы фильтрации',
+    'Готово: ' + done.length + '. Каждый найдёт свой в «Данные → Режимы фильтрации → Задачи: Имя».\n\n' + done.join('\n') +
+    (failed.length ? '\n\nНе получилось:\n' + failed.join('\n') : ''), ui.ButtonSet.OK);
 }
 
 function filterByManager() {

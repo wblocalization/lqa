@@ -346,6 +346,11 @@ test('Мои задачи: с Sheets API — личное представлен
     existing = [{ filterViewId: 555, title: 'Задачи: Ольга Шешина' }];
     ctx.__prompt = 'Ольга Шешина'; G.filterByManager(); ctx.__prompt = '';
     assert.equal(reqs.at(-1).updateFilterView.filter.filterViewId, 555);
+    // Сразу для всех менеджеров из «Списков»
+    const before = reqs.length;
+    G.createAllManagerViews();
+    assert.equal(reqs.length - before, G.getListsData().managers.length);
+    assert.match(calls.alerts.at(-1), /Готово: \d+/);
   } finally { delete ctx.Sheets; }
   G.showMyTasks(); // сервис не включён — как раньше, общий фильтр
   assert.ok(!tasks().filter.criteria[14].hidden.includes('Анастасия Лисовая'));
