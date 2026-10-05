@@ -107,11 +107,6 @@ function onOpen() {
     .addItem('➕ Добавить задачу', 'showAddTaskDialog')
     .addItem('🔍 Поиск и правка', 'showSearchEditSidebar')
     .addItem('📊 Дашборд', 'showDashboard')
-    .addSeparator()
-    .addItem('🙋 Мои задачи', 'showMyTasks')
-    .addItem('🙋 Задачи одного менеджера', 'filterByManager')
-    .addItem('🙈 Скрыть закрытые (Отдано/Отменено)', 'hideClosedTasks')
-    .addItem('👁 Показать все задачи', 'showAllTasks')
     .addToUi();
 
   ui.createMenu('👥 Переводчики EN')
@@ -750,7 +745,9 @@ function ensureManagerView_(sh, name) {
   }
   if (!id) {
     const res = Sheets.Spreadsheets.batchUpdate({ requests: [{ addFilterView: { filter: view } }] }, ss.getId());
-    id = res.replies[0].addFilterView.filterView.filterViewId;
+    const reply = res && res.replies && res.replies[0] && res.replies[0].addFilterView;
+    id = (reply && reply.filterView && reply.filterView.filterViewId) || findFilterViewId_(ss.getId(), sh.getSheetId(), view.title);
+    if (!id) throw new Error('Google не вернул номер режима фильтрации «' + view.title + '»');
   }
   props.setProperty(key, String(id));
   return { id: id, title: view.title };
@@ -2339,11 +2336,10 @@ function writeManagerGuide_() {
         ['Статус отдачи', 'Отчитались ли перед заказчиком в срок.']],
         hint: 'Срок прошёл, а задача не «Отдано» и не «Отменено» — строка краснеет.' },
       { icon: '🎨', title: 'Цвета статусов', legend: ['Принято', 'В работе', 'Отдано', 'Отменено', 'Холд'] },
-      { icon: '👀', title: 'Фильтры (меню «📋 Менеджеры»)', rows: [
-        ['Мои задачи', 'Создаёт ваш личный режим фильтрации — откройте его в «Данные → Режимы фильтрации». Другим не мешает. Нужна ваша почта в «Списках», колонка F.'],
-        ['Одного менеджера', 'Впишите имя — покажутся только его задачи.'],
-        ['Скрыть закрытые', 'Прячет «Отдано» и «Отменено».'],
-        ['Показать все', 'Сбрасывает любой фильтр.']],
+      { icon: '👀', title: 'Мои задачи в таблице', rows: [
+        ['Только мои', '«Данные → Режимы фильтрации → Задачи: ваше имя». Это личный режим: другим в таблице не мешает.'],
+        ['Вернуться ко всем', 'Крестик справа на тёмной полосе режима фильтрации.'],
+        ['Нет своего режима', 'Владелец таблицы создаёт их для всех: «⚙️ Настройки → 👥 Режимы фильтрации для всех менеджеров».']],
         hint: 'Колонки «Смета, Итого» и «Статус отдачи, SP, Комментарий» можно свернуть кнопкой «–» над ними и развернуть «+». Языки выбираются в самой ячейке — можно несколько.' },
       { icon: '🧩', title: 'Расширение Chrome «Задачи и сметы»', wide: true, steps: [
         'Поставить один раз: распакуйте архив, откройте chrome://extensions, включите «Режим разработчика» и нажмите «Загрузить распакованное» — выберите папку расширения.',
