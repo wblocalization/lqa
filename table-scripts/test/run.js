@@ -316,6 +316,20 @@ test('Расширение (Smeta.gs): добавить задачу и запи
   same([tasks().getRange(r, 11).getValue(), G.getTaskForEdit(r).estimateLink], ['Ссылка на смету ' + add.id, 'https://disk/old']);
 });
 
+test('Расширение: удалить задачу', () => {
+  const call = b => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify({ token: 'T', ...b }) } }));
+  const add = call({ action: 'addTask', user: 'Настя', task: { contractor: 'LogrusIT', subject: 'Удалить меня', languages: ['Грузинский'] } });
+  assert.ok(add.ok, JSON.stringify(add));
+  const r = rowOf(add.id), n = tasks().getLastRow();
+  const del = call({ action: 'deleteTask', row: r, id: add.id, origSubject: tasks().getRange(r, 3).getValue() });
+  assert.ok(del.ok, JSON.stringify(del));
+  assert.equal(tasks().getLastRow(), n - 1);
+  assert.equal(call({ action: 'lookup', task: add.id }).found, false);
+  const again = call({ action: 'deleteTask', row: r, id: add.id, origSubject: 'Удалить меня' });
+  assert.ok(!again.ok && /не найдена/.test(again.error), JSON.stringify(again));
+  assert.ok(!ctx.__lockHeld);
+});
+
 test('Фильтры', () => {
   G.hideClosedTasks(); same(tasks().filter.criteria[10].hidden, ['Отдано', 'Отменено']);
   G.showMyTasks(); assert.ok(!tasks().filter.criteria[14].hidden.includes('Анастасия Лисовая'));

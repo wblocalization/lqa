@@ -9,7 +9,7 @@ const els = {
   product: $('#eProduct'), customer: $('#eCustomer'), langs: $('#eLangs'), deadline: $('#eDeadline'),
   exactDeadline: $('#eExactDeadline'), status: $('#eStatus'), deliveryStatus: $('#eDeliveryStatus'),
   contractor: $('#eContractor'), manager: $('#eManager'), estimateLink: $('#eEstimateLink'),
-  total: $('#eTotal'), sp: $('#eSp'), comment: $('#eComment'), complaints: $('#eComplaints'), save: $('#eSave'), msg: $('#eMsg'), top: $('#eTop'),
+  total: $('#eTotal'), sp: $('#eSp'), comment: $('#eComment'), complaints: $('#eComplaints'), save: $('#eSave'), del: $('#eDelete'), msg: $('#eMsg'), top: $('#eTop'),
 };
 
 let lists = null;    // справочники из таблицы — один раз
@@ -60,6 +60,7 @@ export async function openEditor(ref, done) {
   els.link2.value = '';
   els.title.textContent = ref.id || 'Задача';
   els.save.disabled = true;
+  els.del.disabled = true;
   els.langs.innerHTML = '';
   // «Загружаю задачу…» — сверху, где смотрят, а не под кнопкой
   els.top.hidden = false;
@@ -77,6 +78,7 @@ export async function openEditor(ref, done) {
     if (!r.ok) throw new Error(r.error);
     fill(r.task);
     els.save.disabled = false;
+    els.del.disabled = false;
     els.top.hidden = true;
   } catch (e) {
     els.top.className = 'status err';
@@ -142,5 +144,24 @@ els.form.addEventListener('submit', async (e) => {
     setMsg(`Не сохранилось: ${err.message}`, 'err');
   } finally {
     els.save.disabled = false;
+  }
+});
+
+// Удаление — как в «Поиске и правке» таблицы: с подтверждением, отменить нельзя
+els.del.addEventListener('click', async () => {
+  if (!current) return;
+  const name = current.id ? `№ ${current.id}` : `«${current.subject}»`;
+  if (!confirm(`Точно удалить задачу ${name}?\n\nСтрока пропадёт из таблицы, отменить нельзя.`)) return;
+  els.save.disabled = els.del.disabled = true;
+  setMsg('Удаляю…');
+  try {
+    const r = await api({ action: 'deleteTask', row: current.row, id: current.id || '', origSubject: current.origSubject });
+    if (!r.ok) throw new Error(r.error);
+    const id = current.id;
+    close();
+    onDone(`${id || 'Задача'}: удалена`);
+  } catch (err) {
+    setMsg(`Не удалилось: ${err.message}`, 'err');
+    els.save.disabled = els.del.disabled = false;
   }
 });

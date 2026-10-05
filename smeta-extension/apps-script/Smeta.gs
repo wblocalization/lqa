@@ -70,6 +70,7 @@ function doPost(e) {
     if (req.action === 'addTask') return smetaJson_(addTask_(req));
     if (req.action === 'setStatus') return smetaJson_(setStatus_(req));
     if (req.action === 'saveTask') return smetaJson_(saveTask_(req));
+    if (req.action === 'deleteTask') { requireTableScript_(); deleteTask(req.row, req.id, req.origSubject); return smetaJson_({ ok: true }); }
     return smetaJson_({ ok: false, error: 'Неизвестное действие' });
   } catch (err) {
     return smetaJson_({ ok: false, error: String(err && err.message || err) });
