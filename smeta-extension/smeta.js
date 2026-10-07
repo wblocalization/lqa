@@ -1,5 +1,5 @@
 import * as pdfjs from './vendor/pdf.min.mjs';
-import { parseEstimate, formatMoney } from './parser.js';
+import { parseEstimate, formatMoney, linesFromItems } from './parser.js';
 import { settings, isConfigured, api, esc, readClipboard, DEFAULT_DISK_FOLDER } from './core.js';
 import { uploadToDisk, listDiskPdfs, folderNameFromSubject } from './disk.js';
 
@@ -13,7 +13,7 @@ const els = {
   link: $('#link'), pasteLink: $('#pasteLink'), submit: $('#submit'), status: $('#status'), diskHint: $('#diskHint'),
 };
 
-let current = null; // { file, fileName, subject, filled } — смета, которая сейчас в форме
+let current = null; // { file, fileName, subject, filled, oldTotal, version } — смета, которая сейчас в форме
 
 /** Куда ляжет PDF на ВБ Диске: папка из настроек / тема письма. */
 function diskFolders() {
@@ -57,12 +57,16 @@ els.again.addEventListener('click', resetToEmpty);
 // ---------- Чтение PDF ----------
 async function readPdfTexts(file) {
   const doc = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
-  const texts = [];
+  const texts = [], items = [];
   for (let i = 1; i <= doc.numPages; i++) {
     const content = await (await doc.getPage(i)).getTextContent();
-    for (const item of content.items) if (item.str) texts.push(item.str);
+    for (const item of content.items) {
+      if (!item.str) continue;
+      texts.push(item.str);
+      items.push({ str: item.str, x: item.transform[4], y: item.transform[5], page: i });
+    }
   }
-  return texts;
+  return { texts, lines: linesFromItems(items) };
 }
 
 async function handleFile(file) {
@@ -74,22 +78,25 @@ async function handleFile(file) {
   setStatus('Читаю PDF…');
   let parsed;
   try {
-    parsed = parseEstimate(await readPdfTexts(file), file.name);
+    const pdf = await readPdfTexts(file);
+    parsed = parseEstimate(pdf.texts, file.name, pdf.lines);
   } catch (e) {
     console.error(e);
     setStatus(`Не получилось прочитать PDF: ${e.message}`, 'err');
     return;
   }
 
-  current = { file, fileName: file.name, subject: '', filled: false };
+  current = { file, fileName: file.name, subject: '', filled: false, oldTotal: '', version: parsed.version };
   showScreen('form');
-  els.fileName.textContent = file.name;
+  els.fileName.textContent = file.name + (parsed.version ? ` · версия ${parsed.version}` : '');
   els.task.value = parsed.task || '';
   els.total.value = parsed.total ? formatMoney(parsed.total.gross) : '';
-  els.totalHint.textContent = parsed.total
-    ? `без НДС ${formatMoney(parsed.total.net)} + НДС ${Math.round(parsed.total.rate * 100)}% ${formatMoney(parsed.total.vat)}`
+  const t = parsed.total;
+  els.totalHint.textContent = t
+    ? `без НДС ${formatMoney(t.net)} + НДС ${Math.round(t.rate * 100)}% ${formatMoney(t.vat)}` +
+      (t.extraDigits ? ' · ⚠ в смете доли копейки — записываю как есть, без округления. Сверьте со счётом подрядчика' : '')
     : 'Итог с НДС не нашёлся — впишите вручную.';
-  els.totalHint.classList.toggle('bad', !parsed.total);
+  els.totalHint.classList.toggle('bad', !t || t.extraDigits);
   els.link.value = '';
   updateDiskHint();
 
@@ -133,7 +140,12 @@ async function lookup() {
       return;
     }
     const filled = r.link || r.total;
-    if (current) { current.subject = r.subject || ''; current.filled = Boolean(filled); updateDiskHint(); }
+    if (current) {
+      current.subject = r.subject || '';
+      current.filled = Boolean(filled);
+      current.oldTotal = r.total;
+      updateDiskHint();
+    }
     showRow({
       kind: filled ? 'warn' : '',
       html: `<b>${esc(r.subject || task)}</b><span class="meta">${esc([r.contractor, r.manager].filter(Boolean).join(' · '))}</span>` +
@@ -177,12 +189,13 @@ els.form.addEventListener('submit', async (e) => {
   if (link && !/^https?:\/\//i.test(link)) return setStatus('Ссылка должна начинаться с https://', 'err');
   if (!link && !current) return setStatus('Перетащите PDF сметы или вставьте ссылку', 'err');
 
-  // Смета уже есть — спрашиваем до загрузки, чтобы не грузить зря
+  // Смета уже есть — спрашиваем до загрузки, чтобы не грузить зря, и показываем, как меняется сумма
   let overwrite = false;
   if (current && current.filled) {
-    if (!confirm(`В ${task} уже есть смета. Перезаписать?`)) return setStatus('Отменено — ничего не менялось.');
+    if (!confirm(replaceQuestion(task, current.oldTotal, total))) return setStatus('Отменено — ничего не менялось.');
     overwrite = true;
   }
+  const version = current?.version || '';
 
   els.submit.disabled = true;
   try {
@@ -207,17 +220,19 @@ els.form.addEventListener('submit', async (e) => {
       updateDiskHint();
     }
     setStatus('Записываю в таблицу…');
-    let r = await api({ action: 'write', task, total, link, fileName: current?.fileName || '', overwrite });
+    const fileName = current?.fileName || '';
+    let r = await api({ action: 'write', task, total, link, fileName, version, overwrite });
     if (!r.ok && r.error === 'exists') {
-      const was = r.total ? `${formatMoney(Number(r.total))} ₽` : 'пусто';
-      if (!confirm(`В ${task} уже есть смета (${was}). Перезаписать?`)) {
+      if (!confirm(replaceQuestion(task, r.total, total))) {
         setStatus('Отменено — в таблице ничего не менялось.');
         return;
       }
-      r = await api({ action: 'write', task, total, link, fileName: current?.fileName || '', overwrite: true });
+      r = await api({ action: 'write', task, total, link, fileName, version, overwrite: true });
     }
     if (!r.ok) throw new Error(r.error);
-    els.doneText.textContent = `${task} · ${formatMoney(total)} ₽ и ссылка в строке ${r.row}${where}`;
+    const was = r.was !== '' && r.was != null && Number.isFinite(Number(r.was)) && Number(r.was) !== total
+      ? ` (было ${formatMoney(Number(r.was))} ₽ — осталось в заметке к ячейке)` : '';
+    els.doneText.textContent = `${task} · ${formatMoney(total)} ₽${was} и ссылка в строке ${r.row}${where}`;
     setStatus('');
     current = null;
     els.file.value = '';
@@ -229,6 +244,20 @@ els.form.addEventListener('submit', async (e) => {
   }
 });
 
+
+/** «Было 102 641,64 ₽ → станет 105 210,30 ₽ (+2 568,66 ₽)» — чтобы обновлённую смету было видно сразу. */
+function replaceQuestion(task, oldTotal, newTotal) {
+  const old = Number(oldTotal);
+  let text = `В ${task} уже есть смета.\n\n`;
+  if (oldTotal !== '' && oldTotal != null && Number.isFinite(old)) {
+    const diff = Math.round((newTotal - old) * 1000) / 1000;
+    text += `Было: ${formatMoney(old)} ₽\nСтанет: ${formatMoney(newTotal)} ₽\n` +
+      (diff ? `Разница: ${diff > 0 ? '+' : '−'}${formatMoney(Math.abs(diff))} ₽` : 'Сумма не меняется') + '\n\n';
+  } else {
+    text += `Станет: ${formatMoney(newTotal)} ₽\n\n`;
+  }
+  return text + 'Заменить ссылку и сумму? Прежняя сумма останется в заметке к ячейке.';
+}
 
 function normTask(s) {
   return String(s).trim().replace(/\s+/g, ' ').toUpperCase();

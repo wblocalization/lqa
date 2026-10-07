@@ -59,7 +59,7 @@ test('onOpen строит меню', () => {
 test('Окна открываются', { skip: !process.env.BUNDLE }, () => {
   assert.match(G.include('Общее'), /<style>/);
   ['showAddTaskDialog', 'showSearchEditSidebar', 'showDashboard', 'showManagerReportSidebar', 'showCustomReportSidebar',
-   'showAddTranslatorTaskDialog', 'showSearchEditTranslatorSidebar', 'showTranslatorReportSidebar', 'migrateFromOldTable'].forEach(f => G[f]());
+   'showAddTranslatorTaskDialog', 'showSearchEditTranslatorSidebar', 'showTranslatorReportSidebar', 'migrateFromOldTable', 'showReconcileDialog'].forEach(f => G[f]());
 });
 
 test('До оформления (в «Списках» ещё нет колонки O) справочники читаются', () => {
@@ -618,6 +618,65 @@ if (process.env.GUIDE_HTML) {
   }
   fs.writeFileSync(process.env.GUIDE_HTML, html + '</table>');
 }
+test('Суммы смет: без округления, прежняя сумма — в заметке', () => {
+  same([G.rub_(102641.64), G.rub_(1220.005), G.rub_(0.1 + 0.2), G.rub_('1 000 ₽')], ['102 641,64', '1 220,005', '0,30', '1 000 ₽']);
+  const call = b => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify({ token: 'T', ...b }) } }));
+  const id = G.submitNewTaskFromDialog({ contractor: 'LogrusIT', subject: 'Сверка 1', manager: 'Тест Сверка', date: '2026-09-15', languages: ['Грузинский'] });
+  const r = () => rowOf(id), cell = () => tasks().getRange(r(), 12);
+  assert.ok(call({ action: 'write', task: id, total: 102641.64, link: 'https://disk/a' }).ok);
+  same([cell().getValue(), cell().getNumberFormat(), cell().getNote()], [102641.64, '#,##0.00', '']);
+  // Подрядчик обновил смету: сумма и ссылка заменяются, прежние — в заметке
+  const w = call({ action: 'write', task: id, total: 105210.3, link: 'https://disk/b', version: 2, overwrite: true });
+  same([w.ok, w.was, cell().getValue()], [true, 102641.64, 105210.3]);
+  assert.match(cell().getNote(), /смета обновлена \(версия 2\): было 102 641,64 ₽ → стало 105 210,30 ₽\nпрежняя смета: https:\/\/disk\/a/);
+  // Доли копейки не теряются и видны в таблице
+  call({ action: 'write', task: id, total: 1220.005, link: 'https://disk/b', overwrite: true });
+  same([cell().getValue(), cell().getNumberFormat()], [1220.005, '#,##0.000']);
+  assert.match(cell().getNote(), /было 105 210,30 ₽ → стало 1 220,005 ₽$/);
+  // Та же смета ещё раз — заметка не растёт
+  const note = cell().getNote();
+  call({ action: 'write', task: id, total: 1220.005, link: 'https://disk/b', overwrite: true });
+  assert.equal(cell().getNote(), note);
+  // Правка руками — тоже в заметку
+  G.saveTaskEdits({ ...G.getTaskForEdit(r()), total: '1000' });
+  same([cell().getValue(), cell().getNumberFormat()], [1000, '#,##0.00']);
+  assert.match(cell().getNote(), /сумма изменена вручную: было 1 220,005 ₽ → стало 1 000,00 ₽$/);
+  G.saveTaskEdits({ ...G.getTaskForEdit(r()), comment: 'без смены суммы' });
+  assert.match(cell().getNote(), /стало 1 000,00 ₽$/);
+});
+
+test('Сверка с подрядчиками: строки, точный итог, проверки, Excel', () => {
+  const add = t => G.submitNewTaskFromDialog({ contractor: 'LogrusIT', manager: 'Тест Сверка', date: '2026-09-20', languages: ['Казахский'], ...t });
+  const id2 = add({ subject: 'Сверка 2', total: '0.1', estimateLink: 'https://disk/b' }); // та же смета, что у «Сверка 1»
+  const id3 = add({ subject: 'Сверка 3', total: '0.2', status: 'Отменено' });
+  const id4 = add({ subject: 'Сверка 4', estimateLink: 'https://disk/c' });
+  const o = G.getReconcileOptions();
+  assert.ok(o.managers.includes('Тест Сверка') && o.contractors.includes('LogrusIT'));
+  const rep = G.getReconciliation({ year: 2026, month: 9, manager: 'Тест Сверка' });
+  same(rep.rows.map(x => x.subject.replace(/^.*\] /, '')).sort(), ['Сверка 1', 'Сверка 2', 'Сверка 3', 'Сверка 4']);
+  same([rep.count, rep.withMoney, rep.sum, rep.sumText], [4, 3, 1000.3, '1 000,30']);
+  const kinds = rep.issues.map(x => x.id + ':' + x.kind).sort();
+  same(kinds.filter(k => /dup|cancelled|noTotal/.test(k)).length, 4, kinds.join(' '));
+  assert.ok(kinds.includes(id3 + ':cancelled') && kinds.includes(id4 + ':noTotal') && kinds.includes(id2 + ':dup'));
+  const row2 = rep.rows.find(x => x.id === id2);
+  same([row2.estimate, row2.languages, row2.totalText, row2.date], ['https://disk/b', 'Казахский', '0,10', '20.09.2026']);
+  assert.equal(G.getReconciliation({ year: 2026, month: 10, manager: 'Тест Сверка' }).count, 0);
+  assert.equal(G.getReconciliation({ year: 2026, month: 9, manager: 'Тест Сверка', contractor: 'GlobalDoc' }).count, 0);
+  // Excel: все поля, ссылка на смету ещё и адресом, проверки — отдельным листом
+  const n0 = calls.created.length;
+  assert.match(G.exportReconciliationToExcel({ year: 2026, month: 9, manager: 'Тест Сверка' }), /export\?format=xlsx/);
+  const book = calls.created[n0];
+  const sh = book.getSheetByName('Сверка');
+  same(sh.getRange(1, 1, 1, 10).getValues()[0], ['№ задачи', 'Дата', 'Тема письма', 'Языки', 'Менеджер', 'Подрядчик', 'Статус', 'Смета', 'Ссылка на смету', 'Итого с НДС, ₽']);
+  const body = sh.getRange(2, 1, 4, 10).getValues();
+  const b2 = body.find(x => x[0] === id2);
+  same([b2[7], b2[8], b2[9]], ['Ссылка на смету ' + id2, 'https://disk/b', 0.1]);
+  assert.ok(b2[1] instanceof CDate);
+  assert.equal(sh.getRange(6, 9).getValue(), 'ИТОГО (по видимым строкам)');
+  assert.ok(book.getSheetByName('Проверки').getLastRow() >= 5);
+  assert.equal(book.getSheetByName('Итоги по подрядчикам').getRange(2, 3).getValue(), 1000.3);
+});
+
 test('Журнал больше не пишется', () => {
   assert.equal(log() ? log().getLastRow() : 0, logRows0);
   assert.equal(typeof G.logChange, 'undefined');

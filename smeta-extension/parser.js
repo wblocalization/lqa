@@ -11,15 +11,64 @@ export function parseMoney(s) {
   return Number(s.replace(/[   ]/g, '').replace(',', '.'));
 }
 
-const toCents = (x) => Math.round(x * 100);
+/** «110 929,155» → 110929155 тысячных рубля — целым числом, без ошибок дробей вроде 1,005 × 100 = 100,4999… */
+function toMilli(s) {
+  const [int, frac = ''] = s.replace(/[   ]/g, '').split(',');
+  return Number(int) * 1000 + Number((frac + '000').slice(0, 3));
+}
+const milliToCents = (m) => Math.round(m / 10); // целые — округление точное, половинка вверх
 
-/** Все денежные суммы из кусков текста PDF (уникальные, в копейках). */
-export function extractAmounts(texts) {
-  const cents = new Set();
+/** Суммы в тысячных рубля, как напечатаны в PDF (уникальные). */
+function extractMilli(texts) {
+  const milli = new Set();
   for (const t of texts) {
-    for (const m of String(t).matchAll(MONEY_RE)) cents.add(toCents(parseMoney(m[0])));
+    for (const m of String(t).matchAll(MONEY_RE)) milli.add(toMilli(m[0]));
   }
-  return [...cents].filter((c) => c > 0);
+  return [...milli].filter((x) => x > 0);
+}
+
+/** Все денежные суммы из кусков текста PDF (уникальные, в копейках) — для поиска тройки «без НДС + НДС = с НДС». */
+export function extractAmounts(texts) {
+  return [...new Set(extractMilli(texts).map(milliToCents))];
+}
+
+/**
+ * Сумма ровно как в PDF, без округления: копейки → какое число было напечатано.
+ * В сметах три знака после запятой («102 641,640»); если третий не ноль — вернём его как есть.
+ */
+function exactOf(cents, milliList) {
+  const hits = milliList.filter((m) => milliToCents(m) === cents);
+  const m = hits.find((x) => x % 10 !== 0) ?? hits[0] ?? cents * 10;
+  return m / 1000;
+}
+
+/** Есть ли у суммы ненулевой третий знак после запятой (доли копейки). */
+export function hasExtraDigits(x) {
+  return Math.round(Math.abs(x) * 1000) % 10 !== 0;
+}
+
+/**
+ * Строки страницы по координатам: в PDF подпись «Версия» и её значение «1» лежат в разных местах текстового слоя,
+ * но на одной высоте. items — { str, x, y, page }.
+ */
+export function linesFromItems(items) {
+  const sorted = items.filter((i) => String(i.str).trim()).slice().sort((a, b) => (a.page - b.page) || (b.y - a.y) || (a.x - b.x));
+  const lines = [];
+  let cur = null;
+  for (const it of sorted) {
+    if (!cur || it.page !== cur.page || Math.abs(it.y - cur.y) > 2) {
+      cur = { page: it.page, y: it.y, items: [] };
+      lines.push(cur);
+    }
+    cur.items.push(it);
+  }
+  return lines.map((l) => l.items.sort((a, b) => a.x - b.x).map((i) => String(i.str).trim()).join(' '));
+}
+
+/** «Версия 2» из шапки сметы. */
+export function versionFromTexts(texts) {
+  const m = texts.join(' ').match(/Версия\s*:?\s*(\d{1,3})(?!\d)/i);
+  return m ? Number(m[1]) : null;
 }
 
 /**
@@ -87,13 +136,22 @@ export function taskFromTexts(texts) {
  * Главная функция: принимает куски текста PDF и имя файла.
  * Номер задачи берём из имени файла, а если его там нет — из номера сметы в тексте.
  */
-export function parseEstimate(texts, fileName = '') {
+export function parseEstimate(texts, fileName = '', lines = []) {
   const task = taskFromFileName(fileName) || taskFromTexts(texts);
-  const total = findTotalWithVat(extractAmounts(texts));
-  return { task, total };
+  const found = findTotalWithVat(extractAmounts(texts));
+  let total = null;
+  if (found) {
+    // Числа — ровно как напечатаны (до тысячных), чтобы ничего не округлилось молча
+    const milli = extractMilli(texts);
+    const exact = (x) => exactOf(Math.round(x * 100), milli);
+    total = { net: exact(found.net), vat: exact(found.vat), gross: exact(found.gross), rate: found.rate };
+    total.extraDigits = hasExtraDigits(total.gross);
+  }
+  return { task, total, version: versionFromTexts(lines) ?? versionFromTexts(texts) };
 }
 
-/** 110929.15 → «110 929,15» */
+/** 110929.15 → «110 929,15»; доли копейки не прячем: 110929.155 → «110 929,155» */
 export function formatMoney(x) {
-  return x.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const digits = hasExtraDigits(x) ? 3 : 2;
+  return x.toLocaleString('ru-RU', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }

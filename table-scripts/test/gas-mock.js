@@ -215,6 +215,10 @@ class Range {
   merge() { this.sh.merges.push(this.a1()); (this.sh.mergeList = this.sh.mergeList || []).push([this.r, this.c, this.nr, this.nc]); return this; }
   fmt(k, v) { this.each((r, c) => { const cell = this.sh.cell(r, c); (cell.f = cell.f || {})[k] = v; }); return this; }
   setBackground(v) { return this.fmt('bg', v); }
+  setNumberFormat(v) { return this.fmt('num', v); }
+  getNumberFormat() { const f = this.sh.peek(this.r, this.c).f; return (f && f.num) || ''; }
+  setNote(v) { this.sh.cell(this.r, this.c).note = String(v == null ? '' : v); return this; }
+  getNote() { return this.sh.peek(this.r, this.c).note || ''; }
   setFontColor(v) { return this.fmt('color', v); }
   setFontWeight(v) { return this.fmt('bold', v === 'bold'); }
   setFontSize(v) { return this.fmt('size', v); }

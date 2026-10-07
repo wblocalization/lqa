@@ -128,9 +128,40 @@ function smetaWrite_(req) {
   const rowId = String(t.values[t.col.task] || '').trim();
   sheet.getRange(t.row, t.col.link + 1).setRichTextValue(
     SpreadsheetApp.newRichTextValue().setText('Ссылка на смету' + (rowId ? ' ' + rowId : '')).setLinkUrl(link).build());
-  sheet.getRange(t.row, t.col.total + 1).setValue(Math.round(total * 100) / 100);
+  // Сумма — ровно как в смете, без округления до копеек (в сметах бывает три знака после запятой)
+  const exact = Math.round(total * 1000) / 1000;
+  const cell = sheet.getRange(t.row, t.col.total + 1);
+  cell.setValue(exact).setNumberFormat(smetaMoneyFormat_(exact));
+  // Подрядчик обновил смету — прежняя сумма и ссылка остаются в заметке к ячейке (для сверки)
+  if (req.overwrite && (oldLink || oldTotal !== '')) {
+    const changed = oldTotal === '' || Number(oldTotal) !== exact || (oldLink && oldLink !== link);
+    if (changed) {
+      const date = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd.MM.yyyy');
+      const ver = req.version ? ' (версия ' + req.version + ')' : '';
+      const sum = oldTotal === '' ? 'сумма ' + smetaRub_(exact) + ' ₽'
+        : Number(oldTotal) === exact ? 'сумма та же: ' + smetaRub_(exact) + ' ₽'
+        : 'было ' + smetaRub_(oldTotal) + ' ₽ → стало ' + smetaRub_(exact) + ' ₽';
+      const line = date + ' — смета обновлена' + ver + ': ' + sum + (oldLink && oldLink !== link ? '\nпрежняя смета: ' + oldLink : '');
+      const note = cell.getNote();
+      cell.setNote(note ? note + '\n\n' + line : line);
+    }
+  }
 
-  return { ok: true, row: t.row };
+  return { ok: true, row: t.row, was: req.overwrite ? oldTotal : '' };
+}
+
+/** 102641.64 → «102 641,64»; доли копейки не прячем: 110929.155 → «110 929,155». */
+function smetaRub_(x) {
+  if (x === '' || x == null || !isFinite(Number(x))) return String(x == null ? '' : x); // сумма текстом — как есть
+  const n = Math.round(Number(x) * 1000) / 1000;
+  const digits = Math.round(Math.abs(n) * 1000) % 10 ? 3 : 2;
+  const parts = Math.abs(n).toFixed(digits).split('.');
+  return (n < 0 ? '−' : '') + parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ',' + parts[1];
+}
+
+/** Формат ячейки суммы: два знака, а если в сумме доли копейки — три, чтобы таблица их не прятала. */
+function smetaMoneyFormat_(x) {
+  return Math.round(Math.abs(Number(x)) * 1000) % 10 ? '#,##0.000' : '#,##0.00';
 }
 
 function smetaFindTask_(task) {

@@ -6,7 +6,7 @@ const dir = path.resolve(__dirname, '..');
 const read = f => fs.readFileSync(path.join(dir, f), 'utf8');
 
 const htmlNames = ['Общее', 'AddTaskDialog', 'SearchEditSidebar', 'DashboardSidebar', 'ManagerReportSidebar',
-  'CustomReportSidebar', 'AddTranslatorTaskDialog', 'SearchEditTranslatorSidebar', 'TranslatorReportSidebar', 'MigrateDialog'];
+  'CustomReportSidebar', 'AddTranslatorTaskDialog', 'SearchEditTranslatorSidebar', 'TranslatorReportSidebar', 'MigrateDialog', 'ReconcileDialog'];
 const html = htmlNames.map(n => `  ${JSON.stringify(n)}: ${JSON.stringify(read(n + '.html'))}`).join(',\n');
 
 const out = `/*************************************************************

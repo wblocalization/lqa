@@ -2,7 +2,7 @@
 // Опционально: SMETA_PDF=/путь/к/смете.pdf — прогнать разбор на настоящем PDF (нужен pdfjs-dist).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseEstimate, taskFromFileName, taskFromTexts, extractAmounts, findTotalWithVat, parseMoney } from '../parser.js';
+import { parseEstimate, taskFromFileName, taskFromTexts, extractAmounts, findTotalWithVat, parseMoney, formatMoney, linesFromItems } from '../parser.js';
 
 test('parseMoney понимает пробелы и запятую', () => {
   assert.equal(parseMoney('110 929,150'), 110929.15);
@@ -42,7 +42,7 @@ test('итог с НДС находится по арифметике, а не �
   ];
   const r = parseEstimate(texts, 'LIT-26-2217 смета.pdf');
   assert.equal(r.task, 'LIT-26-2217');
-  assert.deepEqual(r.total, { net: 90925.53, vat: 20003.62, gross: 110929.15, rate: 0.22 });
+  assert.deepEqual(r.total, { net: 90925.53, vat: 20003.62, gross: 110929.15, rate: 0.22, extraDigits: false });
 });
 
 test('НДС 20% и отсутствие итога', () => {
@@ -63,4 +63,29 @@ test('настоящий PDF (если задан SMETA_PDF)', { skip: !process.
   console.log(r);
   assert.ok(r.task);
   assert.ok(r.total);
+});
+
+test('сумма — ровно как в смете: доли копейки не округляются', () => {
+  // Обычная смета: «102 641,640» → 102641.64
+  const r = parseEstimate(['₽ 84 132,490', '₽ 18 509,150', '₽ 102 641,640', 'Версия', '1'], 'LIT-26-2198-РВБ.pdf');
+  assert.deepEqual(r.total, { net: 84132.49, vat: 18509.15, gross: 102641.64, rate: 0.22, extraDigits: false });
+  assert.equal(r.version, 1);
+  // Третий знак не ноль — отдаём как есть и помечаем
+  const x = parseEstimate(['1 000,000', '220,005', '1 220,005', 'Версия 2'], 'x.pdf');
+  assert.equal(x.total.gross, 1220.005);
+  assert.equal(x.total.extraDigits, true);
+  assert.equal(x.version, 2);
+  assert.equal(formatMoney(1220.005), '1\u00a0220,005');
+  assert.equal(formatMoney(102641.64), '102\u00a0641,64');
+  // Без ошибок дробей: 1,005 × 100 в обычной арифметике даёт 100,4999…
+  assert.deepEqual(extractAmounts(['1,005']), [101]);
+});
+
+test('версия сметы — по строке, даже если значение лежит в другом месте текстового слоя', () => {
+  const items = [
+    { str: 'Версия', x: 382, y: 471.2, page: 1 }, { str: 'Проект(ы)', x: 53, y: 465, page: 1 },
+    { str: '25.09.2026', x: 302, y: 471.6, page: 1 }, { str: '1', x: 402, y: 471.6, page: 1 }, { str: 'Дата', x: 289, y: 471.2, page: 1 },
+  ];
+  assert.deepEqual(linesFromItems(items), ['Дата 25.09.2026 Версия 1', 'Проект(ы)']);
+  assert.equal(parseEstimate(['Версия', 'Проект(ы)', '1'], 'x.pdf', linesFromItems(items)).version, 1);
 });

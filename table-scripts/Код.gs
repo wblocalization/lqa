@@ -113,6 +113,8 @@ function onOpen() {
     .addItem('Отчёт по менеджеру', 'showManagerReportSidebar')
     .addItem('Отчёт по переводчику', 'showTranslatorReportSidebar')
     .addItem('Кастомный отчёт', 'showCustomReportSidebar')
+    .addSeparator()
+    .addItem('💰 Сверка с подрядчиками', 'showReconcileDialog')
     .addToUi();
 
   ui.createMenu('⚙️ Настройки')
@@ -260,6 +262,25 @@ function esc_(s) {
 
 function str_(v) {
   return String(v == null ? '' : v).trim();
+}
+
+/** Сумма без округления до копеек: в сметах бывает три знака после запятой. */
+function exactMoney_(v) {
+  return Math.round(Number(v) * 1000) / 1000;
+}
+
+/** 102641.64 → «102 641,64»; доли копейки не прячем: 110929.155 → «110 929,155». Текст — как есть. */
+function rub_(x) {
+  if (x === '' || x == null || !isFinite(Number(x))) return String(x == null ? '' : x);
+  const n = exactMoney_(x);
+  const digits = Math.round(Math.abs(n) * 1000) % 10 ? 3 : 2;
+  const parts = Math.abs(n).toFixed(digits).split('.');
+  return (n < 0 ? '−' : '') + parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ',' + parts[1];
+}
+
+/** Формат ячейки суммы: два знака, а если в сумме доли копейки — три, чтобы таблица их не прятала. */
+function moneyFormat_(x) {
+  return typeof x === 'number' && Math.round(Math.abs(x) * 1000) % 10 ? '#,##0.000' : '#,##0.00';
 }
 
 /** «[LIT-8][LogrusIT][az]… Новые строчки» → «Новые строчки». */
@@ -943,12 +964,13 @@ function submitNewTaskFromDialog(task) {
       id, normTicket_(task.ticket), subject,
       parseIsoDate_(task.date), task.product, task.customer, (task.languages || []).join(', '),
       task.deadline, parseIsoDate_(task.exactDeadline), task.status,
-      task.estimateLink, task.total ? Number(task.total) : '', task.contractor, task.manager,
+      task.estimateLink, task.total ? exactMoney_(task.total) : '', task.contractor, task.manager,
       task.deliveryStatus, task.sp ? Number(task.sp) : '', task.comment, task.complaints
     ];
     sh.getRange(row, 1, 1, TASK_COLS).setValues([values]);
     if (task.link || task.link2) sh.getRange(row, COL.SUBJECT).setRichTextValue(buildSubjectRich_(subject, task.link, task.link2));
     if (task.estimateLink) sh.getRange(row, COL.ESTIMATE).setRichTextValue(estimateRich_(task.estimateLink, id));
+    if (values[COL.TOTAL - 1] !== '') sh.getRange(row, COL.TOTAL).setNumberFormat(moneyFormat_(values[COL.TOTAL - 1]));
     if (values[COL.LANGS - 1]) colorizeLanguagesCell(sh, row);
     colorizeRowDirectly(sh, row);
 
@@ -1053,7 +1075,7 @@ function saveTaskEdits(task) {
     set(COL.DUE, parseIsoDate_(task.exactDeadline));
     set(COL.STATUS, str_(task.status));
     set(COL.ESTIMATE, str_(task.estimateLink));
-    set(COL.TOTAL, task.total === '' || task.total == null ? '' : Number(task.total));
+    set(COL.TOTAL, task.total === '' || task.total == null ? '' : exactMoney_(task.total));
     set(COL.CONTRACTOR, str_(task.contractor));
     set(COL.MANAGER, str_(task.manager));
     set(COL.DELIVERY, str_(task.deliveryStatus));
@@ -1065,6 +1087,7 @@ function saveTaskEdits(task) {
     sh.getRange(row, COL.TICKET).setValue(next[COL.TICKET - 1]);
     sh.getRange(row, COL.DATE, 1, TASK_COLS - COL.DATE + 1).setValues([next.slice(COL.DATE - 1)]);
     if (next[COL.ESTIMATE - 1]) sh.getRange(row, COL.ESTIMATE).setRichTextValue(estimateRich_(next[COL.ESTIMATE - 1], id));
+    noteMoneyEdit_(sh.getRange(row, COL.TOTAL), old[COL.TOTAL - 1], next[COL.TOTAL - 1], old[COL.ESTIMATE - 1], next[COL.ESTIMATE - 1]);
 
     // Тема со ссылками: пишем, только если что-то поменялось, чтобы не трогать лишнее
     const subject = str_(task.subject);
@@ -1077,6 +1100,24 @@ function saveTaskEdits(task) {
     colorizeLanguagesCell(sh, row);
     return { ok: true, row: row };
   });
+}
+
+/**
+ * Сумму или ссылку на смету поправили руками — прежние остаются в заметке к ячейке суммы,
+ * чтобы при сверке с подрядчиком было видно, что и когда менялось. Колонки при этом не меняются.
+ */
+function noteMoneyEdit_(cell, oldTotal, newTotal, oldLink, newLink) {
+  const lines = [];
+  const same = (a, b) => (a === '' ? b === '' : b !== '' && Number(a) === Number(b) && isFinite(Number(a)));
+  if (oldTotal !== '' && !same(oldTotal, newTotal)) {
+    lines.push(newTotal === '' ? 'сумма удалена, была ' + rub_(oldTotal) + ' ₽' : 'сумма изменена вручную: было ' + rub_(oldTotal) + ' ₽ → стало ' + rub_(newTotal) + ' ₽');
+  }
+  if (str_(oldLink) && str_(oldLink) !== str_(newLink)) lines.push('прежняя смета: ' + str_(oldLink));
+  if (newTotal !== '') cell.setNumberFormat(moneyFormat_(newTotal));
+  if (!lines.length) return;
+  const line = fmtDate_(new Date(), 'dd.MM.yyyy') + ' — ' + lines.join('\n');
+  const note = cell.getNote();
+  cell.setNote(note ? note + '\n\n' + line : line);
 }
 
 function deleteTask(row, id, origSubject) {
@@ -1390,6 +1431,138 @@ function styleReportSheet_(sheet, ncols, wideColWidth) {
 function exportUrl_(ss) {
   SpreadsheetApp.flush();
   return 'https://docs.google.com/spreadsheets/d/' + ss.getId() + '/export?format=xlsx';
+}
+
+// ==================== СВЕРКА С ПОДРЯДЧИКАМИ ====================
+// Разбивка по заказам за месяц: айди, языки, ссылка на смету, сумма с НДС — по подрядчику и/или менеджеру.
+// Суммы — ровно как в таблице, без округления; итог считается в тысячных рубля целыми числами.
+
+function showReconcileDialog() {
+  showDialog_('ReconcileDialog', 'Сверка с подрядчиками', 920, 760);
+}
+
+/** Годы, подрядчики и менеджеры для фильтров окна сверки. */
+function getReconcileOptions() {
+  const rows = readRows_(getTasksSheet(), TASK_COLS);
+  const lists = getListsData();
+  const add = (list, v) => { v = str_(v); if (v && list.indexOf(v) === -1) list.push(v); };
+  const contractors = lists.contractors.slice(), managers = lists.managers.slice();
+  rows.forEach(r => { add(contractors, r[COL.CONTRACTOR - 1]); add(managers, r[COL.MANAGER - 1]); });
+  const now = new Date();
+  return { years: getDashboardYears(), contractors: contractors, managers: managers, year: now.getFullYear(), month: now.getMonth() + 1 };
+}
+
+/**
+ * f: { year, month, contractor, manager } — пустое значение = все.
+ * Возвращает строки, итоги по подрядчикам и проверки (что стоит поправить до сверки).
+ */
+function getReconciliation(f) {
+  f = f || {};
+  const sh = getTasksSheet();
+  const n = dataRowCount_(sh);
+  const values = readRows_(sh, TASK_COLS);
+  const estRich = n ? sh.getRange(2, COL.ESTIMATE, n, 1).getRichTextValues() : [];
+  const subjLinks = subjectLinks_(sh);
+  const year = f.year ? Number(f.year) : null, month = year && f.month ? Number(f.month) : null;
+  const contractor = str_(f.contractor), manager = str_(f.manager);
+
+  // Одна смета у нескольких задач — ищем по всей таблице, не только в выбранном месяце
+  const byUrl = {};
+  values.forEach((r, i) => {
+    const url = estimateUrl_(estRich[i] && estRich[i][0], r[COL.ESTIMATE - 1]);
+    if (url) (byUrl[url] = byUrl[url] || []).push(str_(r[COL.ID - 1]) || 'строка ' + (i + 2));
+  });
+
+  const rows = [], issues = [], byContractor = {};
+  let sumMilli = 0, withMoney = 0;
+  const issue = (row, kind, text) => issues.push({ row: row.row, id: row.id, kind: kind, text: text });
+  values.forEach((r, i) => {
+    if (!str_(r[COL.SUBJECT - 1]) && !str_(r[COL.ID - 1])) return;
+    if (!inPeriod_(r[COL.DATE - 1], year, month)) return;
+    if (contractor && str_(r[COL.CONTRACTOR - 1]) !== contractor) return;
+    if (manager && str_(r[COL.MANAGER - 1]) !== manager) return;
+    const total = r[COL.TOTAL - 1];
+    const isNum = typeof total === 'number' && isFinite(total);
+    const row = {
+      row: i + 2, id: str_(r[COL.ID - 1]), date: fmtDate_(r[COL.DATE - 1], 'dd.MM.yyyy'),
+      subject: stripLinkMarkers_(r[COL.SUBJECT - 1]), link: subjLinks[i] ? subjLinks[i].link : '',
+      languages: str_(r[COL.LANGS - 1]), manager: str_(r[COL.MANAGER - 1]), contractor: str_(r[COL.CONTRACTOR - 1]),
+      status: str_(r[COL.STATUS - 1]), estimate: estimateUrl_(estRich[i] && estRich[i][0], r[COL.ESTIMATE - 1]),
+      total: isNum ? exactMoney_(total) : str_(total), totalText: rub_(total)
+    };
+    rows.push(row);
+    const c = row.contractor || '(подрядчик не указан)';
+    byContractor[c] = byContractor[c] || { count: 0, milli: 0 };
+    byContractor[c].count++;
+    if (isNum) { const m = Math.round(total * 1000); sumMilli += m; byContractor[c].milli += m; withMoney++; }
+
+    const cancelled = row.status === 'Отменено';
+    if (row.total !== '' && !isNum) issue(row, 'text', 'Сумма записана текстом «' + row.total + '» — не попадёт в итог');
+    if (cancelled && row.total !== '') issue(row, 'cancelled', 'Задача отменена, но сумма стоит');
+    if (!cancelled && row.estimate && row.total === '') issue(row, 'noTotal', 'Смета есть, суммы нет');
+    if (!cancelled && row.total !== '' && !row.estimate) issue(row, 'noLink', 'Сумма есть, ссылки на смету нет');
+    if (!cancelled && !row.estimate && row.total === '' && row.status === 'Отдано') issue(row, 'empty', 'Задача отдана, а сметы и суммы нет');
+    if (row.estimate && byUrl[row.estimate].length > 1) {
+      issue(row, 'dup', 'Та же смета стоит у задач: ' + byUrl[row.estimate].filter(x => x !== row.id).join(', '));
+    }
+    if (isNum && Math.round(Math.abs(total) * 1000) % 10) issue(row, 'extra', 'В сумме доли копейки: ' + rub_(total) + ' ₽ — сверьте со счётом');
+  });
+
+  const monthNames = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+  const period = year && month ? monthNames[month - 1] + ' ' + year : year ? String(year) : 'всё время';
+  const label = [contractor || 'все подрядчики', manager || 'все менеджеры', period].join(' · ');
+  return {
+    label: label, rows: rows, issues: issues, count: rows.length, withMoney: withMoney,
+    sum: sumMilli / 1000, sumText: rub_(sumMilli / 1000),
+    byContractor: Object.keys(byContractor).map(k => ({ name: k, count: byContractor[k].count, sum: byContractor[k].milli / 1000, sumText: rub_(byContractor[k].milli / 1000) }))
+      .sort((a, b) => b.sum - a.sum)
+  };
+}
+
+/** Сверка в Excel: все поля для сверки, ссылка на смету ещё и обычным адресом, итог — промежуточный (считает только отфильтрованное). */
+function exportReconciliationToExcel(f) {
+  const rep = getReconciliation(f);
+  const ss = SpreadsheetApp.create('Сверка — ' + rep.label);
+  const sheet = ss.getSheets()[0].setName('Сверка');
+  const head = ['№ задачи', 'Дата', 'Тема письма', 'Языки', 'Менеджер', 'Подрядчик', 'Статус', 'Смета', 'Ссылка на смету', 'Итого с НДС, ₽'];
+  const toDate = s => { const m = String(s).match(/^(\d{2})\.(\d{2})\.(\d{4})$/); return m ? new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1])) : ''; };
+  const data = rep.rows.map(r => [r.id, toDate(r.date), r.subject, r.languages, r.manager, r.contractor, r.status,
+    r.estimate ? 'Ссылка на смету ' + r.id : '', r.estimate, r.total]);
+  sheet.getRange(1, 1, 1, head.length).setValues([head]);
+  if (data.length) {
+    sheet.getRange(2, 1, data.length, head.length).setValues(data);
+    data.forEach((d, i) => {
+      const r = rep.rows[i];
+      if (r.estimate) sheet.getRange(i + 2, 8).setRichTextValue(estimateRich_(r.estimate, r.id));
+      if (r.link && r.subject) sheet.getRange(i + 2, 3).setRichTextValue(SpreadsheetApp.newRichTextValue().setText(r.subject).setLinkUrl(r.link).build());
+      sheet.getRange(i + 2, 10).setNumberFormat(moneyFormat_(r.total));
+    });
+  }
+  const last = data.length + 2;
+  sheet.getRange(last, 9).setValue('ИТОГО (по видимым строкам)');
+  // SUBTOTAL — в Excel при фильтре по подрядчику/менеджеру итог пересчитается сам
+  sheet.getRange(last, 10).setFormula(data.length ? '=SUBTOTAL(9,J2:J' + (data.length + 1) + ')' : '=0').setNumberFormat('#,##0.00#');
+  sheet.getRange(last, 9, 1, 2).setFontWeight('bold');
+  if (data.length) sheet.getRange(2, 2, data.length, 1).setNumberFormat('dd.mm.yyyy');
+  styleReportSheet_(sheet, head.length);
+  sheet.setColumnWidth(3, 360);
+  if (data.length) sheet.getRange(1, 1, data.length + 1, head.length).createFilter();
+
+  if (rep.issues.length) {
+    const chk = ss.insertSheet('Проверки');
+    chk.getRange(1, 1, 1, 3).setValues([['№ задачи', 'Строка в таблице', 'Что проверить']]);
+    chk.getRange(2, 1, rep.issues.length, 3).setValues(rep.issues.map(x => [x.id, x.row, x.text]));
+    styleReportSheet_(chk, 3);
+    chk.setColumnWidth(3, 480);
+  }
+  const sum = ss.insertSheet('Итоги по подрядчикам');
+  sum.getRange(1, 1, 1, 3).setValues([['Подрядчик', 'Задач', 'Итого с НДС, ₽']]);
+  if (rep.byContractor.length) {
+    sum.getRange(2, 1, rep.byContractor.length, 3).setValues(rep.byContractor.map(c => [c.name, c.count, c.sum]));
+    sum.getRange(2, 3, rep.byContractor.length, 1).setNumberFormat('#,##0.00#');
+  }
+  styleReportSheet_(sum, 3);
+  return exportUrl_(ss);
 }
 
 // ==================== ОТЧЁТ ДЛЯ ТРЕКЕРА (менеджеры) ====================
@@ -2103,6 +2276,10 @@ function designTasksSheet_(sh) {
   sh.getRange(2, COL.DATE, maxRows - 1, 1).setNumberFormat('dd.mm.yyyy');
   sh.getRange(2, COL.DUE, maxRows - 1, 1).setNumberFormat('dd.mm.yyyy');
   sh.getRange(2, COL.TOTAL, maxRows - 1, 1).setNumberFormat('#,##0.00'); // просто число, без «₽»
+  // Суммы с долями копейки — три знака, чтобы таблица их не прятала
+  readRows_(sh, COL.TOTAL).forEach((r, i) => {
+    if (moneyFormat_(r[COL.TOTAL - 1]) !== '#,##0.00') sh.getRange(i + 2, COL.TOTAL).setNumberFormat(moneyFormat_(r[COL.TOTAL - 1]));
+  });
   sh.getRange(2, COL.ESTIMATE, maxRows - 1, 1).setHorizontalAlignment('center');
   estimateLinksToLabels_(sh);
   sh.getRange(2, COL.SP, maxRows - 1, 1).setNumberFormat('0');
