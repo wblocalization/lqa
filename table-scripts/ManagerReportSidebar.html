@@ -11,6 +11,7 @@
       <label class="field">Менеджер<select id="manager"></select></label>
       <label class="field">Месяц<select id="month"></select></label>
     </div>
+    <label class="field">Считать по<select id="by"><option value="date">дате поступления</option><option value="due">дате закрытия (срок сдачи)</option></select></label>
     <button class="btn primary" id="runBtn" type="button">Сформировать отчёт</button>
   </div>
   <div id="results"></div>
@@ -46,7 +47,7 @@
     $('#results').innerHTML = '<p class="muted">Считаю…</p>';
     $('#actions').hidden = true;
     setMsg($('#msg'), '');
-    run('getManagerReport', manager, $('#month').value).then(render)
+    run('getManagerReport', manager, $('#month').value, $('#by').value).then(render)
       .catch(e => { $('#results').innerHTML = ''; setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'); });
   });
 
@@ -82,7 +83,7 @@
 
   $('#exportBtn').addEventListener('click', () => {
     setMsg($('#msg'), 'Готовлю файл…');
-    run('exportReportToDoc', $('#manager').value, $('#month').value).then(url => {
+    run('exportReportToDoc', $('#manager').value, $('#month').value, $('#by').value).then(url => {
       setMsg($('#msg'), 'Готово — файл скачивается', 'ok');
       window.open(url, '_blank');
     }).catch(e => setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'));

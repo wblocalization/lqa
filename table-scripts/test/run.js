@@ -734,6 +734,19 @@ test('Выгрузка для сверки: все колонки как в та
   assert.ok(G.exportMoneyExcel({}).lines >= 5);
 });
 
+test('Отчёты по дате поступления и по дате закрытия (срок сдачи)', () => {
+  const id = G.submitNewTaskFromDialog({ contractor: 'LogrusIT', subject: 'Пришла в марте, закрыта в апреле', manager: 'Период Тест',
+    date: '2031-03-28', exactDeadline: '2031-04-02', total: '100', languages: [] });
+  const lines = (m, by) => G.getManagerReport('Период Тест', m, by).lineCount;
+  same([lines('2031-03'), lines('2031-04'), lines('2031-03', 'due'), lines('2031-04', 'due')], [1, 0, 0, 1]);
+  same([G.getCustomReport('2031', '3').totalTasks, G.getCustomReport('2031', '4', 'due').totalTasks, G.getCustomReport('2031', '3', 'due').totalTasks], [1, 1, 0]);
+  assert.match(G.getCustomReport('2031', '4', 'due').periodLabel, /Апрель 2031 \(по дате закрытия\)/);
+  same([G.getDashboardData('2031', '3').totalTasks, G.getDashboardData('2031', '4', 'due').totalTasks], [1, 1]);
+  same([G.exportMoneyExcel({ month: '2031-04', by: 'due' }).lines, G.exportMoneyExcel({ month: '2031-04' }).lines], [1, 0]);
+  assert.ok(G.getDashboardYears().indexOf(2031) !== -1);
+  assert.ok(id);
+});
+
 test('Журнал больше не пишется', () => {
   assert.equal(log() ? log().getLastRow() : 0, logRows0);
   assert.equal(typeof G.logChange, 'undefined');

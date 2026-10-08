@@ -15,6 +15,7 @@
         <option value="8">Август</option><option value="9">Сентябрь</option><option value="10">Октябрь</option>
         <option value="11">Ноябрь</option><option value="12">Декабрь</option></select></label>
     </div>
+    <label class="field">Считать по<select id="by"><option value="date">дате поступления</option><option value="due">дате закрытия (срок сдачи)</option></select></label>
     <button class="btn primary" id="runBtn" type="button">Сформировать</button>
   </div>
   <div id="results"></div>
@@ -28,7 +29,7 @@
   run('getDashboardYears').then(years => fillSelect($('#year'), years.map(String), 'Всё время'))
     .catch(e => setMsg($('#msg'), 'Не получилось загрузить годы: ' + e.message, 'err'));
 
-  const period = () => [$('#year').value, $('#year').value ? $('#month').value : ''];
+  const period = () => [$('#year').value, $('#year').value ? $('#month').value : '', $('#by').value];
 
   function table(rows, fmt) {
     if (!rows.length) return '<p class="small muted">Нет данных</p>';

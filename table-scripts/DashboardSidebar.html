@@ -21,6 +21,7 @@
       <option value="11">Ноябрь</option><option value="12">Декабрь</option></select></label>
     <button class="btn primary" id="reload" type="button">Обновить</button>
   </div>
+  <label class="field" style="margin-top:6px">Считать по<select id="by"><option value="date">дате поступления</option><option value="due">дате закрытия (срок сдачи)</option></select></label>
   <div id="msg" class="msg"></div>
 
   <div class="tiles" id="tiles"></div>
@@ -50,11 +51,12 @@
   load();
   $('#reload').addEventListener('click', load);
   $('#year').addEventListener('change', load);
+  $('#by').addEventListener('change', load);
   $('#month').addEventListener('change', () => { if ($('#year').value) load(); });
 
   function load() {
     setMsg($('#msg'), 'Считаю…');
-    run('getDashboardData', $('#year').value, $('#year').value ? $('#month').value : '')
+    run('getDashboardData', $('#year').value, $('#year').value ? $('#month').value : '', $('#by').value)
       .then(render).then(() => setMsg($('#msg'), ''))
       .catch(e => setMsg($('#msg'), 'Не получилось посчитать: ' + e.message, 'err'));
   }

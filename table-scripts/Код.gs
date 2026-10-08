@@ -1293,11 +1293,21 @@ function showDashboard() {
 
 function getDashboardYears() {
   const years = [];
-  readRows_(getTasksSheet(), COL.DATE).forEach(r => {
-    const d = r[COL.DATE - 1];
-    if (d instanceof Date && years.indexOf(d.getFullYear()) === -1) years.push(d.getFullYear());
+  readRows_(getTasksSheet(), COL.DUE).forEach(r => {
+    [r[COL.DATE - 1], r[COL.DUE - 1]].forEach(d => {
+      if (d instanceof Date && years.indexOf(d.getFullYear()) === -1) years.push(d.getFullYear());
+    });
   });
   return years.sort((a, b) => b - a);
+}
+
+/** Каким днём считать задачу в отчётах: by = 'due' — дата закрытия (срок сдачи), иначе — дата поступления. */
+function periodDate_(r, by) {
+  return r[(by === 'due' ? COL.DUE : COL.DATE) - 1];
+}
+
+function periodByLabel_(by) {
+  return by === 'due' ? 'по дате закрытия' : 'по дате поступления';
 }
 
 function inPeriod_(date, year, month) {
@@ -1322,7 +1332,7 @@ function getOverdueCount() {
   return readRows_(getTasksSheet(), TASK_COLS).filter(r => isOverdue_(r, today)).length;
 }
 
-function getDashboardData(yearFilter, monthFilter) {
+function getDashboardData(yearFilter, monthFilter, by) {
   const sh = getTasksSheet();
   const data = readRows_(sh, TASK_COLS);
   const year = yearFilter ? Number(yearFilter) : null;
@@ -1340,7 +1350,7 @@ function getDashboardData(yearFilter, monthFilter) {
     if (isOverdue_(r, today)) {
       overdue.push({ id: str_(r[COL.ID - 1]), title: shortSubject_(r[COL.SUBJECT - 1]), due: fmtDate_(r[COL.DUE - 1], 'dd.MM'), manager: str_(r[COL.MANAGER - 1]) });
     }
-    if (!inPeriod_(r[COL.DATE - 1], year, month)) return;
+    if (!inPeriod_(periodDate_(r, by), year, month)) return;
     totalTasks++;
     const manager = str_(r[COL.MANAGER - 1]), product = str_(r[COL.PRODUCT - 1]), contractor = str_(r[COL.CONTRACTOR - 1]);
     const sp = Number(r[COL.SP - 1]) || 0, money = Number(r[COL.TOTAL - 1]) || 0;
@@ -1361,7 +1371,7 @@ function getDashboardData(yearFilter, monthFilter) {
   }
   const byYear = {};
   data.forEach(r => {
-    const date = r[COL.DATE - 1];
+    const date = periodDate_(r, by);
     if (!r[COL.SUBJECT - 1] || !(date instanceof Date)) return;
     const sp = Number(r[COL.SP - 1]) || 0; // раньше здесь по ошибке бралась колонка «Статус отдачи»
     const y = date.getFullYear();
@@ -1410,7 +1420,7 @@ function parseMonth_(monthStr) {
   return m ? { year: Number(m[1]), month: Number(m[2]) } : { year: null, month: null };
 }
 
-function getManagerReport(manager, monthStr) {
+function getManagerReport(manager, monthStr, by) {
   const sh = getTasksSheet();
   const data = readRows_(sh, TASK_COLS);
   const links = subjectLinks_(sh);
@@ -1421,7 +1431,7 @@ function getManagerReport(manager, monthStr) {
   data.forEach((r, i) => {
     const subject = r[COL.SUBJECT - 1];
     if (str_(r[COL.MANAGER - 1]) !== manager || !subject) return;
-    if (p.year && !inPeriod_(r[COL.DATE - 1], p.year, p.month)) return;
+    if (p.year && !inPeriod_(periodDate_(r, by), p.year, p.month)) return;
     const ticket = str_(r[COL.TICKET - 1]);
     const key = ticket || '(без тикета)';
     const sp = Number(r[COL.SP - 1]) || 0, money = Number(r[COL.TOTAL - 1]) || 0;
@@ -1432,7 +1442,8 @@ function getManagerReport(manager, monthStr) {
     grandTotal += sp; grandMoney += money; lineCount++;
   });
 
-  const label = (getMonthsList().filter(m => m.value === monthStr)[0] || {}).label || monthStr || '';
+  const month = (getMonthsList().filter(m => m.value === monthStr)[0] || {}).label || monthStr || '';
+  const label = month ? month + ' (' + periodByLabel_(by) + ')' : '';
   const list = order.map(k => groups[k]);
   let copyText = '';
   list.forEach(g => {
@@ -1447,8 +1458,8 @@ function getManagerReport(manager, monthStr) {
 }
 
 /** Отчёт в новую Google Таблицу; возвращает ссылку на скачивание .xlsx. */
-function exportReportToDoc(manager, monthStr) {
-  const report = getManagerReport(manager, monthStr);
+function exportReportToDoc(manager, monthStr, by) {
+  const report = getManagerReport(manager, monthStr, by);
   const title = 'Отчёт по SP — ' + manager + (report.monthLabel ? ' — ' + report.monthLabel : '');
   const ss = SpreadsheetApp.create(title);
   const sheet = ss.getSheets()[0].setName('Отчёт');
@@ -1507,11 +1518,10 @@ function moneyExportRows_(opts) {
   if (!n) return { head: head, rows: [] };
   const values = sh.getRange(2, 1, n, TASK_COLS).getValues();
   const p = parseMonth_(opts.month);
-  const dateCol = (opts.by === 'due' ? COL.DUE : COL.DATE) - 1;
   const rows = [], labels = [];
   values.forEach((r, i) => {
     if (!str_(r[COL.ID - 1]) && !str_(r[COL.SUBJECT - 1])) return; // пустая строка
-    if (p.year && !inPeriod_(r[dateCol], p.year, p.month)) return;
+    if (p.year && !inPeriod_(periodDate_(r, opts.by), p.year, p.month)) return;
     if (opts.contractor && str_(r[COL.CONTRACTOR - 1]) !== opts.contractor) return;
     if (opts.manager && str_(r[COL.MANAGER - 1]) !== opts.manager) return;
     if (ESTIMATE_LABEL_RE.test(str_(r[COL.ESTIMATE - 1]))) labels.push([r, i]);
@@ -1583,7 +1593,7 @@ function exportMoneyExcel(opts) {
   const data = moneyExportRows_(opts);
   const rows = data.rows;
   const p = parseMonth_(opts.month);
-  const monthName = p.year ? getMonthsList().filter(m => m.value === opts.month).map(m => m.label.toLowerCase())[0] || opts.month : 'всё время';
+  const monthName = p.year ? (getMonthsList().filter(m => m.value === opts.month).map(m => m.label.toLowerCase())[0] || opts.month) + ' ' + periodByLabel_(opts.by) : 'всё время';
   const label = [opts.contractor || 'все подрядчики', opts.manager || 'все менеджеры', monthName].join(' · ');
   const ss = SpreadsheetApp.create('Сверка — ' + label);
 
@@ -1671,7 +1681,7 @@ function showCustomReportSidebar() {
   showDialog_('CustomReportSidebar', 'Кастомный отчёт', 600, 760);
 }
 
-function getCustomReport(yearFilter, monthFilter) {
+function getCustomReport(yearFilter, monthFilter, by) {
   const sh = getTasksSheet();
   const data = readRows_(sh, TASK_COLS);
   const links = subjectLinks_(sh);
@@ -1682,7 +1692,7 @@ function getCustomReport(yearFilter, monthFilter) {
   const byProduct = {}, byLang = {}, byDelivery = {}, byManager = {}, byContractor = {};
   const taskRows = [];
   data.forEach((r, i) => {
-    if (!r[COL.SUBJECT - 1] || !inPeriod_(r[COL.DATE - 1], year, month)) return;
+    if (!r[COL.SUBJECT - 1] || !inPeriod_(periodDate_(r, by), year, month)) return;
     totalTasks++;
     const product = str_(r[COL.PRODUCT - 1]), delivery = str_(r[COL.DELIVERY - 1]) || '(не указано)';
     const manager = str_(r[COL.MANAGER - 1]), contractor = str_(r[COL.CONTRACTOR - 1]);
@@ -1702,7 +1712,7 @@ function getCustomReport(yearFilter, monthFilter) {
   const sortDesc = obj => Object.keys(obj).map(k => [k, obj[k]]).sort((a, b) => b[1] - a[1]);
   const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
   return {
-    periodLabel: year && month ? monthNames[month - 1] + ' ' + year : year ? String(year) : 'Всё время',
+    periodLabel: year ? (month ? monthNames[month - 1] + ' ' + year : String(year)) + ' (' + periodByLabel_(by) + ')' : 'Всё время',
     totalTasks: totalTasks, totalSp: totalSp, totalMoney: Math.round(totalMoney * 100) / 100,
     avgSp: totalTasks ? Math.round(totalSp / totalTasks * 10) / 10 : 0,
     topProducts: sortDesc(byProduct), languages: sortDesc(byLang),
@@ -1713,8 +1723,8 @@ function getCustomReport(yearFilter, monthFilter) {
   };
 }
 
-function exportCustomReportToExcel(yearFilter, monthFilter) {
-  const report = getCustomReport(yearFilter, monthFilter);
+function exportCustomReportToExcel(yearFilter, monthFilter, by) {
+  const report = getCustomReport(yearFilter, monthFilter, by);
   const title = 'Отчёт для руководства — ' + report.periodLabel;
   const ss = SpreadsheetApp.create(title);
   const sheet = ss.getSheets()[0].setName('Отчёт');
@@ -1745,8 +1755,8 @@ function exportCustomReportToExcel(yearFilter, monthFilter) {
   return exportUrl_(ss);
 }
 
-function exportCustomReportToDoc(yearFilter, monthFilter) {
-  const report = getCustomReport(yearFilter, monthFilter);
+function exportCustomReportToDoc(yearFilter, monthFilter, by) {
+  const report = getCustomReport(yearFilter, monthFilter, by);
   const title = 'Отчёт для руководства — ' + report.periodLabel;
   const doc = DocumentApp.create(title);
   const body = doc.getBody();
