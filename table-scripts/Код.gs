@@ -321,6 +321,7 @@ function withScriptLock_(fn) {
     return fn();
   } finally {
     SCRIPT_LOCK_HELD = false;
+    SpreadsheetApp.flush(); // записать номер до того, как следующий его прочитает
     lock.releaseLock();
   }
 }

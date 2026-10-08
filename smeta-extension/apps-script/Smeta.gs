@@ -76,6 +76,7 @@ function doPost(e) {
     return smetaJson_({ ok: false, error: String(err && err.message || err) });
   } finally {
     SCRIPT_LOCK_HELD = false;
+    SpreadsheetApp.flush(); // записать номер до того, как следующий его прочитает
     lock.releaseLock();
   }
 }
