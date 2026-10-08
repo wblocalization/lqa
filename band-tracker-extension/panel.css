@@ -1,4 +1,6 @@
-/* Шрифт Onest (OFL) — в папке fonts. Светлая/тёмная — как в системе. */
+/* Стиль как у инструкции: плам, лайм, розовый. Шрифты Unbounded и Onest (OFL) — в папке fonts. Тема — как в системе. */
+@font-face { font-family: 'Unbounded'; font-weight: 900; font-display: swap; src: url(fonts/unbounded-cyrillic-900-normal.woff2) format('woff2'); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
+@font-face { font-family: 'Unbounded'; font-weight: 900; font-display: swap; src: url(fonts/unbounded-latin-900-normal.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
 @font-face { font-family: 'Onest'; font-weight: 400; font-display: swap; src: url(fonts/onest-cyrillic-400-normal.woff2) format('woff2'); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
 @font-face { font-family: 'Onest'; font-weight: 400; font-display: swap; src: url(fonts/onest-latin-400-normal.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
 @font-face { font-family: 'Onest'; font-weight: 600; font-display: swap; src: url(fonts/onest-cyrillic-600-normal.woff2) format('woff2'); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
@@ -7,77 +9,113 @@
 @font-face { font-family: 'Onest'; font-weight: 700; font-display: swap; src: url(fonts/onest-latin-700-normal.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
 
 :root {
-  --bg: #F8FBFF; --card: #FFFFFF; --ink: #0F1B2D; --ink-soft: #5B6B82; --line: #DCE5F2;
-  --accent: #2563EB; --grad: linear-gradient(100deg, #06B6D4, #6366F1);
-  --tint: #EAF2FF; --ok: #15803D; --ok-bg: #E8F7EE; --err: #C0262D;
+  --plum: #1D1030; --lime: #D7FF3B; --pink: #FF3D8B; --purple: #7B2FF7;
+  --bg: #F6F2FF; --card: #FFFFFF; --ink: #1D1030; --soft: #5E5373; --line: #1D1030;
+  --field: #FFFFFF; --shadow: #1D1030; --tint: #EDE4FF;
+  --ok: #16A34A; --err: #E11D48;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0E1420; --card: #161E2C; --ink: #E7EEF9; --ink-soft: #9AA8BD; --line: #27324A;
-    --accent: #7AA7FF; --tint: #1A2740; --ok: #4ADE80; --ok-bg: #12301F; --err: #FF7A80;
+    --bg: #150B24; --card: #22163A; --ink: #F4EEFF; --soft: #B6A8CF; --line: #4A3A6B;
+    --field: #1B1030; --shadow: #000; --tint: #2C1D4A; --ok: #4ADE80; --err: #FF6B8E;
     color-scheme: dark;
   }
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; }
 body { background: var(--bg); color: var(--ink); font: 14px/1.45 Onest, system-ui, sans-serif; }
+b { font-weight: 700; }
 
-.top { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; padding: 14px 16px;
-  background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
-.top h1 { flex: 1; margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
-.top .arrow { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.icon-btn { display: grid; place-items: center; width: 34px; height: 34px; border: none; border-radius: 10px; background: none; color: var(--ink-soft); cursor: pointer; }
-.icon-btn:hover { background: var(--tint); color: var(--ink); }
+/* ---------- Шапка ---------- */
+.top { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 6px; padding: 12px 14px;
+  background: var(--plum); color: #fff;
+  background-image: radial-gradient(circle at 100% 0, color-mix(in srgb, var(--pink) 45%, transparent), transparent 55%),
+    radial-gradient(circle at 0 120%, color-mix(in srgb, var(--purple) 70%, transparent), transparent 60%); }
+.brand { flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.logo { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--lime); color: var(--plum); transform: rotate(-6deg); flex: none; }
+.top h1 { margin: 0; font: 900 17px/1 Unbounded, sans-serif; letter-spacing: -.01em; white-space: nowrap; }
+.top h1 em { font-style: normal; color: var(--lime); }
+.icon-btn { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; border: 1.5px solid rgba(255,255,255,.25);
+  background: rgba(255,255,255,.06); color: #fff; font: 900 14px Unbounded, sans-serif; cursor: pointer; }
+.icon-btn:hover, .icon-btn[aria-pressed="true"] { background: var(--lime); color: var(--plum); border-color: var(--lime); }
 
-main { padding: 14px 16px 24px; display: flex; flex-direction: column; gap: 12px; }
+main { padding: 16px 14px 28px; display: flex; flex-direction: column; gap: 16px; }
 
-.howto { border: 1px solid var(--line); border-radius: 12px; background: var(--card); padding: 10px 14px; }
-.howto summary { cursor: pointer; font-weight: 600; color: var(--accent); }
-.howto ol { margin: 10px 0 6px; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
-.note { margin: 0; font-size: 12.5px; color: var(--ink-soft); }
+.kicker { margin: 0; font: 900 11px Unbounded, sans-serif; text-transform: uppercase; letter-spacing: .06em; color: var(--purple); }
+@media (prefers-color-scheme: dark) { .kicker { color: var(--lime); } }
 
+/* ---------- Как это работает ---------- */
+.intro { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 2px solid var(--line); border-radius: 18px;
+  background: var(--card); box-shadow: 4px 4px 0 var(--purple); }
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.steps li { display: flex; gap: 10px; align-items: flex-start; }
+.steps .n { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
+  background: var(--lime); color: var(--plum); border: 2px solid var(--plum); font: 900 13px Unbounded, sans-serif; }
+.steps li > div { flex: 1; min-width: 0; padding-top: 3px; }
+.steps .hint { display: block; color: var(--soft); font-size: 13px; }
+.fine { margin: 2px 0 0; font-size: 12px; color: var(--soft); }
+
+/* мини-Band с меню правого клика */
+.demo { margin-top: 8px; display: flex; flex-direction: column; }
+.demo .msg { display: flex; gap: 8px; padding: 9px 10px; border-radius: 10px; background: var(--tint); font-size: 12.5px; line-height: 1.35; }
+.demo .ava { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--purple); color: #fff; font-size: 10px; font-weight: 700; }
+.demo .menu { align-self: flex-end; position: relative; margin: -6px 4px 0 0; display: flex; flex-direction: column; min-width: 190px; padding: 4px;
+  border: 1.5px solid var(--line); border-radius: 10px; background: var(--card); box-shadow: 3px 3px 0 var(--shadow); font-size: 12px; }
+.demo .menu span { padding: 3px 8px; border-radius: 6px; color: var(--soft); }
+.demo .menu .hl { background: var(--pink); color: #fff; font-weight: 700; }
+
+/* ---------- Форма ---------- */
 .form { display: flex; flex-direction: column; gap: 12px; }
-.form label { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); }
-.req { color: var(--err); }
-.opt { font-weight: 400; }
-input, select, textarea { width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px;
-  background: var(--card); color: var(--ink); font: 400 14px/1.4 Onest, system-ui, sans-serif; }
-textarea { resize: vertical; min-height: 150px; }
-input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.lbl { font: 900 11px Unbounded, sans-serif; text-transform: uppercase; letter-spacing: .05em; }
+.req { color: var(--pink); }
+.opt { font: 400 12px Onest, sans-serif; text-transform: none; letter-spacing: 0; color: var(--soft); }
+input, select, textarea { width: 100%; padding: 10px 12px; border: 2px solid var(--line); border-radius: 12px;
+  background: var(--field); color: var(--ink); font: 400 14px/1.4 Onest, system-ui, sans-serif; }
+textarea { resize: vertical; min-height: 140px; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--purple); box-shadow: 3px 3px 0 var(--purple); }
 
-.from { margin: 0; padding: 8px 12px; border-radius: 10px; background: var(--tint); font-size: 12.5px; color: var(--ink-soft); }
-.from a { color: var(--accent); font-weight: 600; }
+.from { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 12px;
+  background: var(--lime); color: var(--plum); font-size: 12.5px; font-weight: 600; border: 2px solid var(--plum); }
+.from a { color: var(--plum); font-weight: 700; }
 
-.btn { width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink);
-  font: 600 14px Onest, system-ui, sans-serif; cursor: pointer; }
-.btn:hover { border-color: var(--accent); }
-.btn.primary { border: none; background: var(--grad); color: #fff; box-shadow: 0 6px 18px color-mix(in srgb, #6366F1 30%, transparent); }
-.btn.primary:hover { filter: brightness(1.06); }
-.btn:disabled { opacity: .6; cursor: progress; }
-.btn.small { width: auto; padding: 5px 9px; font-size: 12.5px; border-radius: 8px; }
+.btn { width: 100%; padding: 12px 14px; border-radius: 14px; border: 2px solid var(--line); background: var(--card); color: var(--ink);
+  font: 600 14px Onest, system-ui, sans-serif; cursor: pointer; transition: transform .08s, box-shadow .08s; }
+.btn:hover { transform: translate(-1px, -1px); box-shadow: 3px 3px 0 var(--shadow); }
+.btn:active { transform: none; box-shadow: none; }
+.btn.primary { border-color: var(--plum); background: linear-gradient(100deg, var(--pink), var(--purple)); color: #fff;
+  font: 900 14px Unbounded, sans-serif; letter-spacing: .01em; box-shadow: 4px 4px 0 var(--plum); }
+@media (prefers-color-scheme: dark) { .btn.primary { box-shadow: 4px 4px 0 var(--lime); } }
+.btn.primary:hover { transform: translate(-1px, -1px); box-shadow: 5px 5px 0 var(--plum); }
+.btn:disabled { opacity: .65; cursor: progress; transform: none; }
+.btn.small { width: auto; padding: 5px 10px; font-size: 12.5px; border-radius: 10px; border-width: 1.5px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; }
 
-.done { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 22px 0 6px; }
-.done-check { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: var(--ok-bg); color: var(--ok); }
-.done h2 { margin: 4px 0 0; font-size: 18px; }
-.done h2 a { color: var(--accent); }
-.done-title { margin: 0 0 8px; color: var(--ink-soft); }
+/* ---------- Готово ---------- */
+.done { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 18px 14px;
+  border: 2px solid var(--line); border-radius: 20px; background: var(--card); box-shadow: 4px 4px 0 var(--pink); }
+.key { display: inline-block; padding: 10px 18px; border-radius: 14px; background: var(--lime); color: var(--plum); border: 2px solid var(--plum);
+  font: 900 24px Unbounded, sans-serif; text-decoration: none; transform: rotate(-2deg); box-shadow: 3px 3px 0 var(--plum); }
+.key:hover { transform: rotate(0); }
+.done-title { margin: 0 0 4px; color: var(--soft); }
 
-.boards h2 { margin: 0 0 4px; font-size: 16px; }
-.board-list { list-style: none; margin: 10px 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.board-list li { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+/* ---------- Доски ---------- */
+.boards h2 { margin: 0 0 10px; font: 900 20px Unbounded, sans-serif; }
+.tip { padding: 10px 12px; border-radius: 12px; background: var(--tint); font-size: 13px; }
+.board-list { list-style: none; margin: 12px 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.board-list li { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 2px solid var(--line); border-radius: 14px; background: var(--card); }
 .board-list .bname { flex: 1; min-width: 0; }
 .board-list .bname b { display: block; overflow-wrap: anywhere; }
-.board-list .bname small { color: var(--ink-soft); }
+.board-list .bname small { color: var(--soft); }
+.boards-mode main > :not(#boards):not(#msg) { display: none !important; }
 
-.status { margin: 0; font-size: 13px; color: var(--ink-soft); }
+.status { margin: 0; padding: 10px 12px; border-radius: 12px; font-size: 13px; color: var(--soft); background: var(--tint); }
 .status:empty { display: none; }
 .status.ok { color: var(--ok); font-weight: 600; }
-.status.err { color: var(--err); font-weight: 600; }
+.status.err { color: #fff; background: var(--err); font-weight: 600; }
 
-.toast { position: fixed; left: 50%; top: 62px; transform: translateX(-50%); z-index: 5; max-width: calc(100% - 32px);
-  padding: 10px 16px; border-radius: 12px; background: #15803D; color: #fff; font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
-
-[hidden] { display: none !important; }
-/* «Доски» — отдельным экраном */
-.boards-mode main > :not(#boards):not(#msg) { display: none !important; }
+.toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 5; max-width: calc(100% - 28px);
+  padding: 10px 16px; border-radius: 14px; background: var(--lime); color: var(--plum); border: 2px solid var(--plum);
+  font-weight: 700; box-shadow: 3px 3px 0 var(--plum); }

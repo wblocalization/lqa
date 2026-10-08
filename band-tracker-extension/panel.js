@@ -19,7 +19,7 @@ const DRAFT_TTL = 10 * 60 * 1000; // черновик из Band старше 10 
 
 const $ = (s) => document.querySelector(s);
 const els = {
-  howto: $('#howto'), form: $('#form'), from: $('#from'), board: $('#board'), title: $('#title'), desc: $('#desc'),
+  intro: $('#intro'), helpBtn: $('#helpBtn'), form: $('#form'), from: $('#from'), board: $('#board'), title: $('#title'), desc: $('#desc'),
   submit: $('#submit'), clear: $('#clear'), done: $('#done'), doneKey: $('#doneKey'), doneTitle: $('#doneTitle'),
   copyLink: $('#copyLink'), copyKey: $('#copyKey'), again: $('#again'),
   boards: $('#boards'), boardsBtn: $('#boardsBtn'), boardList: $('#boardList'), boardsClose: $('#boardsClose'),
@@ -116,6 +116,11 @@ function showBoards(on) {
 }
 els.boardsBtn.addEventListener('click', () => showBoards(els.boards.hidden));
 els.boardsClose.addEventListener('click', () => showBoards(false));
+els.helpBtn.addEventListener('click', () => {
+  showBoards(false);
+  els.intro.hidden = !els.intro.hidden;
+  window.scrollTo(0, 0);
+});
 
 // ---------- Форма ----------
 /** Открыть форму: пустую или из черновика Band { selection, text, link, author }. */
@@ -139,7 +144,7 @@ function openForm(draft = null) {
   els.form.hidden = false;
   els.done.hidden = true;
   setMsg(draft && !text ? 'Текст сообщения не нашёлся — впишите название сами. Если вкладку Band открыли до установки расширения, обновите её (F5).' : '');
-  if (draft) els.howto.open = false;
+  els.intro.hidden = !!source || Boolean(draft && text); // пришли из Band — подсказка уже не нужна
   (els.title.value ? els.desc : els.title).focus();
 }
 
@@ -244,7 +249,7 @@ els.form.addEventListener('submit', async (e) => {
     els.doneTitle.textContent = title;
     els.form.hidden = true;
     els.done.hidden = false;
-    toast(`✓ Создано: ${key}`);
+    els.intro.hidden = true;
   } catch (err) {
     setMsg(err.message, 'err');
   } finally {
@@ -277,7 +282,5 @@ chrome.storage.onChanged.addListener(async (changes) => {
 
 // ---------- Старт ----------
 await loadBoards();
-const { seenHowto } = await chrome.storage.local.get('seenHowto');
-if (!seenHowto) { els.howto.open = true; chrome.storage.local.set({ seenHowto: true }); }
 openForm();
 pickDraft(); // панель открылась по правому клику в Band — черновик уже ждёт

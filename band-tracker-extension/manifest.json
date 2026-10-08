@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Band → Трекер",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Задача в tracker.wb.ru из сообщения Band: правый клик → «Создать задачу в трекере». Текст и ссылка на сообщение подставятся сами.",
   "action": {
     "default_title": "Band → Трекер",
