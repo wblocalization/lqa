@@ -661,6 +661,26 @@ test('Сверка с подрядчиками: строки, точный ит�
   const row2 = rep.rows.find(x => x.id === id2);
   same([row2.estimate, row2.languages, row2.totalText, row2.date], ['https://disk/b', 'Казахский', '0,10', '20.09.2026']);
   assert.equal(G.getReconciliation({ year: 2026, month: 10, manager: 'Тест Сверка' }).count, 0);
+  // Быстрый путь: ссылки на сметы одним запросом к Google Sheets API — только строки периода
+  const asked = [];
+  ctx.Sheets = { Spreadsheets: { get: (id, opt) => {
+    asked.push(...opt.ranges);
+    return { sheets: [{ data: opt.ranges.map(r => {
+      const m = r.match(/!K(\d+):K(\d+)$/), out = [];
+      for (let row = Number(m[1]); row <= Number(m[2]); row++) {
+        const url = G.linksFromRich_(tasks().getRange(row, 11).getRichTextValue()).link;
+        out.push({ values: [url ? { hyperlink: url } : {}] });
+      }
+      return { rowData: out };
+    }) }] };
+  } } };
+  try {
+    const fast = G.getReconciliation({ year: 2026, month: 9, manager: 'Тест Сверка' });
+    same(fast.rows.map(x => x.estimate), rep.rows.map(x => x.estimate));
+    same(fast.issues, rep.issues);
+    assert.ok(asked.length >= 1 && asked.every(r => /^'📌 Задачи \(менеджеры\)'!K\d+:K\d+$/.test(r)), asked.join(' '));
+    assert.ok(typeof fast.seconds === 'number');
+  } finally { delete ctx.Sheets; }
   assert.equal(G.getReconciliation({ year: 2026, month: 9, manager: 'Тест Сверка', contractor: 'GlobalDoc' }).count, 0);
   // Excel: все поля, ссылка на смету ещё и адресом, проверки — отдельным листом
   const n0 = calls.created.length;

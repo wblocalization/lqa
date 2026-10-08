@@ -96,6 +96,7 @@ class Sheet {
   }
   peek(r, c) { const row = this.cells[r - 1]; return row && row[c - 1] ? row[c - 1] : { v: '' }; }
   getName() { return this.name; }
+  getParent() { return this.ss; }
   setName(n) { this.name = n; return this; }
   getLastRow() {
     for (let r = this.cells.length; r >= 1; r--) if (this.cells[r - 1].some(c => c.v !== '' && c.v !== null && c.v !== undefined)) return r;

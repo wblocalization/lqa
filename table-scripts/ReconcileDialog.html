@@ -67,7 +67,7 @@
 
   function render(d) {
     const bad = new Set(d.issues.filter(x => x.kind !== 'extra').map(x => x.row));
-    let html = `<p class="small muted" style="margin:10px 0 0"><b>${esc(d.label)}</b></p><div class="tiles">
+    let html = `<p class="small muted" style="margin:10px 0 0"><b>${esc(d.label)}</b>${d.seconds != null ? ` · посчитано за ${d.seconds} с` : ''}</p><div class="tiles">
       <div class="tile"><div class="num">${d.count}</div><div class="lbl">задач</div></div>
       <div class="tile"><div class="num">${d.withMoney}</div><div class="lbl">с суммой</div></div>
       <div class="tile"><div class="num">${esc(d.sumText)}</div><div class="lbl">₽ с НДС</div></div></div>`;

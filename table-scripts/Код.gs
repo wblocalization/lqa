@@ -1464,6 +1464,7 @@ function getReconcileOptions() {
  */
 function getReconciliation(f) {
   f = f || {};
+  const started = Date.now();
   const sh = getTasksSheet();
   const values = readRows_(sh, TASK_COLS);
   const year = f.year ? Number(f.year) : null, month = year && f.month ? Number(f.month) : null;
@@ -1471,22 +1472,18 @@ function getReconciliation(f) {
   const fits = r => (str_(r[COL.SUBJECT - 1]) || str_(r[COL.ID - 1])) && inPeriod_(r[COL.DATE - 1], year, month) &&
     (!contractor || str_(r[COL.CONTRACTOR - 1]) === contractor) && (!manager || str_(r[COL.MANAGER - 1]) === manager);
 
-  // Ссылки (смета и тема) читаются медленно — берём только кусок таблицы, где лежат задачи периода
-  // (новые задачи сверху, так что месяц — это подряд идущие строки), а не все тысячи строк
-  let lo = -1, hi = -1;
-  values.forEach((r, i) => { if (fits(r)) { if (lo < 0) lo = i; hi = i; } });
-  const block = lo < 0 ? 0 : hi - lo + 1;
-  const estRich = block ? sh.getRange(lo + 2, COL.ESTIMATE, block, 1).getRichTextValues() : [];
-  const subjRich = block ? sh.getRange(lo + 2, COL.SUBJECT, block, 1).getRichTextValues() : [];
-  const estOf = i => estimateUrl_(estRich[i - lo] && estRich[i - lo][0], values[i][COL.ESTIMATE - 1]);
-  const linkOf = i => linksFromRich_(subjRich[i - lo] && subjRich[i - lo][0]).link;
+  // Ссылки на сметы — только для задач периода и одним запросом (ссылки в ячейках Google читает медленно)
+  const picked = [];
+  values.forEach((r, i) => { if (fits(r)) picked.push(i); });
+  const urls = estimateUrlsFor_(sh, picked, values);
+  const estOf = i => urls[i] || '';
 
-  // Одна смета у нескольких задач — среди задач этого куска таблицы
+  // Одна смета у нескольких задач — среди задач периода
   const byUrl = {};
-  for (let i = lo; block && i <= hi; i++) {
+  picked.forEach(i => {
     const url = estOf(i);
     if (url) (byUrl[url] = byUrl[url] || []).push(str_(values[i][COL.ID - 1]) || 'строка ' + (i + 2));
-  }
+  });
 
   const rows = [], issues = [], byContractor = {};
   let sumMilli = 0, withMoney = 0;
@@ -1497,7 +1494,7 @@ function getReconciliation(f) {
     const isNum = typeof total === 'number' && isFinite(total);
     const row = {
       row: i + 2, id: str_(r[COL.ID - 1]), date: fmtDate_(r[COL.DATE - 1], 'dd.MM.yyyy'),
-      subject: stripLinkMarkers_(r[COL.SUBJECT - 1]), link: linkOf(i),
+      subject: stripLinkMarkers_(r[COL.SUBJECT - 1]),
       languages: str_(r[COL.LANGS - 1]), manager: str_(r[COL.MANAGER - 1]), contractor: str_(r[COL.CONTRACTOR - 1]),
       status: str_(r[COL.STATUS - 1]), estimate: estOf(i),
       total: isNum ? exactMoney_(total) : str_(total), totalText: rub_(total)
@@ -1525,10 +1522,59 @@ function getReconciliation(f) {
   const label = [contractor || 'все подрядчики', manager || 'все менеджеры', period].join(' · ');
   return {
     label: label, rows: rows, issues: issues, count: rows.length, withMoney: withMoney,
-    sum: sumMilli / 1000, sumText: rub_(sumMilli / 1000),
+    sum: sumMilli / 1000, sumText: rub_(sumMilli / 1000), seconds: Math.round((Date.now() - started) / 100) / 10,
     byContractor: Object.keys(byContractor).map(k => ({ name: k, count: byContractor[k].count, sum: byContractor[k].milli / 1000, sumText: rub_(byContractor[k].milli / 1000) }))
       .sort((a, b) => b.sum - a.sum)
   };
+}
+
+/**
+ * Адреса смет для строк idxs (индексы в values). Голый адрес в ячейке — сразу; «Ссылка на смету …» — ссылка
+ * под текстом: через Google Sheets API одним запросом (быстро), если сервис не включён — по кускам подряд идущих строк.
+ */
+function estimateUrlsFor_(sh, idxs, values) {
+  const out = {};
+  const need = idxs.filter(i => {
+    const v = str_(values[i][COL.ESTIMATE - 1]);
+    if (isUrlText_(v)) { out[i] = v; return false; }
+    return v !== '';
+  });
+  if (!need.length) return out;
+  const needSet = {};
+  need.forEach(i => { needSet[i] = true; });
+  const groups = [];
+  need.forEach(i => { const g = groups[groups.length - 1]; if (g && i === g[1] + 1) g[1] = i; else groups.push([i, i]); });
+  // Строки периода могут быть разбросаны — склеиваем ближайшие куски, чтобы запросов было не больше 20
+  while (groups.length > 20) {
+    let best = 0;
+    for (let k = 1; k < groups.length - 1; k++) if (groups[k + 1][0] - groups[k][1] < groups[best + 1][0] - groups[best][1]) best = k;
+    groups.splice(best, 2, [groups[best][0], groups[best + 1][1]]);
+  }
+  if (typeof Sheets !== 'undefined' && Sheets.Spreadsheets && Sheets.Spreadsheets.get) {
+    try {
+      const name = "'" + sh.getName().replace(/'/g, "''") + "'!";
+      const col = String.fromCharCode(64 + COL.ESTIMATE);
+      const res = Sheets.Spreadsheets.get(sh.getParent().getId(), {
+        ranges: groups.map(g => name + col + (g[0] + 2) + ':' + col + (g[1] + 2)),
+        fields: 'sheets(data(rowData(values(hyperlink,textFormatRuns(format(link(uri)))))))'
+      });
+      const data = res.sheets[0].data;
+      if (data.length !== groups.length) throw new Error('ответ не по запросу');
+      const got = {};
+      data.forEach((d, gi) => (d.rowData || []).forEach((rd, k) => {
+        const v = (rd.values || [])[0] || {};
+        const url = v.hyperlink || (v.textFormatRuns || []).map(r => r.format && r.format.link && r.format.link.uri).filter(Boolean)[0];
+        if (url) got[groups[gi][0] + k] = url;
+      }));
+      need.forEach(i => { if (got[i]) out[i] = got[i]; });
+      return out;
+    } catch (e) { /* сервис не ответил — читаем по-старому */ }
+  }
+  groups.forEach(([a, b]) => {
+    const rich = sh.getRange(a + 2, COL.ESTIMATE, b - a + 1, 1).getRichTextValues();
+    for (let i = a; i <= b; i++) { const u = estimateUrl_(rich[i - a][0], values[i][COL.ESTIMATE - 1]); if (u && needSet[i]) out[i] = u; }
+  });
+  return out;
 }
 
 /** Сверка в Excel: все поля для сверки, ссылка на смету ещё и обычным адресом, итог — промежуточный (считает только отфильтрованное). */
@@ -1546,7 +1592,6 @@ function exportReconciliationToExcel(f) {
     data.forEach((d, i) => {
       const r = rep.rows[i];
       if (r.estimate) sheet.getRange(i + 2, 8).setRichTextValue(estimateRich_(r.estimate, r.id));
-      if (r.link && r.subject) sheet.getRange(i + 2, 3).setRichTextValue(SpreadsheetApp.newRichTextValue().setText(r.subject).setLinkUrl(r.link).build());
       sheet.getRange(i + 2, 10).setNumberFormat(moneyFormat_(r.total));
     });
   }
