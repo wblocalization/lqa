@@ -1657,8 +1657,13 @@ function exportMoneyExcel(opts) {
     }));
   }
   styleReportSheet_(sheet, TASK_COLS);
-  sheet.setColumnWidth(COL.SUBJECT, 380);
-  sheet.setColumnWidth(COL.ESTIMATE, 260);
+  // Ширина колонок — сразу как надо: иначе Excel показывает узкую дату как «#####»
+  const widths = {};
+  widths[COL.ID] = 110; widths[COL.TICKET] = 110; widths[COL.SUBJECT] = 380; widths[COL.DATE] = 95; widths[COL.PRODUCT] = 140;
+  widths[COL.CUSTOMER] = 140; widths[COL.LANGS] = 260; widths[COL.DEADLINE] = 120; widths[COL.DUE] = 95; widths[COL.STATUS] = 100;
+  widths[COL.ESTIMATE] = 260; widths[COL.TOTAL] = 120; widths[COL.CONTRACTOR] = 120; widths[COL.MANAGER] = 150;
+  widths[COL.DELIVERY] = 150; widths[COL.SP] = 60; widths[COL.COMMENT] = 240; widths[COL.COMPLAINTS] = 180;
+  Object.keys(widths).forEach(c => sheet.setColumnWidth(Number(c), widths[c]));
   sheet.getRange(1, 1, Math.max(rows.length, 1) + 1, TASK_COLS).createFilter();
 
   // 2. Итоги

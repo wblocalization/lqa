@@ -717,6 +717,7 @@ test('Выгрузка для сверки: все колонки как в та
   assert.equal(x.getRange(rowX(b), 11).getValue(), 'https://disk/b', 'адрес из-под текста');
   assert.equal(x.getRange(rowX(a), 4).getNumberFormat(), 'dd.MM.yyyy');
   assert.ok(x.filter, 'фильтр включён');
+  assert.ok(x.colW[4] >= 90 && x.colW[9] >= 90, 'даты влезают');
   // Итоги и проверка
   const t = book.getSheetByName('Итоги').getRange(1, 1, 12, 4).getValues();
   assert.ok(t.some(row => row[0] === 'LogrusIT' && row[1] === 3 && row[3] === 1050.005), JSON.stringify(t));
