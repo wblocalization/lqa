@@ -44,12 +44,26 @@
   let last = null;
   const filters = () => ({ year: $('#year').value, month: $('#year').value ? $('#month').value : '', contractor: $('#contractor').value, manager: $('#manager').value });
 
+  // Фильтры работают сразу (текущий месяц, все), списки подрядчиков и менеджеров догружаются в фоне
+  (() => {
+    const now = new Date(), y = now.getFullYear();
+    fillSelect($('#year'), [String(y), String(y - 1)], 'Всё время', String(y));
+    $('#month').value = String(now.getMonth() + 1);
+    fillSelect($('#contractor'), [], 'Все подрядчики (загружаю список…)');
+    fillSelect($('#manager'), [], 'Все менеджеры (загружаю список…)');
+  })();
   run('getReconcileOptions').then(o => {
-    fillSelect($('#year'), o.years.map(String), 'Всё время', String(o.year));
-    $('#month').value = String(o.month);
-    fillSelect($('#contractor'), o.contractors, 'Все подрядчики');
-    fillSelect($('#manager'), o.managers, 'Все менеджеры');
-  }).catch(e => setMsg($('#msg'), 'Не получилось загрузить фильтры: ' + e.message, 'err'));
+    const keep = sel => sel.value;
+    const year = keep($('#year')), contractor = keep($('#contractor')), manager = keep($('#manager'));
+    fillSelect($('#year'), o.years.map(String), 'Всё время', year || '');
+    if (year && !o.years.map(String).includes(year)) $('#year').insertAdjacentHTML('beforeend', `<option value="${esc(year)}" selected>${esc(year)}</option>`);
+    fillSelect($('#contractor'), o.contractors, 'Все подрядчики', contractor);
+    fillSelect($('#manager'), o.managers, 'Все менеджеры', manager);
+  }).catch(e => {
+    fillSelect($('#contractor'), [], 'Все подрядчики');
+    fillSelect($('#manager'), [], 'Все менеджеры');
+    setMsg($('#msg'), 'Списки подрядчиков и менеджеров не загрузились: ' + e.message + '. Сверка по всем всё равно работает.', 'err');
+  });
 
   function render(d) {
     const bad = new Set(d.issues.filter(x => x.kind !== 'extra').map(x => x.row));
@@ -78,7 +92,7 @@
   }
 
   $('#runBtn').addEventListener('click', () => {
-    $('#results').innerHTML = '<p class="muted">Считаю…</p>';
+    $('#results').innerHTML = '<p class="muted">Считаю… На большой таблице это до 10–20 секунд.</p>';
     $('#excelBtn').disabled = $('#copyBtn').disabled = true;
     setMsg($('#msg'), '');
     run('getReconciliation', filters()).then(d => {

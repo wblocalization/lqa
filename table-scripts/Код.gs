@@ -1443,13 +1443,19 @@ function showReconcileDialog() {
 
 /** Годы, подрядчики и менеджеры для фильтров окна сверки. */
 function getReconcileOptions() {
-  const rows = readRows_(getTasksSheet(), TASK_COLS);
+  // Только три колонки, а не вся таблица: окно должно открываться быстро
+  const sh = getTasksSheet();
+  const n = dataRowCount_(sh);
+  const dates = n ? sh.getRange(2, COL.DATE, n, 1).getValues() : [];
+  const people = n ? sh.getRange(2, COL.CONTRACTOR, n, 2).getValues() : []; // подрядчик, менеджер
   const lists = getListsData();
   const add = (list, v) => { v = str_(v); if (v && list.indexOf(v) === -1) list.push(v); };
-  const contractors = lists.contractors.slice(), managers = lists.managers.slice();
-  rows.forEach(r => { add(contractors, r[COL.CONTRACTOR - 1]); add(managers, r[COL.MANAGER - 1]); });
+  const contractors = (lists.contractors || []).slice(), managers = (lists.managers || []).slice();
+  people.forEach(r => { add(contractors, r[0]); add(managers, r[1]); });
+  const years = [];
+  dates.forEach(r => { const d = r[0]; if (d instanceof Date && years.indexOf(d.getFullYear()) === -1) years.push(d.getFullYear()); });
   const now = new Date();
-  return { years: getDashboardYears(), contractors: contractors, managers: managers, year: now.getFullYear(), month: now.getMonth() + 1 };
+  return { years: years.sort((a, b) => b - a), contractors: contractors, managers: managers, year: now.getFullYear(), month: now.getMonth() + 1 };
 }
 
 /**
@@ -1459,35 +1465,41 @@ function getReconcileOptions() {
 function getReconciliation(f) {
   f = f || {};
   const sh = getTasksSheet();
-  const n = dataRowCount_(sh);
   const values = readRows_(sh, TASK_COLS);
-  const estRich = n ? sh.getRange(2, COL.ESTIMATE, n, 1).getRichTextValues() : [];
-  const subjLinks = subjectLinks_(sh);
   const year = f.year ? Number(f.year) : null, month = year && f.month ? Number(f.month) : null;
   const contractor = str_(f.contractor), manager = str_(f.manager);
+  const fits = r => (str_(r[COL.SUBJECT - 1]) || str_(r[COL.ID - 1])) && inPeriod_(r[COL.DATE - 1], year, month) &&
+    (!contractor || str_(r[COL.CONTRACTOR - 1]) === contractor) && (!manager || str_(r[COL.MANAGER - 1]) === manager);
 
-  // Одна смета у нескольких задач — ищем по всей таблице, не только в выбранном месяце
+  // Ссылки (смета и тема) читаются медленно — берём только кусок таблицы, где лежат задачи периода
+  // (новые задачи сверху, так что месяц — это подряд идущие строки), а не все тысячи строк
+  let lo = -1, hi = -1;
+  values.forEach((r, i) => { if (fits(r)) { if (lo < 0) lo = i; hi = i; } });
+  const block = lo < 0 ? 0 : hi - lo + 1;
+  const estRich = block ? sh.getRange(lo + 2, COL.ESTIMATE, block, 1).getRichTextValues() : [];
+  const subjRich = block ? sh.getRange(lo + 2, COL.SUBJECT, block, 1).getRichTextValues() : [];
+  const estOf = i => estimateUrl_(estRich[i - lo] && estRich[i - lo][0], values[i][COL.ESTIMATE - 1]);
+  const linkOf = i => linksFromRich_(subjRich[i - lo] && subjRich[i - lo][0]).link;
+
+  // Одна смета у нескольких задач — среди задач этого куска таблицы
   const byUrl = {};
-  values.forEach((r, i) => {
-    const url = estimateUrl_(estRich[i] && estRich[i][0], r[COL.ESTIMATE - 1]);
-    if (url) (byUrl[url] = byUrl[url] || []).push(str_(r[COL.ID - 1]) || 'строка ' + (i + 2));
-  });
+  for (let i = lo; block && i <= hi; i++) {
+    const url = estOf(i);
+    if (url) (byUrl[url] = byUrl[url] || []).push(str_(values[i][COL.ID - 1]) || 'строка ' + (i + 2));
+  }
 
   const rows = [], issues = [], byContractor = {};
   let sumMilli = 0, withMoney = 0;
   const issue = (row, kind, text) => issues.push({ row: row.row, id: row.id, kind: kind, text: text });
   values.forEach((r, i) => {
-    if (!str_(r[COL.SUBJECT - 1]) && !str_(r[COL.ID - 1])) return;
-    if (!inPeriod_(r[COL.DATE - 1], year, month)) return;
-    if (contractor && str_(r[COL.CONTRACTOR - 1]) !== contractor) return;
-    if (manager && str_(r[COL.MANAGER - 1]) !== manager) return;
+    if (!fits(r)) return;
     const total = r[COL.TOTAL - 1];
     const isNum = typeof total === 'number' && isFinite(total);
     const row = {
       row: i + 2, id: str_(r[COL.ID - 1]), date: fmtDate_(r[COL.DATE - 1], 'dd.MM.yyyy'),
-      subject: stripLinkMarkers_(r[COL.SUBJECT - 1]), link: subjLinks[i] ? subjLinks[i].link : '',
+      subject: stripLinkMarkers_(r[COL.SUBJECT - 1]), link: linkOf(i),
       languages: str_(r[COL.LANGS - 1]), manager: str_(r[COL.MANAGER - 1]), contractor: str_(r[COL.CONTRACTOR - 1]),
-      status: str_(r[COL.STATUS - 1]), estimate: estimateUrl_(estRich[i] && estRich[i][0], r[COL.ESTIMATE - 1]),
+      status: str_(r[COL.STATUS - 1]), estimate: estOf(i),
       total: isNum ? exactMoney_(total) : str_(total), totalText: rub_(total)
     };
     rows.push(row);
