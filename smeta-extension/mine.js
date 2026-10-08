@@ -1,6 +1,13 @@
 // Вкладка «Мои задачи»: открытые задачи менеджера, статус меняется прямо здесь.
 import { settings, saveSettings, isConfigured, api, esc } from './core.js';
 import { openEditor } from './edit.js';
+import { fillSimilar } from './task.js';
+
+/** «Похожая» — новая задача по образцу этой: открываем вкладку «Новая задача» и заполняем форму. */
+function createSimilar(ref) {
+  document.querySelector('.tab[data-tab="task"]').click();
+  fillSimilar(ref);
+}
 
 const $ = (s) => document.querySelector(s);
 const els = {
@@ -103,6 +110,7 @@ function render() {
           <option value="">— статус —</option>
           ${data.statuses.map((s) => `<option value="${esc(s)}"${s === t.status ? ' selected' : ''}>${esc(s)}</option>`).join('')}
         </select>
+        <button class="btn ghost small" type="button" data-similar="${i}" title="Новая задача по образцу этой">Похожая</button>
         <button class="btn ghost small" type="button" data-edit="${i}">Изменить</button>
       </div>
     </div>`;
@@ -155,6 +163,11 @@ async function deleteTask(ref) {
 }
 
 els.list.addEventListener('click', (e) => {
+  const sim = e.target.closest('button[data-similar]');
+  if (sim) {
+    const t = data.tasks[Number(sim.dataset.similar)];
+    return createSimilar({ row: t.row, id: t.id, origSubject: t.subject });
+  }
   const b = e.target.closest('button[data-edit]');
   if (!b) return;
   const t = data.tasks[Number(b.dataset.edit)];
@@ -182,6 +195,7 @@ function renderFound() {
     ? found.map((t, i) => `<div class="mine-item">
         <div class="title">${esc(t.title)}</div>
         <div class="row-actions"><span class="meta" style="flex:1">${esc(t.id || '—')}${t.ticket ? ' · ' + esc(t.ticket) : ''} · ${esc(t.date)}${t.status ? ' · ' + esc(t.status) : ''}</span>
+        <button class="btn ghost small" type="button" data-similar-found="${i}" title="Новая задача по образцу этой">Похожая</button>
         <button class="btn ghost small" type="button" data-found="${i}">Изменить</button></div>
       </div>`).join('')
     : '<p class="muted">Ничего не нашлось.</p>';
@@ -189,6 +203,11 @@ function renderFound() {
 els.searchForm.addEventListener('submit', (e) => { e.preventDefault(); runSearch(); });
 els.search.addEventListener('search', () => { if (!els.search.value) els.found.hidden = true; }); // крестик в поле
 els.found.addEventListener('click', (e) => {
+  const sim = e.target.closest('button[data-similar-found]');
+  if (sim) {
+    const t = found[Number(sim.dataset.similarFound)];
+    return createSimilar({ row: t.row, id: t.id });
+  }
   const b = e.target.closest('button[data-found]');
   if (!b) return;
   const t = found[Number(b.dataset.found)];

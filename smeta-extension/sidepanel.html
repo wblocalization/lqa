@@ -33,6 +33,15 @@
       </span>
     </label>
     <p id="setManagerMsg" class="status err" hidden></p>
+    <div class="tpl-io">
+      <span>Шаблоны задач — поделиться с коллегой или перенести на другой компьютер</span>
+      <span class="tpl-actions">
+        <button id="tExportTpl" class="link-btn" type="button">Скачать файлом</button>
+        <button id="tImportTpl" class="link-btn" type="button">Загрузить из файла</button>
+      </span>
+      <input id="tImportFile" type="file" accept=".json,application/json" hidden>
+      <p id="tTplIoMsg" class="status" role="status"></p>
+    </div>
     <label>Папка для смет на ВБ Диске <span class="opt">путь или ссылка на папку из адресной строки диска; внутри — папка с темой письма</span>
       <input id="setDiskFolder" type="text" placeholder="localization/Сметы">
     </label>
@@ -51,17 +60,12 @@
         <button id="tCopyPreview" class="btn ghost small" type="button">Скопировать</button>
       </div>
       <div class="tpl">
-        <label>Шаблон
-          <span class="with-btn">
-            <select id="tTemplate"><option value="">— без шаблона —</option></select>
-            <button id="tSaveTpl" class="btn ghost" type="button" title="Запомнить подрядчика, тикет, продукт, языки и т. д.">Сохранить</button>
-          </span>
-        </label>
+        <span class="tpl-title">Шаблоны</span>
+        <div id="tTplChips" class="tpl-chips"></div>
+        <select id="tTemplate" hidden><option value="">— без шаблона —</option></select>
         <div class="tpl-actions">
+          <button id="tSaveTpl" class="link-btn" type="button" title="Запомнить подрядчика, тикет, продукт, языки и т. д.">＋ Сохранить как шаблон</button>
           <button id="tDelTpl" class="link-btn" type="button" hidden>Удалить шаблон</button>
-          <button id="tExportTpl" class="link-btn" type="button">Скачать шаблоны</button>
-          <button id="tImportTpl" class="link-btn" type="button">Загрузить из файла</button>
-          <input id="tImportFile" type="file" accept=".json,application/json" hidden>
         </div>
       </div>
 
@@ -72,6 +76,14 @@
         <label>Тикет
           <span class="prefixed"><span>LOCAL-</span><input id="tTicketNum" type="text" inputmode="numeric" placeholder="1234"></span>
         </label>
+      </div>
+
+      <div id="tSuggest" class="suggest" hidden>
+        <span id="tSuggestText"></span>
+        <span class="suggest-btns">
+          <button id="tSuggestApply" class="btn small" type="button">Заполнить</button>
+          <button id="tSuggestClose" class="icon-btn small" type="button" title="Не надо" aria-label="Не надо">✕</button>
+        </span>
       </div>
 
       <label><span>Тема письма <span class="req">*</span></span>
@@ -139,7 +151,8 @@
       <h2>Добавлено: <span id="taskDoneId"></span></h2>
       <p id="taskDoneSubject" class="done-subject"></p>
       <button id="taskCopyDone" class="btn ghost" type="button">Скопировать тему</button>
-      <button id="taskAgain" class="btn primary" type="button">Ещё задача</button>
+      <button id="taskSimilar" class="btn ghost" type="button">Ещё одну такую же</button>
+      <button id="taskAgain" class="btn primary" type="button">Новая задача</button>
     </section>
 
     <p id="tMsg" class="status" role="status"></p>

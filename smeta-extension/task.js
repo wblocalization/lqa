@@ -15,6 +15,8 @@ const els = {
   link2: $('#tLink2'), deliveryStatus: $('#tDeliveryStatus'), estimateLink: $('#tEstimateLink'),
   total: $('#tTotal'), sp: $('#tSp'), comment: $('#tComment'), complaints: $('#tComplaints'),
   preview: $('#tPreview'), copyPreview: $('#tCopyPreview'), submit: $('#tSubmit'), msg: $('#tMsg'),
+  tplChips: $('#tTplChips'), suggest: $('#tSuggest'), suggestText: $('#tSuggestText'), suggestApply: $('#tSuggestApply'),
+  suggestClose: $('#tSuggestClose'), similar: $('#taskSimilar'), tplIoMsg: $('#tTplIoMsg'),
 };
 
 let lists = null;       // справочники из таблицы
@@ -86,10 +88,12 @@ function buildForm() {
 }
 
 function resetForm() {
-  const tpl = els.template.value;
   els.form.reset();
   els.link2.value = '';
-  els.template.value = tpl; // выбранный шаблон остаётся выбранным, но поля — с нуля
+  els.template.value = ''; // форма с нуля — шаблон снова можно выбрать кнопкой
+  els.delTpl.hidden = true;
+  renderChips();
+  hideSuggest();
   els.date.value = today();
   updateOtHint();
   if (settings.manager && lists.managers.includes(settings.manager)) els.manager.value = settings.manager;
@@ -106,9 +110,14 @@ function today() {
 // Свои у каждого (хранятся в Chrome). Файлом можно поделиться: тот же формат понимает окно «Новая задача» в таблице.
 const TPL_FILE_TYPE = 'wb-task-templates';
 let templates = [];
+let lastTask = null;     // последняя добавленная задача — «Как в прошлый раз»
+let byContractor = {};   // последние поля по каждому подрядчику — для подсказки «как обычно»
 
 async function loadTemplates() {
-  templates = (await chrome.storage.local.get('templates')).templates || [];
+  const saved = await chrome.storage.local.get(['templates', 'lastTask', 'byContractor']);
+  templates = saved.templates || [];
+  lastTask = saved.lastTask ? cleanTemplate(saved.lastTask) : null;
+  byContractor = saved.byContractor || {};
   renderTemplates();
 }
 
@@ -124,6 +133,133 @@ function renderTemplates(selectName = '') {
   const i = templates.findIndex((t) => t.name === selectName);
   els.template.value = i === -1 ? '' : String(i);
   els.delTpl.hidden = !els.template.value;
+  renderChips();
+}
+
+/** Шаблоны — кнопками: один клик, и форма заполнена. Пунктиром — «Как в прошлый раз». */
+function renderChips() {
+  const sel = els.template.value;
+  const chips = templates.map((t, i) =>
+    `<button type="button" class="tpl-chip${String(i) === sel ? ' on' : ''}" data-tpl="${i}" title="${esc(t.name)}">${esc(t.name)}</button>`);
+  if (lastTask) chips.push(`<button type="button" class="tpl-chip last" data-last="1" title="${esc(describe(lastTask))}">↻ Как в прошлый раз</button>`);
+  els.tplChips.innerHTML = chips.length ? chips.join('')
+    : '<span class="tpl-empty">Шаблонов пока нет — заполните форму и нажмите «Сохранить как шаблон»</span>';
+  els.delTpl.textContent = templates[sel] ? `Удалить шаблон «${templates[sel].name}»` : 'Удалить шаблон';
+}
+
+els.tplChips.addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.last) {
+    els.template.value = '';
+    els.delTpl.hidden = true;
+    applyFields(lastTask);
+    renderChips();
+    setMsg('Заполнено как прошлая задача. Вставьте ссылку на Band и проверьте тему.');
+    return;
+  }
+  els.template.value = b.dataset.tpl;
+  els.template.dispatchEvent(new Event('change'));
+});
+
+/** «LogrusIT · Магазинка · kk, ka, hy» — коротко, что подставится. */
+function describe(t) {
+  const codes = (t.languages || []).map((l) => (lists && lists.langCodes[l]) || l);
+  return [t.contractor, t.product, codes.join(', ')].filter(Boolean).join(' · ');
+}
+
+let applying = false; // форму заполняет скрипт — подсказку «как обычно» не показываем
+/** Заполнить форму из шаблона / прошлой задачи. keepSubject — не трогать тему, если её уже вписали. */
+function applyFields(t, { keepSubject = false } = {}) {
+  if (!t) return;
+  applying = true;
+  els.contractor.value = t.contractor || '';
+  refreshNextId();
+  els.ticketNum.value = String(t.ticket || '').replace(/^LOCAL-/i, '');
+  els.product.value = t.product || '';
+  els.customer.value = t.customer || '';
+  els.deadline.value = t.deadline || '';
+  els.comment.value = t.comment || '';
+  if (!(keepSubject && els.subject.value.trim())) els.subject.value = withDate(withToday(t.subject || ''));
+  els.link.value = '';
+  const langs = t.languages || [];
+  checkedLangInputs(false).forEach((cb) => { cb.checked = langs.includes(cb.value); });
+  hideSuggest();
+  updatePreview();
+  applying = false;
+}
+
+// ---------- Подсказка «как обычно» по подрядчику ----------
+let suggestion = null;
+function hideSuggest() {
+  suggestion = null;
+  els.suggest.hidden = true;
+}
+
+function suggestFor(contractor) {
+  hideSuggest();
+  if (!contractor || applying) return;
+  // В форме уже что-то выбрано — не мешаем
+  if (els.product.value || checkedLangInputs().length) return;
+  const tpl = templates.find((t) => t.contractor === contractor);
+  const memo = byContractor[contractor];
+  if (tpl) {
+    suggestion = { fields: tpl, tplIndex: templates.indexOf(tpl) };
+    els.suggestText.textContent = `С ${contractor} есть шаблон «${tpl.name}»: ${describe(tpl)}`;
+  } else if (memo) {
+    suggestion = { fields: memo };
+    els.suggestText.textContent = `Как в прошлый раз с ${contractor}: ${describe(memo)}`;
+  } else {
+    return;
+  }
+  els.suggest.hidden = false;
+}
+
+els.suggestApply.addEventListener('click', () => {
+  if (!suggestion) return;
+  const s = suggestion;
+  if (s.tplIndex != null) els.template.value = String(s.tplIndex);
+  els.delTpl.hidden = s.tplIndex == null;
+  applyFields(s.fields, { keepSubject: true });
+  renderChips();
+  setMsg('Заполнено. Вставьте ссылку на Band и проверьте тему.');
+});
+els.suggestClose.addEventListener('click', hideSuggest);
+els.contractor.addEventListener('change', () => suggestFor(els.contractor.value));
+
+/** Запомнить добавленную задачу: для «Как в прошлый раз» и подсказки по подрядчику. */
+async function rememberTask(task) {
+  const memo = cleanTemplate({ ...task, name: 'Как в прошлый раз', comment: '' });
+  lastTask = memo;
+  byContractor = { ...byContractor, [task.contractor]: memo };
+  await chrome.storage.local.set({ lastTask, byContractor });
+  renderChips();
+}
+
+/** «[LIT-26-2198][LogrusIT][kk][Магазинка] Новые строки от 22.09» → «Новые строки от 22.09». */
+const plainSubject = (s) => String(s || '').replace(/^(\s*\[[^\]]*\])+\s*/, '');
+
+/** «Создать похожую» из «Мои задачи»: форма заполняется как у той задачи, кроме ссылок и дат. */
+export async function fillSimilar(ref) {
+  await initTaskTab();
+  if (!lists) return;
+  els.done.hidden = true;
+  els.form.hidden = false;
+  resetForm();
+  setMsg('Загружаю задачу…');
+  try {
+    const r = await api({ action: 'getTask', row: ref.row, id: ref.id || '', origSubject: ref.origSubject });
+    if (!r.ok) throw new Error(r.error);
+    const t = r.task;
+    applyFields({
+      contractor: t.contractor, ticket: t.ticket, subject: plainSubject(t.subject), product: t.product,
+      customer: t.customer, deadline: t.deadline, comment: '',
+      languages: String(t.languages || '').split(',').map((x) => x.trim()).filter(Boolean),
+    });
+    setMsg(`Заполнено как ${t.id || 'выбранная задача'}. Вставьте ссылку на Band и проверьте тему.`, 'ok');
+  } catch (e) {
+    setMsg(`Не получилось взять задачу: ${e.message}`, 'err');
+  }
 }
 
 /** Только известные поля и только строки: файл мог прийти от кого угодно. */
@@ -144,20 +280,11 @@ function withToday(title) {
 
 els.template.addEventListener('change', () => {
   els.delTpl.hidden = !els.template.value;
+  renderChips();
   const t = templates[els.template.value];
   if (!t) return;
-  els.contractor.value = t.contractor;
-  refreshNextId();
-  els.ticketNum.value = t.ticket.replace(/^LOCAL-/i, '');
-  els.product.value = t.product;
-  els.customer.value = t.customer;
-  els.deadline.value = t.deadline;
-  els.comment.value = t.comment;
-  els.subject.value = withDate(withToday(t.subject));
-  els.link.value = '';
-  checkedLangInputs(false).forEach((cb) => { cb.checked = t.languages.includes(cb.value); });
+  applyFields(t);
   setMsg(`Заполнено по шаблону «${t.name}». Вставьте ссылку на Band и проверьте тему.`);
-  updatePreview();
 });
 
 els.saveTpl.addEventListener('click', async () => {
@@ -187,15 +314,21 @@ els.delTpl.addEventListener('click', async () => {
 });
 
 els.exportTpl.addEventListener('click', () => {
-  if (!templates.length) return setMsg('Шаблонов пока нет: заполните форму и нажмите «Сохранить» рядом с «Шаблон»', 'err');
+  if (!templates.length) return ioMsg('Шаблонов пока нет: заполните форму и нажмите «Сохранить как шаблон»', 'err');
   const blob = new Blob([JSON.stringify({ type: TPL_FILE_TYPE, version: 1, templates }, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'task-templates.json';
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  setMsg(`Скачано шаблонов: ${templates.length}. Файл можно отправить коллеге — пусть нажмёт «Загрузить из файла».`, 'ok');
+  ioMsg(`Скачано шаблонов: ${templates.length}. Файл можно отправить коллеге — пусть нажмёт «Загрузить из файла».`, 'ok');
 });
+
+/** Скачать / загрузить шаблоны — в настройках (⚙️), сообщение — там же. */
+function ioMsg(text, kind = 'info') {
+  els.tplIoMsg.textContent = text;
+  els.tplIoMsg.className = `status ${kind}`;
+}
 
 els.importTpl.addEventListener('click', () => els.importFile.click());
 els.importFile.addEventListener('change', async () => {
@@ -212,9 +345,9 @@ els.importFile.addEventListener('change', async () => {
       if (i !== -1) { templates[i] = t; replaced++; } else templates.push(t);
     });
     await storeTemplates();
-    setMsg(`Загружено шаблонов: ${list.length}` + (replaced ? ` (заменено с тем же названием: ${replaced})` : ''), 'ok');
+    ioMsg(`Загружено шаблонов: ${list.length}` + (replaced ? ` (заменено с тем же названием: ${replaced})` : ''), 'ok');
   } catch (e) {
-    setMsg(`Не получилось загрузить: ${e.message}`, 'err');
+    ioMsg(`Не получилось загрузить: ${e.message}`, 'err');
   }
 });
 
@@ -357,6 +490,7 @@ els.form.addEventListener('submit', async (e) => {
     if (!r.ok) throw new Error(r.error);
     nextIds = {};
     loadNextIds(); // номера сдвинулись
+    rememberTask(task).catch(() => {});
     lastSubject = buildSubject(r.id);
     els.doneId.textContent = r.id;
     els.doneSubject.textContent = lastSubject;
@@ -371,6 +505,13 @@ els.form.addEventListener('submit', async (e) => {
 });
 
 els.copyDone.addEventListener('click', () => copyText(lastSubject, 'Тема скопирована — можно вставлять в письмо'));
+els.similar.addEventListener('click', () => {
+  els.done.hidden = true;
+  els.form.hidden = false;
+  resetForm();
+  applyFields(lastTask);
+  setMsg('Заполнено как предыдущая задача. Вставьте ссылку на Band и проверьте тему.');
+});
 els.again.addEventListener('click', () => {
   els.done.hidden = true;
   els.form.hidden = false;

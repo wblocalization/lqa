@@ -141,6 +141,21 @@ form { display: flex; flex-direction: column; gap: 16px; }
 .with-btn select { flex: 1; min-width: 0; }
 .tpl { display: flex; flex-direction: column; gap: 4px; }
 .tpl-actions { display: flex; flex-wrap: wrap; gap: 2px 14px; }
+.tpl-title { font-size: 12.5px; font-weight: 600; color: var(--ink-soft); }
+.tpl-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tpl-chip {
+  padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+  font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tpl-chip:hover { border-color: var(--accent); }
+.tpl-chip.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.tpl-chip.last { border-style: dashed; }
+.tpl-empty { font-size: 12.5px; color: var(--ink-soft); }
+.suggest { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 10px; background: var(--soft); font-size: 12.5px; }
+.suggest > span:first-child { flex: 1; min-width: 0; }
+.suggest-btns { display: flex; align-items: center; gap: 4px; flex: none; }
+.tpl-io { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; font-weight: 600; }
+.tpl-io .status { text-align: left; font-weight: 400; }
 .link-btn { background: none; border: none; padding: 2px 0; font: inherit; font-size: 12.5px; color: var(--ink-soft);
   text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .link-btn:hover { color: var(--ink); }
