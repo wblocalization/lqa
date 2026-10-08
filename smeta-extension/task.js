@@ -91,6 +91,7 @@ function resetForm() {
   els.link2.value = '';
   els.template.value = tpl; // выбранный шаблон остаётся выбранным, но поля — с нуля
   els.date.value = today();
+  updateOtHint();
   if (settings.manager && lists.managers.includes(settings.manager)) els.manager.value = settings.manager;
   nextId = '';
   updatePreview();
@@ -268,6 +269,15 @@ function withDate(s) {
   return d && m ? s.replace(/(^|\s)(от)\s*$/i, `$1$2 ${d}.${m}`) : s;
 }
 const subjectText = () => withDate(els.subject.value.trim());
+
+// Подсказка под темой — с датой из поля «Дата», чтобы было видно, что именно подставится
+function updateOtHint() {
+  const [, m, d] = els.date.value.split('-');
+  const hint = document.querySelector('#tOtHint');
+  if (hint && d && m) hint.innerHTML = `Напишите в конце «от» — дата подставится сама: «Новые строки от» → <b>«Новые строки от ${d}.${m}»</b>`;
+}
+els.date.addEventListener('change', updateOtHint);
+els.date.addEventListener('input', updateOtHint);
 
 // Ушли из поля — «от» в конце сразу превращается в «от 01.10», чтобы было видно, что уйдёт в тему
 els.subject.addEventListener('blur', () => {

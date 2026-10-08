@@ -277,4 +277,6 @@ form { display: flex; flex-direction: column; gap: 16px; }
 #eTop { padding: 9px 12px; border-radius: 8px; background: var(--soft); text-align: left; }
 #eTop.err { background: var(--err-soft); }
 
+.field-hint { font-size: 12px; font-weight: 400; color: var(--ink-soft); }
+.field-hint b { color: var(--ink); font-weight: 600; }
 .field-note { margin: -2px 0 8px; font-size: 12.5px; color: var(--ink-soft); }
