@@ -209,7 +209,8 @@
     firstNumber = firstNumber || 2;
     const inputs = () => [...root.querySelectorAll('input')];
     const make = (val) => { const el = document.createElement('input'); el.type = 'url'; el.value = val || ''; return el; };
-    const renumber = () => inputs().forEach((el, i) => { el.placeholder = 'ссылка ' + (i + firstNumber) + ' — https://band.wb.ru/…'; });
+    // Без двойного слэша в строках: Google вырезает всё после него до конца строки
+    const renumber = () => inputs().forEach((el, i) => { el.placeholder = 'ссылка ' + (i + firstNumber) + ' — band.wb.ru/…'; });
     const tidy = () => {
       inputs().slice(0, -1).forEach(el => { if (!el.value.trim() && el !== document.activeElement) el.remove(); });
       const rest = inputs();

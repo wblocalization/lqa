@@ -701,6 +701,18 @@ test('Отчёты по дате поступления и по дате зак�
   assert.ok(id);
 });
 
+test('Окна переживают то, что делает Google: всё после «//» до конца строки вырезается', () => {
+  // Google, отдавая окно, режет «//…» даже внутри строк ('https://…') — скрипт ломается, окна пустые
+  const dir = __dirname + '/..';
+  fs.readdirSync(dir).filter(f => f.endsWith('.html')).forEach(f => {
+    const src = fs.readFileSync(dir + '/' + f, 'utf8');
+    for (const m of src.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/g)) {
+      const cut = m[1].split('\n').map(l => { const i = l.indexOf('//'); return i === -1 ? l : l.slice(0, i); }).join('\n');
+      assert.doesNotThrow(() => new Function(cut), f + ': скрипт ломается после вырезания «//»');
+    }
+  });
+});
+
 test('Журнал больше не пишется', () => {
   assert.equal(log() ? log().getLastRow() : 0, logRows0);
   assert.equal(typeof G.logChange, 'undefined');
