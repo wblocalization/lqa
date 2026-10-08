@@ -113,6 +113,8 @@ function onOpen() {
     .addItem('Отчёт по менеджеру', 'showManagerReportSidebar')
     .addItem('Отчёт по переводчику', 'showTranslatorReportSidebar')
     .addItem('Кастомный отчёт', 'showCustomReportSidebar')
+    .addSeparator()
+    .addItem('💰 Выгрузка для сверки (Excel)', 'showMoneyExportDialog')
     .addToUi();
 
   ui.createMenu('⚙️ Настройки')
@@ -1476,6 +1478,164 @@ function styleReportSheet_(sheet, ncols, wideColWidth) {
 function exportUrl_(ss) {
   SpreadsheetApp.flush();
   return 'https://docs.google.com/spreadsheets/d/' + ss.getId() + '/export?format=xlsx';
+}
+
+// ==================== ВЫГРУЗКА ДЛЯ СВЕРКИ (Excel) ====================
+// Для того, кто сверяет деньги: лист задач как есть — те же колонки в том же порядке и с теми же названиями,
+// только строки за выбранный месяц / подрядчика / менеджера. Ссылки на сметы — адресами (кликабельны), суммы — числами.
+// Рядом — листы «Итоги» (по подрядчикам и менеджерам) и «Проверить» (сумма без сметы и т. п.). Сам лист задач не меняется.
+
+function showMoneyExportDialog() {
+  showDialog_('MoneyExportDialog', 'Выгрузка для сверки', 440, 470);
+}
+
+function getMoneyExportOptions() {
+  const lists = getListsData();
+  return { months: getMonthsList(), contractors: lists.contractors, managers: lists.managers,
+    current: fmtDate_(new Date(), 'yyyy-MM') };
+}
+
+/**
+ * Строки для выгрузки. opts: { month: '2026-10' | '', by: 'date' | 'due', contractor, manager }.
+ * Шапка — прямо из листа, чтобы в Excel всё называлось как в таблице.
+ */
+function moneyExportRows_(opts) {
+  opts = opts || {};
+  const sh = getTasksSheet();
+  const n = dataRowCount_(sh);
+  const head = sh.getRange(1, 1, 1, TASK_COLS).getValues()[0];
+  if (!n) return { head: head, rows: [] };
+  const values = sh.getRange(2, 1, n, TASK_COLS).getValues();
+  const p = parseMonth_(opts.month);
+  const dateCol = (opts.by === 'due' ? COL.DUE : COL.DATE) - 1;
+  const rows = [], labels = [];
+  values.forEach((r, i) => {
+    if (!str_(r[COL.ID - 1]) && !str_(r[COL.SUBJECT - 1])) return; // пустая строка
+    if (p.year && !inPeriod_(r[dateCol], p.year, p.month)) return;
+    if (opts.contractor && str_(r[COL.CONTRACTOR - 1]) !== opts.contractor) return;
+    if (opts.manager && str_(r[COL.MANAGER - 1]) !== opts.manager) return;
+    if (ESTIMATE_LABEL_RE.test(str_(r[COL.ESTIMATE - 1]))) labels.push([r, i]);
+    rows.push(r);
+  });
+  // Старый вид «Ссылка на смету …» (адрес спрятан под текстом): одним чтением, только кусок колонки с такими ячейками
+  if (labels.length) {
+    const first = labels[0][1], last = labels[labels.length - 1][1];
+    const rich = sh.getRange(first + 2, COL.ESTIMATE, last - first + 1, 1).getRichTextValues();
+    labels.forEach(([r, i]) => { r[COL.ESTIMATE - 1] = estimateUrl_(rich[i - first][0], r[COL.ESTIMATE - 1]); });
+  }
+  return { head: head, rows: rows };
+}
+
+/** Что стоит проверить в строке (пусто — всё в порядке). Строки одного заказа (один номер) смотрим вместе. */
+function moneyIssues_(rows) {
+  const byId = {};
+  rows.forEach(r => {
+    const id = str_(r[COL.ID - 1]);
+    if (!id) return;
+    const g = byId[id] || (byId[id] = { hasTotal: false, hasUrl: false });
+    if (typeof r[COL.TOTAL - 1] === 'number') g.hasTotal = true;
+    if (isUrlText_(str_(r[COL.ESTIMATE - 1]))) g.hasUrl = true;
+  });
+  const out = [];
+  const seen = {};
+  rows.forEach(r => {
+    const id = str_(r[COL.ID - 1]);
+    const g = byId[id] || { hasTotal: typeof r[COL.TOTAL - 1] === 'number', hasUrl: isUrlText_(str_(r[COL.ESTIMATE - 1])) };
+    const status = str_(r[COL.STATUS - 1]);
+    const total = r[COL.TOTAL - 1];
+    const why = [];
+    if (status === 'Отменено' && typeof total === 'number' && total > 0) why.push('отменено, а сумма стоит');
+    if (status === 'Отдано' && !g.hasTotal) why.push('отдано, а суммы нет');
+    if (g.hasUrl && !g.hasTotal) why.push('смета есть, суммы нет');
+    if (g.hasTotal && !g.hasUrl) why.push('сумма есть, сметы нет');
+    if (total !== '' && typeof total !== 'number') why.push('в сумме не число: «' + str_(total) + '»');
+    if (!why.length) return;
+    const key = (id || str_(r[COL.SUBJECT - 1])) + '|' + why.join();
+    if (seen[key]) return; // заказ из нескольких строк — один раз
+    seen[key] = true;
+    out.push([id, stripLinkMarkers_(r[COL.SUBJECT - 1]), str_(r[COL.CONTRACTOR - 1]), str_(r[COL.MANAGER - 1]), status, why.join('; ')]);
+  });
+  return out;
+}
+
+/** Итоги по подрядчикам или менеджерам: заказов (разных номеров), строк, сумма. */
+function moneyTotals_(rows, col) {
+  const map = {};
+  rows.forEach(r => {
+    const k = str_(r[col - 1]) || '(не указан)';
+    const g = map[k] || (map[k] = { ids: {}, lines: 0, sum: 0 });
+    g.lines++;
+    if (str_(r[COL.ID - 1])) g.ids[str_(r[COL.ID - 1])] = true;
+    if (typeof r[COL.TOTAL - 1] === 'number') g.sum += r[COL.TOTAL - 1];
+  });
+  return Object.keys(map).sort().map(k => [k, Object.keys(map[k].ids).length, map[k].lines, exactMoney_(map[k].sum)]);
+}
+
+/** В новом файле Google всего 1000 строк — добавим, если данных больше. */
+function ensureRows_(sheet, n) {
+  const max = sheet.getMaxRows();
+  if (n > max) sheet.insertRowsAfter(max, n - max);
+}
+
+/** Меню «📈 Отчёты → 💰 Выгрузка для сверки»: новый файл и ссылка на .xlsx. */
+function exportMoneyExcel(opts) {
+  opts = opts || {};
+  const data = moneyExportRows_(opts);
+  const rows = data.rows;
+  const p = parseMonth_(opts.month);
+  const monthName = p.year ? getMonthsList().filter(m => m.value === opts.month).map(m => m.label.toLowerCase())[0] || opts.month : 'всё время';
+  const label = [opts.contractor || 'все подрядчики', opts.manager || 'все менеджеры', monthName].join(' · ');
+  const ss = SpreadsheetApp.create('Сверка — ' + label);
+
+  // 1. Задачи — как в таблице
+  const sheet = ss.getSheets()[0].setName('Задачи');
+  sheet.getRange(1, 1, 1, TASK_COLS).setValues([data.head]);
+  ensureRows_(sheet, rows.length + 1);
+  if (rows.length) {
+    sheet.getRange(2, 1, rows.length, TASK_COLS).setValues(rows);
+    sheet.getRange(2, COL.DATE, rows.length, 1).setNumberFormat('dd.MM.yyyy');
+    sheet.getRange(2, COL.DUE, rows.length, 1).setNumberFormat('dd.MM.yyyy');
+    sheet.getRange(2, COL.TOTAL, rows.length, 1).setNumberFormats(rows.map(r => [moneyFormat_(r[COL.TOTAL - 1])]));
+    // Адреса смет — кликабельными (в Excel тоже)
+    sheet.getRange(2, COL.ESTIMATE, rows.length, 1).setRichTextValues(rows.map(r => {
+      const v = cellText_(r[COL.ESTIMATE - 1]);
+      return [isUrlText_(v) ? estimateRich_(v) : SpreadsheetApp.newRichTextValue().setText(v).build()];
+    }));
+  }
+  styleReportSheet_(sheet, TASK_COLS);
+  sheet.setColumnWidth(COL.SUBJECT, 380);
+  sheet.setColumnWidth(COL.ESTIMATE, 260);
+  sheet.getRange(1, 1, Math.max(rows.length, 1) + 1, TASK_COLS).createFilter();
+
+  // 2. Итоги
+  const sum = exactMoney_(rows.reduce((a, r) => a + (typeof r[COL.TOTAL - 1] === 'number' ? r[COL.TOTAL - 1] : 0), 0));
+  const orders = Object.keys(rows.reduce((m, r) => { if (str_(r[COL.ID - 1])) m[str_(r[COL.ID - 1])] = 1; return m; }, {})).length;
+  const tot = ss.insertSheet('Итоги');
+  const block = [['Сверка: ' + label, '', '', ''], ['', '', '', ''],
+    ['Подрядчик', 'Заказов', 'Строк', 'Итого с НДС, ₽']].concat(moneyTotals_(rows, COL.CONTRACTOR))
+    .concat([['', '', '', ''], ['Менеджер', 'Заказов', 'Строк', 'Итого с НДС, ₽']]).concat(moneyTotals_(rows, COL.MANAGER))
+    .concat([['', '', '', ''], ['ИТОГО', orders, rows.length, sum]]);
+  tot.getRange(1, 1, block.length, 4).setValues(block);
+  tot.getRange(1, 1).setFontWeight('bold').setFontSize(13);
+  block.forEach((r, i) => {
+    if (r[0] === 'Подрядчик' || r[0] === 'Менеджер') tot.getRange(i + 1, 1, 1, 4).setFontWeight('bold').setBackground(HEAD_BG).setFontColor('#ffffff');
+    if (r[0] === 'ИТОГО') tot.getRange(i + 1, 1, 1, 4).setFontWeight('bold');
+    if (typeof r[3] === 'number') tot.getRange(i + 1, 4).setNumberFormat(moneyFormat_(r[3]));
+  });
+  tot.autoResizeColumns(1, 4);
+
+  // 3. Проверить
+  const issues = moneyIssues_(rows);
+  const chk = ss.insertSheet('Проверить');
+  const chkHead = ['№ задачи', 'Тема письма', 'Подрядчик', 'Менеджер', 'Статус', 'Что не так'];
+  chk.getRange(1, 1, 1, chkHead.length).setValues([chkHead]);
+  ensureRows_(chk, issues.length + 1);
+  if (issues.length) chk.getRange(2, 1, issues.length, chkHead.length).setValues(issues);
+  else chk.getRange(2, 1).setValue('Всё сходится — проверять нечего 👍');
+  styleReportSheet_(chk, chkHead.length, 380);
+
+  ss.setActiveSheet(sheet);
+  return { url: exportUrl_(ss), sheetUrl: ss.getUrl(), name: ss.getName(), lines: rows.length, orders: orders, total: sum, issues: issues.length };
 }
 
 // ==================== ОТЧЁТ ДЛЯ ТРЕКЕРА (менеджеры) ====================

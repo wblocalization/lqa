@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<style>a.btn { display: block; text-align: center; text-decoration: none; }</style>
+<?!= include('Общее') ?>
+</head>
+<body>
+  <p class="small muted" style="margin:0 0 10px">Все колонки — как в таблице, в том же порядке. Ссылки на сметы — адресами, суммы — числами, фильтр в Excel уже включён.
+    Рядом — листы «Итоги» и «Проверить».</p>
+  <div class="stack">
+    <div class="two">
+      <label class="field">Месяц<select id="month"></select></label>
+      <label class="field">Месяц считать по<select id="by">
+        <option value="date">дате получения</option>
+        <option value="due">сроку сдачи</option>
+      </select></label>
+    </div>
+    <label class="field">Подрядчик<select id="contractor"></select></label>
+    <label class="field">Менеджер<select id="manager"></select></label>
+    <button class="btn primary" id="go" type="button">📥 Выгрузить в Excel</button>
+  </div>
+  <div id="result" hidden style="margin-top:12px">
+    <div class="tiles">
+      <div class="tile"><div class="num" id="rOrders"></div><div class="lbl">заказов</div></div>
+      <div class="tile"><div class="num" id="rLines"></div><div class="lbl">строк</div></div>
+      <div class="tile"><div class="num" id="rTotal"></div><div class="lbl">₽ с НДС</div></div>
+    </div>
+    <p id="rIssues" class="small" style="margin:8px 0"></p>
+    <div class="two">
+      <a class="btn" id="rXlsx" target="_blank">📥 Скачать Excel</a>
+      <a class="btn" id="rSheet" target="_blank">Открыть в Google</a>
+    </div>
+  </div>
+  <div id="msg" class="msg" style="margin-top:6px"></div>
+
+<script>
+  run('getMoneyExportOptions').then(d => {
+    $('#month').innerHTML = '<option value="">Всё время</option>' +
+      d.months.map(m => `<option value="${m.value}"${m.value === d.current ? ' selected' : ''}>${esc(m.label)}</option>`).join('');
+    fillSelect($('#contractor'), d.contractors, 'Все подрядчики');
+    fillSelect($('#manager'), d.managers, 'Все менеджеры');
+  }).catch(e => setMsg($('#msg'), 'Не получилось загрузить списки: ' + e.message, 'err'));
+
+  $('#go').addEventListener('click', () => {
+    const btn = $('#go');
+    btn.disabled = true;
+    $('#result').hidden = true;
+    setMsg($('#msg'), 'Собираю файл… обычно 5–15 секунд');
+    run('exportMoneyExcel', { month: $('#month').value, by: $('#by').value, contractor: $('#contractor').value, manager: $('#manager').value })
+      .then(r => {
+        $('#rOrders').textContent = r.orders;
+        $('#rLines').textContent = r.lines;
+        $('#rTotal').textContent = money(r.total);
+        $('#rIssues').textContent = r.issues ? `⚠️ Проверить: ${r.issues} — список на листе «Проверить».` : '✓ Всё сходится: у всех сумм есть сметы и наоборот.';
+        $('#rXlsx').href = r.url;
+        $('#rSheet').href = r.sheetUrl;
+        $('#result').hidden = false;
+        setMsg($('#msg'), r.lines ? 'Готово: «' + r.name + '»' : 'По этим фильтрам задач нет — файл пустой.', r.lines ? 'ok' : '');
+        if (r.lines) window.open(r.url, '_blank');
+      })
+      .catch(e => setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'))
+      .finally(() => { btn.disabled = false; });
+  });
+</script>
+</body>
+</html>

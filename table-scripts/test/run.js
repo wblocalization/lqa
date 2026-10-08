@@ -58,7 +58,7 @@ test('onOpen строит меню', () => {
 
 test('Окна открываются', { skip: !process.env.BUNDLE }, () => {
   assert.match(G.include('Общее'), /<style>/);
-  ['showAddTaskDialog', 'showSearchEditSidebar', 'showDashboard', 'showManagerReportSidebar', 'showCustomReportSidebar',
+  ['showAddTaskDialog', 'showSearchEditSidebar', 'showDashboard', 'showManagerReportSidebar', 'showCustomReportSidebar', 'showMoneyExportDialog',
    'showAddTranslatorTaskDialog', 'showSearchEditTranslatorSidebar', 'showTranslatorReportSidebar', 'migrateFromOldTable'].forEach(f => G[f]());
 });
 
@@ -687,6 +687,51 @@ test('Суммы смет: без округления, прежняя сумм�
   assert.match(cell().getNote(), /сумма изменена вручную: было 1 220,005 ₽ → стало 1 000,00 ₽$/);
   G.saveTaskEdits({ ...G.getTaskForEdit(r()), comment: 'без смены суммы' });
   assert.match(cell().getNote(), /стало 1 000,00 ₽$/);
+});
+
+test('Выгрузка для сверки: все колонки как в таблице, фильтры, итоги, проверка', () => {
+  const sh = tasks();
+  const add = (subject, extra) => G.submitNewTaskFromDialog(Object.assign({ contractor: 'LogrusIT', subject, manager: 'Сверка Тест', date: '2026-05-10', languages: ['Казахский', 'Грузинский'] }, extra));
+  const a = add('Заказ А', { estimateLink: 'https://disk/a', total: '1000.005', status: 'Отдано' });
+  const b = add('Заказ Б', { status: 'Отдано' });                       // отдано, а суммы нет
+  const c = add('Заказ В', { total: '50', status: 'Отменено' });         // отменено с суммой и без сметы
+  add('Чужой месяц', { date: '2026-04-30', estimateLink: 'https://disk/x', total: '7' });
+  add('Чужой менеджер', { manager: 'Другой', estimateLink: 'https://disk/y', total: '9' });
+  // Старый вид ссылки: адрес спрятан под текстом — в выгрузке будет адрес
+  sh.getRange(rowOf(b), 11).setRichTextValue(new RichBuilder().setText('Ссылка на смету ' + b).setLinkUrl('https://disk/b').build());
+
+  const n0 = calls.created.length;
+  const r = G.exportMoneyExcel({ month: '2026-05', by: 'date', contractor: 'LogrusIT', manager: 'Сверка Тест' });
+  same([r.lines, r.orders, r.total], [3, 3, 1050.005]);
+  assert.match(r.url, /export\?format=xlsx/);
+  const book = calls.created[n0];
+  assert.match(book.title, /Сверка — LogrusIT · Сверка Тест · май 2026/);
+  const x = book.getSheetByName('Задачи');
+  // Шапка — та же, что в листе задач, все 18 колонок
+  same(x.getRange(1, 1, 1, 18).getValues()[0], sh.getRange(1, 1, 1, 18).getValues()[0]);
+  const ids = x.getRange(2, 1, 3, 1).getValues().map(v => v[0]);
+  same(ids.slice().sort(), [a, b, c].sort());
+  const rowX = id => 2 + ids.indexOf(id);
+  same([x.getRange(rowX(a), 11).getValue(), x.getRange(rowX(a), 12).getValue(), x.getRange(rowX(a), 12).getNumberFormat(), x.getRange(rowX(a), 7).getValue()],
+    ['https://disk/a', 1000.005, '#,##0.000', 'Казахский, Грузинский']);
+  assert.equal(x.getRange(rowX(b), 11).getValue(), 'https://disk/b', 'адрес из-под текста');
+  assert.equal(x.getRange(rowX(a), 4).getNumberFormat(), 'dd.MM.yyyy');
+  assert.ok(x.filter, 'фильтр включён');
+  // Итоги и проверка
+  const t = book.getSheetByName('Итоги').getRange(1, 1, 12, 4).getValues();
+  assert.ok(t.some(row => row[0] === 'LogrusIT' && row[1] === 3 && row[3] === 1050.005), JSON.stringify(t));
+  assert.ok(t.some(row => row[0] === 'ИТОГО' && row[3] === 1050.005));
+  const chk = book.getSheetByName('Проверить').getRange(2, 1, 5, 6).getValues().filter(v => v[0]);
+  const why = id => (chk.find(v => v[0] === id) || [])[5] || '';
+  assert.match(why(b), /отдано, а суммы нет/);
+  assert.match(why(b), /смета есть, суммы нет/);
+  assert.match(why(c), /отменено, а сумма стоит/);
+  assert.match(why(c), /сумма есть, сметы нет/);
+  assert.equal(why(a), '');
+  // Сам лист задач не тронут: ссылка так и осталась как была
+  assert.equal(sh.getRange(rowOf(b), 11).getValue(), 'Ссылка на смету ' + b);
+  // Без фильтров — все задачи
+  assert.ok(G.exportMoneyExcel({}).lines >= 5);
 });
 
 test('Журнал больше не пишется', () => {

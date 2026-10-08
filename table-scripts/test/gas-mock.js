@@ -218,6 +218,7 @@ class Range {
   fmt(k, v) { this.each((r, c) => { const cell = this.sh.cell(r, c); (cell.f = cell.f || {})[k] = v; }); return this; }
   setBackground(v) { return this.fmt('bg', v); }
   setNumberFormat(v) { return this.fmt('num', v); }
+  setNumberFormats(v) { v.forEach((row, i) => row.forEach((f, j) => { const cell = this.sh.cell(this.r + i, this.c + j); (cell.f = cell.f || {}).num = f; })); return this; }
   setFormula(v) { this.each((r, c) => { this.sh.cell(r, c).formula = v; }); return this; }
   getFormula() { return this.sh.peek(this.r, this.c).formula || ''; }
   getNumberFormat() { const f = this.sh.peek(this.r, this.c).f; return (f && f.num) || ''; }
@@ -247,6 +248,7 @@ class Spreadsheet {
   }
   getId() { return this.id; }
   getUrl() { return 'https://docs.google.com/spreadsheets/d/' + this.id + '/edit'; }
+  getName() { return this.title; }
   getSheetByName(n) { return this.sheets.find(s => s.name === n) || null; }
   getSheets() { return this.sheets; }
   insertSheet(name, idx) { const sh = new Sheet(this, name, [], 1000, 26); this.sheets.splice(idx ?? this.sheets.length, 0, sh); return sh; }
