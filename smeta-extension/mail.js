@@ -13,7 +13,11 @@ function setMsg(text, kind = 'info') {
 
 function render(st) {
   els.email.value = st.email || '';
-  els.list.querySelectorAll('input[data-kind]').forEach((cb) => { cb.checked = !!st[cb.dataset.kind]; });
+  els.list.querySelectorAll('input[data-kind]').forEach((cb) => { cb.checked = !!st[cb.dataset.kind]; cb.disabled = !!st.noTriggers; });
+  // Нет разрешения на расписания — переключатели неактивны, почта и «прислать мне» работают
+  if (st.noTriggers) {
+    setMsg('Включать письма пока нельзя: скрипту таблицы нужно разрешение Google на расписания. Владелец таблицы: Apps Script → функция onOpen → ▶ Выполнить → «Разрешить» → новая версия развёртывания. Почта и «Прислать мне сейчас» работают и так.', 'err');
+  }
 }
 
 export async function loadMail() {
@@ -24,8 +28,9 @@ export async function loadMail() {
   els.who.textContent = settings.manager;
   setMsg('Загружаю…');
   try {
-    render(await call({ action: 'mailStatus', manager: settings.manager }));
+    const st = await call({ action: 'mailStatus', manager: settings.manager });
     setMsg('');
+    render(st);
   } catch (e) {
     setMsg(`Не загрузилось: ${e.message}`, 'err');
   }

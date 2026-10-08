@@ -789,6 +789,13 @@ test('Расширение: отчёты, сверка, Excel и письма', 
   assert.match(calls.fetched[0][0], /export\?format=xlsx/);
   assert.equal(calls.fetched[0][1].headers.Authorization, 'Bearer tok');
   // Письма: включить/выключить, своя почта, «прислать мне»
+  // Без разрешения на расписания — раздел всё равно открывается
+  const realTriggers = ctx.ScriptApp.getProjectTriggers;
+  ctx.ScriptApp.getProjectTriggers = () => { throw new Error('У вас нет разрешения на вызов функции "ScriptApp.getProjectTriggers"'); };
+  const noPerm = call({ action: 'mailStatus', manager: 'Анастасия Лисовая' });
+  same([noPerm.ok, noPerm.known, noPerm.weekly], [true, true, false]);
+  assert.match(noPerm.noTriggers, /нет разрешения/);
+  ctx.ScriptApp.getProjectTriggers = realTriggers;
   let st = call({ action: 'mailStatus', manager: 'Анастасия Лисовая' });
   same([st.ok, st.known, st.weekly], [true, true, false]);
   st = call({ action: 'mailToggle', kind: 'weekly', on: true, manager: 'Анастасия Лисовая' });

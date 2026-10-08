@@ -361,10 +361,12 @@ const MAIL_KINDS = {
 
 function mailStatus_(req) {
   requireTableScript_();
-  const handlers = ScriptApp.getProjectTriggers().map(function (t) { return t.getHandlerFunction(); });
   const me = req.manager ? managerMailList_(String(req.manager))[0] : null;
   const out = { ok: true, known: !!me, email: me ? me.email : '' };
-  Object.keys(MAIL_KINDS).forEach(function (k) { out[k] = handlers.indexOf(MAIL_KINDS[k].handler) !== -1; });
+  // Расписания видны только с разрешением «script.scriptapp»; без него почта и «прислать мне» всё равно работают
+  let handlers = null;
+  try { handlers = ScriptApp.getProjectTriggers().map(function (t) { return t.getHandlerFunction(); }); } catch (e) { out.noTriggers = String(e.message || e); }
+  Object.keys(MAIL_KINDS).forEach(function (k) { out[k] = handlers ? handlers.indexOf(MAIL_KINDS[k].handler) !== -1 : false; });
   return out;
 }
 
