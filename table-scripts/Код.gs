@@ -1480,6 +1480,7 @@ function reconciliation_(f) {
   const started = Date.now();
   const sh = getTasksSheet();
   const values = readRows_(sh, TASK_COLS);
+  const tRead = Date.now();
   const year = f.year ? Number(f.year) : null, month = year && f.month ? Number(f.month) : null;
   const contractor = str_(f.contractor), manager = str_(f.manager);
   const fits = r => (str_(r[COL.SUBJECT - 1]) || str_(r[COL.ID - 1])) && inPeriod_(r[COL.DATE - 1], year, month) &&
@@ -1488,7 +1489,9 @@ function reconciliation_(f) {
   // Ссылки на сметы — только для задач периода и одним запросом (ссылки в ячейках Google читает медленно)
   const picked = [];
   values.forEach((r, i) => { if (fits(r)) picked.push(i); });
-  const urls = estimateUrlsFor_(sh, picked, values);
+  const linkInfo = {};
+  const urls = estimateUrlsFor_(sh, picked, values, linkInfo);
+  const tLinks = Date.now();
   const estOf = i => urls[i] || '';
 
   // Одна смета у нескольких задач — среди задач периода. Строки с одним номером — это один заказ
@@ -1543,6 +1546,8 @@ function reconciliation_(f) {
   return {
     label: label, rows: rows, issues: issues, count: rows.length, withMoney: withMoney,
     sum: sumMilli / 1000, sumText: rub_(sumMilli / 1000), seconds: Math.round((Date.now() - started) / 100) / 10,
+    timing: { rows: values.length, read: Math.round((tRead - started) / 100) / 10, links: Math.round((tLinks - tRead) / 100) / 10,
+      via: linkInfo.via, hidden: linkInfo.hidden, apiError: linkInfo.apiError || '' },
     byContractor: Object.keys(byContractor).map(k => ({ name: k, count: byContractor[k].count, sum: byContractor[k].milli / 1000, sumText: rub_(byContractor[k].milli / 1000) }))
       .sort((a, b) => b.sum - a.sum)
   };
@@ -1552,7 +1557,10 @@ function reconciliation_(f) {
  * Адреса смет для строк idxs (индексы в values). Голый адрес в ячейке — сразу; «Ссылка на смету …» — ссылка
  * под текстом: через Google Sheets API одним запросом (быстро), если сервис не включён — по кускам подряд идущих строк.
  */
-function estimateUrlsFor_(sh, idxs, values) {
+function estimateUrlsFor_(sh, idxs, values, info) {
+  info = info || {};
+  info.via = 'адреса в ячейках';
+  info.hidden = 0;
   const out = {};
   const need = idxs.filter(i => {
     const v = str_(values[i][COL.ESTIMATE - 1]);
@@ -1560,6 +1568,7 @@ function estimateUrlsFor_(sh, idxs, values) {
     return ESTIMATE_LABEL_RE.test(v); // адрес спрятан только под «Ссылка на смету …»; «бесплатно», «-» — просто пометки
   });
   if (!need.length) return out;
+  info.hidden = need.length;
   const needSet = {};
   need.forEach(i => { needSet[i] = true; });
   const groups = [];
@@ -1587,9 +1596,13 @@ function estimateUrlsFor_(sh, idxs, values) {
         if (url) got[groups[gi][0] + k] = url;
       }));
       need.forEach(i => { if (got[i]) out[i] = got[i]; });
+      info.via = 'Sheets API';
       return out;
-    } catch (e) { /* сервис не ответил — читаем по-старому */ }
+    } catch (e) { info.apiError = e.message; /* сервис не ответил — читаем по-старому */ }
+  } else {
+    info.apiError = 'сервис Google Sheets API не включён в Apps Script';
   }
+  info.via = 'медленный способ';
   groups.forEach(([a, b]) => {
     const rich = sh.getRange(a + 2, COL.ESTIMATE, b - a + 1, 1).getRichTextValues();
     for (let i = a; i <= b; i++) { const u = estimateUrl_(rich[i - a][0], values[i][COL.ESTIMATE - 1]); if (isUrlText_(u) && needSet[i]) out[i] = u; }

@@ -67,7 +67,11 @@
 
   function render(d) {
     const bad = new Set(d.issues.filter(x => x.kind !== 'extra').map(x => x.row));
-    let html = `<p class="small muted" style="margin:10px 0 0"><b>${esc(d.label)}</b>${d.seconds != null ? ` · посчитано за ${d.seconds} с` : ''}</p><div class="tiles">
+    const tm = d.timing || {};
+    let html = `<p class="small muted" style="margin:10px 0 0"><b>${esc(d.label)}</b>${d.seconds != null ? ` · посчитано за ${d.seconds} с` : ''}${d.waited != null ? ` · окно ждало ${d.waited} с` : ''}</p>` +
+      (tm.read != null ? `<p class="small muted" style="margin:2px 0 0">таблица (${tm.rows} строк): ${tm.read} с · ссылки на сметы: ${tm.links} с, ${esc(tm.via)}` +
+        (tm.hidden ? ` — ссылок под текстом: ${tm.hidden}` : '') + (tm.apiError ? ` (API: ${esc(tm.apiError)})` : '') + '</p>' : '') +
+      (tm.hidden ? '<p class="hint" style="margin-top:6px">Часть ссылок на сметы спрятана под текстом «Ссылка на смету …» — их читать дольше. Один раз нажмите «⚙️ Настройки → 🔗 Ссылки на сметы — адресами».</p>' : '') + `<div class="tiles">
       <div class="tile"><div class="num">${d.count}</div><div class="lbl">задач</div></div>
       <div class="tile"><div class="num">${d.withMoney}</div><div class="lbl">с суммой</div></div>
       <div class="tile"><div class="num">${esc(d.sumText)}</div><div class="lbl">₽ с НДС</div></div></div>`;
@@ -92,9 +96,9 @@
   }
 
   // Пока считает — видно, сколько секунд прошло; через минуту — подсказка, где смотреть ошибку
-  let timer = null;
+  let timer = null, startedAt = 0;
   function waiting() {
-    const t0 = Date.now();
+    const t0 = startedAt = Date.now();
     clearInterval(timer);
     const tick = () => {
       const sec = Math.round((Date.now() - t0) / 1000);
@@ -113,6 +117,7 @@
       clearInterval(timer);
       if (!d || !d.rows) throw new Error('таблица вернула пустой ответ — обновите страницу таблицы (F5) и попробуйте ещё раз');
       last = d;
+      d.waited = Math.round((Date.now() - startedAt) / 100) / 10;
       render(d);
       $('#excelBtn').disabled = $('#copyBtn').disabled = false;
     }).catch(e => { clearInterval(timer); $('#results').innerHTML = ''; setMsg($('#msg'), 'Не получилось: ' + (e && e.message || e), 'err'); })
