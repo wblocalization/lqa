@@ -1,5 +1,5 @@
 // Вкладка «Новая задача»: то же, что окно «➕ Добавить задачу» в таблице, только без захода в таблицу.
-import { settings, isConfigured, api, esc, readClipboard, getLists } from './core.js';
+import { settings, isConfigured, api, esc, readClipboard, getLists, autoDeadline, setLink } from './core.js';
 import { makeLinkList } from './links.js';
 
 const $ = (s) => document.querySelector(s);
@@ -16,8 +16,9 @@ const els = {
   total: $('#tTotal'), sp: $('#tSp'), comment: $('#tComment'), complaints: $('#tComplaints'),
   preview: $('#tPreview'), copyPreview: $('#tCopyPreview'), submit: $('#tSubmit'), msg: $('#tMsg'),
   tplChips: $('#tTplChips'), suggest: $('#tSuggest'), suggestText: $('#tSuggestText'), suggestApply: $('#tSuggestApply'),
-  suggestClose: $('#tSuggestClose'), similar: $('#taskSimilar'), tplIoMsg: $('#tTplIoMsg'),
+  suggestClose: $('#tSuggestClose'), similar: $('#taskSimilar'), tplIoMsg: $('#tTplIoMsg'), openRow: $('#taskOpenRow'),
 };
+autoDeadline(els.deadline, els.exactDeadline, els.date);
 
 let lists = null;       // справочники из таблицы
 let nextId = '';        // номер, который получит задача (подсказка)
@@ -494,6 +495,7 @@ els.form.addEventListener('submit', async (e) => {
     lastSubject = buildSubject(r.id);
     els.doneId.textContent = r.id;
     els.doneSubject.textContent = lastSubject;
+    setLink(els.openRow, r.url);
     els.form.hidden = true;
     els.done.hidden = false;
     setMsg('');

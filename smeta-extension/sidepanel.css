@@ -27,9 +27,11 @@
   --err-soft: #FFEFF6;
   --shadow: 0 4px 14px rgb(42 33 64 / .06);
   --glow: 0 6px 16px rgb(139 92 246 / .3);
+  color-scheme: light; /* календарь и списки — в цвет темы */
 }
+/* Тёмная — как в системе или кнопкой ☀/☾ в шапке (data-theme на <html>) */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #17131F;
     --card: #1E1829;
     --soft: #251E37;
@@ -48,7 +50,29 @@
     --err-soft: #331A26;
     --shadow: 0 4px 14px rgb(0 0 0 / .25);
     --glow: 0 6px 16px rgb(167 139 250 / .25);
+  color-scheme: dark;
   }
+}
+:root[data-theme="dark"] {
+  --bg: #17131F;
+  --card: #1E1829;
+  --soft: #251E37;
+  --ink: #EEE9FA;
+  --ink-soft: #A79DC0;
+  --line: #362C4D;
+  --accent: #A78BFA;
+  --accent-2: #F472B6;
+  --accent-soft: #2B2244;
+  --on-accent: #FFFFFF;
+  --ok: #4ADE80;
+  --ok-soft: #17271D;
+  --warn: #FBBF24;
+  --warn-soft: #2A2316;
+  --err: #FB7185;
+  --err-soft: #331A26;
+  --shadow: 0 4px 14px rgb(0 0 0 / .25);
+  --glow: 0 6px 16px rgb(167 139 250 / .25);
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -78,6 +102,15 @@ h1, h2 { margin: 0; }
   display: grid; place-items: center; width: 32px; height: 32px; padding: 0;
   border: none; border-radius: 8px; background: transparent; color: var(--ink-soft); cursor: pointer;
 }
+/* Кнопка темы: в светлой — луна (включить тёмную), в тёмной — солнце */
+#themeBtn .i-sun { display: none; }
+:root[data-theme="dark"] #themeBtn .i-sun { display: block; }
+:root[data-theme="dark"] #themeBtn .i-moon { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) #themeBtn .i-sun { display: block; }
+  :root:not([data-theme="light"]) #themeBtn .i-moon { display: none; }
+}
+a.icon-btn, a.btn { text-decoration: none; text-align: center; }
 .icon-btn:hover { background: var(--soft); color: var(--ink); }
 .icon-btn.small { width: 26px; height: 26px; font-size: 12px; }
 
@@ -296,7 +329,9 @@ form { display: flex; flex-direction: column; gap: 16px; }
 .edit-head b { font-size: 15px; }
 
 /* Узкая панель: вкладки чуть мельче, чтобы не залезать под шестерёнку */
-.top { gap: 6px; }
+.top { gap: 2px; padding-right: 8px; }
+.top .icon-btn { width: 28px; height: 28px; flex: none; }
+.tab { padding: 6px 4px; }
 .tab { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 370px) {
   .tab { padding: 6px 5px; font-size: 12.5px; }

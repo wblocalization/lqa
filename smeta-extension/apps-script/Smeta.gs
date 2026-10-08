@@ -146,7 +146,7 @@ function smetaWrite_(req) {
     }
   }
 
-  return { ok: true, row: t.row, was: req.overwrite ? oldTotal : '' };
+  return { ok: true, row: t.row, url: tableUrl_(t.row), was: req.overwrite ? oldTotal : '' };
 }
 
 /** 102641.64 → «102 641,64»; доли копейки не прячем: 110929.155 → «110 929,155». */
@@ -229,7 +229,15 @@ function requireTableScript_() {
 /** Справочники для формы: подрядчики, продукты, языки и т. д. — те же, что в окне в таблице. */
 function taskForm_() {
   requireTableScript_();
-  return { ok: true, lists: getAddTaskFormLists() };
+  const lists = getAddTaskFormLists();
+  lists.tableUrl = tableUrl_(); // кнопка «Таблица ↗» в расширении
+  return { ok: true, lists: lists };
+}
+
+/** Адрес листа задач; row — сразу на нужную строку. */
+function tableUrl_(row) {
+  const url = SpreadsheetApp.getActive().getUrl().replace(/#.*$/, '') + '#gid=' + getTasksSheet().getSheetId();
+  return row ? url + '&range=A' + row : url;
 }
 
 /** Какой номер получит задача у этого подрядчика (подсказка; настоящий выдаётся при добавлении). */
@@ -262,7 +270,8 @@ function addTask_(req) {
     if (u && !/^https?:\/\//i.test(u)) throw new Error('Ссылка должна начинаться с http: ' + u);
   });
 
-  return { ok: true, id: submitNewTaskFromDialog(task) };
+  const id = submitNewTaskFromDialog(task);
+  return { ok: true, id: id, url: tableUrl_(2) }; // новая задача — всегда вторая строка, под шапкой
 }
 
 /** Быстрая смена статуса из вкладки «Мои задачи». */

@@ -1,6 +1,6 @@
 import * as pdfjs from './vendor/pdf.min.mjs';
 import { parseEstimate, formatMoney, linesFromItems } from './parser.js';
-import { settings, isConfigured, api, esc, readClipboard, DEFAULT_DISK_FOLDER } from './core.js';
+import { settings, isConfigured, api, esc, readClipboard, DEFAULT_DISK_FOLDER, setLink } from './core.js';
 import { uploadToDisk, listDiskPdfs, folderNameFromSubject } from './disk.js';
 
 pdfjs.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('vendor/pdf.worker.min.mjs');
@@ -13,7 +13,7 @@ const els = {
   link: $('#link'), pasteLink: $('#pasteLink'), submit: $('#submit'), status: $('#status'), diskHint: $('#diskHint'),
   folder: $('#folder'), folderCard: $('#folderCard'), doneTitle: $('#doneTitle'), doneLinkBox: $('#doneLinkBox'),
   doneLink: $('#doneLink'), copyLink: $('#copyLink'), copyTotal: $('#copyTotal'),
-  doneTotalBox: $('#doneTotalBox'), doneTotal: $('#doneTotal'), copyDoneTotal: $('#copyDoneTotal'),
+  doneTotalBox: $('#doneTotalBox'), doneTotal: $('#doneTotal'), copyDoneTotal: $('#copyDoneTotal'), openRow: $('#doneOpenRow'),
 };
 
 // { file, fileName, subject, filled, oldTotal, version, found } — смета, которая сейчас в форме.
@@ -258,7 +258,7 @@ els.form.addEventListener('submit', async (e) => {
     if (!r.ok) throw new Error(r.error);
     const was = r.was !== '' && r.was != null && Number.isFinite(Number(r.was)) && Number(r.was) !== total
       ? ` (было ${formatMoney(Number(r.was))} ₽ — осталось в заметке к ячейке)` : '';
-    showDone('Записано', `${task} · ${formatMoney(total)} ₽${was} и ссылка в строке ${r.row}${where}`, link);
+    showDone('Записано', `${task} · ${formatMoney(total)} ₽${was} и ссылка в строке ${r.row}${where}`, link, r.url);
   } catch (err) {
     setStatus(`Не получилось: ${err.message}`, 'err');
   } finally {
@@ -299,7 +299,7 @@ async function uploadOnly(task) {
   }
 }
 
-function showDone(title, text, link) {
+function showDone(title, text, link, rowUrl) {
   const total = parseTotal(els.total.value);
   els.doneTitle.textContent = title;
   els.doneText.textContent = text;
@@ -308,6 +308,7 @@ function showDone(title, text, link) {
   els.doneTotal.value = total > 0 ? formatMoney(total) : '';
   els.doneTotalBox.hidden = !(total > 0);
   els.copyLink.textContent = 'Скопировать ссылку';
+  setLink(els.openRow, rowUrl);
   els.copyDoneTotal.textContent = 'Скопировать сумму';
   setStatus('');
   current = null;

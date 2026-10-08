@@ -24,14 +24,14 @@
       <div class="field">Языки<div id="f_langs"></div></div>
 
       <details class="more">
-        <summary>Задача: тема, ссылки, тикет, дата, продукт, ник</summary>
+        <summary>Задача: тема, ссылки, тикет, дата получения, продукт, ник</summary>
         <div class="stack">
           <label class="field">Тема письма<input type="text" id="f_subject"></label>
           <label class="field">Ссылка на Band<input type="url" id="f_link"></label>
           <div class="field">Ещё ссылки на Band<div id="f_link2"></div></div>
           <div class="two">
-            <label class="field">Тикет<input type="text" id="f_ticket" placeholder="LOCAL-1234"></label>
-            <label class="field">Дата<input type="date" id="f_date"></label>
+            <label class="field">Тикет в трекере<input type="text" id="f_ticket" placeholder="LOCAL-1234"></label>
+            <label class="field">Дата получения<input type="date" id="f_date"></label>
           </div>
           <label class="field">Продукт<select id="f_product"></select></label>
           <label class="field">Ник заказчика<input type="text" id="f_customer"></label>
@@ -186,6 +186,7 @@
       search($('#q').value);
     }).catch(e => setMsg($('#msg'), 'Не удалилось: ' + e.message, 'err'));
   });
+  autoDeadline($('#f_deadline'), $('#f_exactDeadline'), $('#f_date'));
 </script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 // Боковая панель: вкладки «Новая задача» / «Мои задачи» / «Смета» и общие настройки.
-import { settings, loadSettings, saveSettings, isConfigured, api, esc, DEFAULT_DISK_FOLDER } from './core.js';
+import { settings, loadSettings, saveSettings, isConfigured, api, esc, DEFAULT_DISK_FOLDER, setLink, getLists } from './core.js';
 import * as smeta from './smeta.js';
 import * as task from './task.js';
 import * as mine from './mine.js';
@@ -88,10 +88,31 @@ els.saveSettings.addEventListener('click', async () => {
   if (els.setManager.value) Object.assign(patch, { manager: els.setManager.value, user: els.setManager.value });
   await saveSettings(patch);
   els.settings.hidden = true;
+  showTableLink();
   smeta.onSettingsSaved();
   task.onSettingsSaved();
   mine.loadMine();
 });
+
+// ---------- Тема: светлая / тёмная ----------
+// Пока не нажимали — как в системе. theme.js ставит выбранную ещё до отрисовки.
+const dark = () => document.documentElement.dataset.theme === 'dark' ||
+  (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches);
+$('#themeBtn').addEventListener('click', () => {
+  const next = dark() ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem('theme', next); } catch { /* на этот раз */ }
+});
+
+// ---------- Кнопка «Таблица ↗» ----------
+// Адрес листа задач приходит со справочниками (старый скрипт его не присылает — тогда кнопки нет).
+async function showTableLink() {
+  const key = `lists:${settings.url}`;
+  let lists = null;
+  try { lists = (await chrome.storage.local.get(key))[key]; } catch { /* нет — без кнопки */ }
+  setLink($('#openTable'), lists && lists.tableUrl);
+}
+chrome.storage.onChanged.addListener((changes) => { if (changes[`lists:${settings.url}`]) showTableLink(); });
 
 // Высота шапки — чтобы тема письма прилипала точно под ней
 const head = document.querySelector('.top');
@@ -100,6 +121,7 @@ setHeadH();
 window.addEventListener('resize', setHeadH);
 
 await loadSettings();
+showTableLink();
 if (!isConfigured() || !settings.manager) {
   fillSettings();
   els.settings.hidden = false;
@@ -107,3 +129,5 @@ if (!isConfigured() || !settings.manager) {
 let startTab = 'task';
 try { startTab = localStorage.getItem('tab') || 'task'; } catch { /* по умолчанию «Новая задача» */ }
 showTab(['smeta', 'mine'].includes(startTab) ? startTab : 'task');
+// Вкладка «Новая задача» и так грузит справочники; с других — подтянем их в фоне ради кнопки «Таблица ↗»
+if (isConfigured() && startTab !== 'task') getLists().catch(() => {});

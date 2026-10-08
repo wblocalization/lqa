@@ -310,10 +310,10 @@ test('Расширение (Smeta.gs): добавить задачу и запи
   tasks().getRange(r, 11).setValue('https://disk/hand');
   G.onEdit({ range: tasks().getRange(r, 11), source: ss, oldValue: 'Смета', value: 'https://disk/hand' });
   same([tasks().getRange(r, 11).getValue(), G.getTaskForEdit(r).estimateLink], ['https://disk/hand', 'https://disk/hand']);
-  // Прежний вид («Ссылка на смету …», «Смета [номер]» — адрес под текстом) переделывается в адрес из меню
+  // Прежний вид («Ссылка на смету …», «Смета [номер]» — адрес под текстом) переделывается в адрес («Оформить таблицу»)
   tasks().getRange(r, 11).setRichTextValue(new RichBuilder().setText('Ссылка на смету ' + add.id).setLinkUrl('https://disk/old').build());
   const other = r + 1, otherWas = tasks().getRange(other, 11).getValue();
-  G.convertEstimateLabelsToUrls();
+  G.estimateLabelsToUrls_(tasks());
   same([tasks().getRange(r, 11).getValue(), G.getTaskForEdit(r).estimateLink], ['https://disk/old', 'https://disk/old']);
   assert.equal(tasks().getRange(other, 11).getValue(), otherWas, 'остальные ячейки не тронуты');
   tasks().getRange(r, 11).setRichTextValue(new RichBuilder().setText('Смета [' + add.id + ']').setLinkUrl('https://disk/old2').build());
@@ -397,6 +397,44 @@ test('Правка прямо в листе: цветные языки, нова
   sh.getRange(r, 13).setValue('LogrusIT');
   G.onEdit({ range: sh.getRange(r, 13), value: 'LogrusIT' });
   assert.match(String(sh.getRange(r, 1).getValue()), /^LIT-26-\d+$/);
+
+  // Пока ждали очереди за номером, сверху добавили задачу — номер уходит в сдвинутую строку, а не в чужую
+  const r2 = sh.getLastRow() + 1;
+  sh.getRange(r2, 3).setValue('Ещё руками');
+  sh.getRange(r2, 13).setValue('LogrusIT');
+  const realLock = ctx.LockService;
+  let top = '';
+  ctx.LockService = { getScriptLock: () => ({ waitLock() {
+    ctx.LockService = realLock; // пока мы ждём, коллега добавляет задачу через расширение
+    top = G.submitNewTaskFromDialog({ contractor: 'LogrusIT', subject: 'Сверху', languages: [] });
+    realLock.getScriptLock().waitLock();
+  }, releaseLock() { realLock.getScriptLock().releaseLock(); } }) };
+  G.onEdit({ range: sh.getRange(r2, 13), value: 'LogrusIT' });
+  ctx.LockService = realLock;
+  same([sh.getRange(r2 + 1, 3).getValue(), sh.getRange(r2, 3).getValue()], ['Ещё руками', 'Задача руками']);
+  assert.match(String(sh.getRange(r2 + 1, 1).getValue()), /^LIT-26-\d+$/);
+  assert.notEqual(sh.getRange(r2 + 1, 1).getValue(), top, 'номера разные');
+  assert.notEqual(sh.getRange(r2, 1).getValue(), sh.getRange(r2 + 1, 1).getValue(), 'чужой номер не перезаписан');
+
+  // Дедлайн сам из срока сдачи: от даты получения
+  sh.getRange(r, 4).setValue(new CDate(2026, 9, 1));
+  sh.getRange(r, 9).setValue(new CDate(2026, 9, 6));
+  G.onEdit({ range: sh.getRange(r, 9) });
+  assert.equal(sh.getRange(r, 8).getValue(), 'До недели');
+  sh.getRange(r, 9).setValue(new CDate(2026, 9, 2));
+  G.onEdit({ range: sh.getRange(r, 9) });
+  assert.equal(sh.getRange(r, 8).getValue(), '1-2 дня');
+  sh.getRange(r, 4).setValue(new CDate(2026, 8, 1));
+  G.onEdit({ range: sh.getRange(r, 4) });
+  assert.equal(sh.getRange(r, 8).getValue(), 'Месяц и больше');
+  sh.getRange(r, 8).setValue('Холд'); // «Холд» руками — не перебиваем
+  sh.getRange(r, 9).setValue(new CDate(2026, 8, 1));
+  G.onEdit({ range: sh.getRange(r, 9) });
+  assert.equal(sh.getRange(r, 8).getValue(), 'Холд');
+  const auto = G.submitNewTaskFromDialog({ contractor: 'LogrusIT', subject: 'С дедлайном', date: '2026-10-01', exactDeadline: '2026-10-01', languages: [] });
+  assert.equal(sh.getRange(rowOf(auto), 8).getValue(), 'ASAP');
+  const manual = G.submitNewTaskFromDialog({ contractor: 'LogrusIT', subject: 'Свой дедлайн', date: '2026-10-01', exactDeadline: '2026-10-01', deadline: 'До недели', languages: [] });
+  assert.equal(sh.getRange(rowOf(manual), 8).getValue(), 'До недели');
 
   // Переводчики
   const t = tr(); const tr2 = t.getLastRow() + 1;
@@ -627,7 +665,7 @@ if (process.env.GUIDE_HTML) {
 test('Суммы смет: без округления, прежняя сумма — в заметке', () => {
   same([G.rub_(102641.64), G.rub_(1220.005), G.rub_(0.1 + 0.2), G.rub_('1 000 ₽')], ['102 641,64', '1 220,005', '0,30', '1 000 ₽']);
   const call = b => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify({ token: 'T', ...b }) } }));
-  const id = G.submitNewTaskFromDialog({ contractor: 'LogrusIT', subject: 'Сверка 1', manager: 'Тест Сверка', date: '2026-09-15', languages: ['Грузинский'] });
+  const id = G.submitNewTaskFromDialog({ contractor: 'LogrusIT', subject: 'Сумма 1', manager: 'Тест Сумма', date: '2026-09-15', languages: ['Грузинский'] });
   const r = () => rowOf(id), cell = () => tasks().getRange(r(), 12);
   assert.ok(call({ action: 'write', task: id, total: 102641.64, link: 'https://disk/a' }).ok);
   same([cell().getValue(), cell().getNumberFormat(), cell().getNote()], [102641.64, '#,##0.00', '']);
@@ -649,51 +687,6 @@ test('Суммы смет: без округления, прежняя сумм�
   assert.match(cell().getNote(), /сумма изменена вручную: было 1 220,005 ₽ → стало 1 000,00 ₽$/);
   G.saveTaskEdits({ ...G.getTaskForEdit(r()), comment: 'без смены суммы' });
   assert.match(cell().getNote(), /стало 1 000,00 ₽$/);
-});
-
-test('Сверка с подрядчиками: лист на формулах и выгрузка в Excel', () => {
-  G.openReconcileSheet();
-  const sh = ss.getSheetByName('💰 Сверка');
-  assert.ok(sh, 'лист создан');
-  assert.equal(ss.active, sh, 'лист открыт');
-  // Фильтры: год и месяц — текущие, подрядчик и менеджер — «Все»; выпадающие списки
-  const now = new CDate();
-  same(sh.getRange('A5:D5').getValues()[0], [now.getFullYear(), ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'][now.getMonth()], 'Все', 'Все']);
-  ['A5', 'B5', 'C5', 'D5'].forEach(a => assert.ok(sh.getRange(a).getDataValidation(), 'нет списка в ' + a));
-  same(sh.getRange(8, 1, 1, 10).getValues()[0], ['№ задачи', 'Дата', 'Тема письма', 'Языки', 'Менеджер', 'Подрядчик', 'Статус', 'Смета', 'Итого с НДС, ₽', 'Проверить']);
-  // Выбранные фильтры не сбрасываются при повторном открытии
-  sh.getRange('A5:D5').setValues([[2026, 'Сентябрь', 'LogrusIT', 'Все']]);
-  G.openReconcileSheet();
-  same(sh.getRange('A5:D5').getValues()[0], [2026, 'Сентябрь', 'LogrusIT', 'Все']);
-  // Excel: берём то, что посчитал лист (в тесте формулы не считаются — кладём значения сами)
-  const d1 = new CDate(2026, 8, 15), d2 = new CDate(2026, 8, 20);
-  sh.getRange(9, 1, 3, 10).setValues([
-    ['LIT-26-1', d1, 'Тема 1', 'Казахский', 'Анастасия Лисовая', 'LogrusIT', 'Отдано', 'https://disk/a', 1000.005, ''],
-    ['LIT-26-2', d2, 'Тема 2', 'Грузинский', 'Анастасия Лисовая', 'LogrusIT', 'В работе', 'https://disk/b', '', 'смета есть, суммы нет'],
-    ['LIT-26-3', d2, 'Тема 3', 'Армянский', 'Ольга Шешина', 'LogrusIT', 'Отдано', 'бесплатно', 0.2, ''],
-  ]);
-  const n0 = calls.created.length;
-  assert.match(G.exportReconcileSheetToExcel(), /export\?format=xlsx/);
-  const book = calls.created[n0];
-  assert.match(book.title, /Сверка — LogrusIT · все менеджеры · сентябрь 2026/);
-  const x = book.getSheetByName('Сверка');
-  same(x.getRange(1, 1, 1, 10).getValues()[0], ['№ задачи', 'Дата', 'Тема письма', 'Языки', 'Менеджер', 'Подрядчик', 'Статус', 'Смета', 'Итого с НДС, ₽', 'Проверить']);
-  same(x.getRange(2, 1, 3, 1).getValues().map(r => r[0]), ['LIT-26-1', 'LIT-26-2', 'LIT-26-3']);
-  same([x.getRange(2, 8).getValue(), x.getRange(2, 9).getValue(), x.getRange(3, 10).getValue()], ['https://disk/a', 1000.005, 'смета есть, суммы нет']);
-  assert.equal(x.getRange(5, 8).getValue(), 'ИТОГО (по видимым строкам)');
-  // Формулы листа: фильтр по листу задач, проверка и итоги
-  const f = sh.getRange(9, 1).getFormula();
-  assert.match(f, /^=IFERROR\(SORT\(FILTER\(\{'📌 Задачи \(менеджеры\)'!A2:A,'📌 Задачи \(менеджеры\)'!D2:D,/);
-  assert.match(f, /\(\$C\$5="Все"\)\+\('📌 Задачи \(менеджеры\)'!M2:M=\$C\$5\)/);
-  assert.match(sh.getRange(9, 10).getFormula(), /^=ARRAYFORMULA\(IF\(A9:A="",,TRIM\(/);
-  same(['F5', 'G5', 'H5'].map(a => sh.getRange(a).getFormula()), ['=IFERROR(COUNTA(UNIQUE(FILTER(A9:A,A9:A<>""))),0)', '=COUNT(I9:I)', '=SUM(I9:I)']);
-  // Скобки в формулах сходятся
-  [f, sh.getRange(9, 10).getFormula(), sh.getRange('L2').getFormula()].forEach(x => {
-    const t = x.replace(/"[^"]*"/g, '');
-    assert.equal((t.match(/\(/g) || []).length, (t.match(/\)/g) || []).length, x);
-    assert.equal((t.match(/\{/g) || []).length, (t.match(/\}/g) || []).length, x);
-  });
-  assert.ok(sh.hidden && sh.hidden.some(h => h[0] === 12), 'служебные колонки спрятаны');
 });
 
 test('Журнал больше не пишется', () => {

@@ -1,5 +1,5 @@
 // Правка задачи из расширения: то же, что «Поиск и правка» в таблице.
-import { api, esc, getLists } from './core.js';
+import { api, esc, getLists, autoDeadline } from './core.js';
 import { makeLinkList } from './links.js';
 
 const $ = (s) => document.querySelector(s);
@@ -11,6 +11,7 @@ const els = {
   contractor: $('#eContractor'), manager: $('#eManager'), estimateLink: $('#eEstimateLink'),
   total: $('#eTotal'), sp: $('#eSp'), comment: $('#eComment'), complaints: $('#eComplaints'), save: $('#eSave'), del: $('#eDelete'), msg: $('#eMsg'), top: $('#eTop'),
 };
+autoDeadline(els.deadline, els.exactDeadline, els.date);
 
 let lists = null;    // справочники из таблицы — один раз
 let current = null;  // задача, как её отдала таблица (row, id, origSubject — чтобы найти строку при сохранении)

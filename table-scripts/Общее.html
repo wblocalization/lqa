@@ -155,6 +155,26 @@
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
 
+  // Дедлайн из срока сдачи: сколько дней от даты получения (нет — от сегодня). Так же считает таблица (Код.gs).
+  const DEADLINE_STEPS = [[0, 'ASAP'], [2, '1-2 дня'], [7, 'До недели'], [29, 'Больше недели'], [Infinity, 'Месяц и больше']];
+  function deadlineFor(dueIso, dateIso, options, current) {
+    if (!dueIso || current === 'Холд') return '';
+    const day = s => { const p = s.split('-').map(Number); return Date.UTC(p[0], p[1] - 1, p[2]) / 864e5; };
+    const days = Math.round(day(dueIso) - day(dateIso || todayIso()));
+    const label = DEADLINE_STEPS.find(st => days <= st[0])[1].toLowerCase();
+    return options.find(v => v.toLowerCase() === label) || '';
+  }
+
+  /** Поставили срок сдачи или дату получения — дедлайн выбирается сам (его можно поменять руками). */
+  function autoDeadline(select, due, date) {
+    const update = () => {
+      const v = deadlineFor(due.value, date.value, [...select.options].map(o => o.value), select.value);
+      if (v) select.value = v;
+    };
+    due.addEventListener('change', update);
+    date.addEventListener('change', update);
+  }
+
   function money(x) {
     return Number(x || 0).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
   }

@@ -95,3 +95,33 @@ export function esc(s) {
 export async function readClipboard() {
   return (await navigator.clipboard.readText()).trim();
 }
+
+// ---------- Дедлайн из срока сдачи ----------
+// Сколько дней от даты получения (нет — от сегодня) до срока сдачи. Так же считает таблица (Код.gs).
+const DEADLINE_STEPS = [[0, 'ASAP'], [2, '1-2 дня'], [7, 'До недели'], [29, 'Больше недели'], [Infinity, 'Месяц и больше']];
+
+export function deadlineFor(dueIso, dateIso, options, current) {
+  if (!dueIso || current === 'Холд') return '';
+  const day = (s) => { const [y, m, d] = s.split('-').map(Number); return Date.UTC(y, m - 1, d) / 864e5; };
+  const now = new Date();
+  const todayIso = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+  const days = Math.round(day(dueIso) - day(dateIso || todayIso));
+  const label = DEADLINE_STEPS.find(([max]) => days <= max)[1].toLowerCase();
+  return options.find((v) => v.toLowerCase() === label) || '';
+}
+
+/** Поставили срок сдачи или дату получения — дедлайн выбирается сам (его можно поменять руками). */
+export function autoDeadline(select, due, date) {
+  const update = () => {
+    const v = deadlineFor(due.value, date.value, [...select.options].map((o) => o.value), select.value);
+    if (v) select.value = v;
+  };
+  due.addEventListener('change', update);
+  date.addEventListener('change', update);
+}
+
+/** Ссылка «Открыть в таблице»: показать, если адрес есть (старый скрипт его не присылает). */
+export function setLink(a, url) {
+  a.href = url || '#';
+  a.hidden = !url;
+}

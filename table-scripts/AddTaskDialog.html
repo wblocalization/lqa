@@ -36,22 +36,22 @@
 
     <div class="two">
       <label class="field"><span>Подрядчик <span class="req">*</span></span><select id="contractor"></select></label>
-      <label class="field">Тикет
+      <label class="field">Тикет в трекере
         <span class="prefixed"><span>LOCAL-</span><input type="text" id="ticketNum" inputmode="numeric" placeholder="1234"></span>
       </label>
     </div>
 
-    <label class="field"><span>Тема <span class="req">*</span></span><input type="text" id="subject" placeholder="Только суть — номер и коды добавятся сами"><span class="small muted" style="font-weight:400">Напишите в конце «от» — подставится дата из поля «Дата»: «Новые строки от» → «Новые строки от ДД.ММ»</span></label>
+    <label class="field"><span>Тема <span class="req">*</span></span><input type="text" id="subject" placeholder="Только суть — номер и коды добавятся сами"><span class="small muted" style="font-weight:400">Напишите в конце «от» — подставится дата из поля «Дата получения»: «Новые строки от» → «Новые строки от ДД.ММ»</span></label>
     <label class="field">Ссылка на Band<input type="url" id="link" placeholder="https://band.wb.ru/…"></label>
     <div class="field">Ещё ссылки на Band <span class="muted" style="font-weight:400">если переписок несколько</span>
       <div id="link2"></div></div>
 
     <div class="two">
       <label class="field">Продукт<select id="product"></select></label>
-      <label class="field">Дата<input type="date" id="date"></label>
+      <label class="field">Дата получения<input type="date" id="date"></label>
     </div>
     <div class="two">
-      <label class="field">Дедлайн<select id="deadline"></select></label>
+      <label class="field">Дедлайн <span class="muted" style="font-weight:400">сам по сроку</span><select id="deadline"></select></label>
       <label class="field">Срок сдачи<input type="date" id="exactDeadline"></label>
     </div>
     <label class="field">Ник заказчика<input type="text" id="customer" placeholder="@nick"></label>
@@ -291,6 +291,7 @@
       btn.disabled = false; btn.textContent = 'Добавить задачу';
     });
   });
+  autoDeadline($('#deadline'), $('#exactDeadline'), $('#date'));
 </script>
 </body>
 </html>
