@@ -104,6 +104,7 @@ els.saveSettings.addEventListener('click', async () => {
 // Статус — цветом: выбрали другой — цвет сменился сразу
 document.addEventListener('change', (e) => {
   if (e.target.matches && e.target.matches('select.status-sel')) e.target.dataset.status = e.target.value;
+  if (e.target.matches && e.target.matches('select.delivery-sel')) e.target.dataset.delivery = e.target.value;
 });
 
 // ---------- Тема: светлая / тёмная ----------

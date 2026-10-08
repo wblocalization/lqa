@@ -788,6 +788,12 @@ test('Расширение: отчёты, сверка, Excel и письма', 
   });
   assert.match(calls.fetched[0][0], /export\?format=xlsx/);
   assert.equal(calls.fetched[0][1].headers.Authorization, 'Bearer tok');
+  // Статус отдачи — из «Мои задачи»
+  const mt = call({ action: 'myTasks', manager: 'Анастасия Лисовая', filter: 'all' });
+  assert.ok(mt.deliveryStatuses.length && 'delivery' in mt.tasks[0]);
+  const t0 = mt.tasks[0];
+  assert.ok(call({ action: 'setDelivery', row: t0.row, id: t0.id, origSubject: t0.subject, value: 'Отдано в срок' }).ok);
+  assert.equal(tasks().getRange(rowOf(t0.id), 15).getValue(), 'Отдано в срок');
   // Письма: включить/выключить, своя почта, «прислать мне»
   // Без разрешения на расписания — раздел всё равно открывается
   const realTriggers = ctx.ScriptApp.getProjectTriggers;

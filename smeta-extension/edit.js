@@ -110,6 +110,7 @@ function fill(t) {
   fillSelect(els.status, lists.statuses, t.status);
   els.status.dataset.status = els.status.value;
   fillSelect(els.deliveryStatus, lists.deliveryStatuses, t.deliveryStatus);
+  els.deliveryStatus.dataset.delivery = els.deliveryStatus.value;
   fillSelect(els.contractor, lists.contractors, t.contractor);
   fillSelect(els.manager, lists.managers, t.manager);
   renderLangs(String(t.languages || '').split(',').map((s) => s.trim()).filter(Boolean));

@@ -79,6 +79,7 @@ function doPost(e) {
     if (req.action === 'addTask') return smetaJson_(addTask_(req));
     if (req.action === 'setStatus') return smetaJson_(setStatus_(req));
     if (req.action === 'saveTask') return smetaJson_(saveTask_(req));
+    if (req.action === 'setDelivery') { requireTableScript_(); return smetaJson_(setTaskDelivery(req.row, req.id, req.origSubject, req.value)); }
     if (req.action === 'mailToggle') return smetaJson_(mailToggle_(req));
     if (req.action === 'mailEmail') return smetaJson_(mailEmail_(req));
     if (req.action === 'deleteTask') { requireTableScript_(); deleteTask(req.row, req.id, req.origSubject); return smetaJson_({ ok: true }); }

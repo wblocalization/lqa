@@ -113,8 +113,20 @@ function render() {
         <button class="btn ghost small" type="button" data-similar="${i}" title="Новая задача по образцу этой: тот же подрядчик, тикет, языки">＋ Ещё такую</button>
         <button class="btn ghost small" type="button" data-edit="${i}">Изменить</button>
       </div>
+      ${t.status === 'Отдано' ? deliveryRow(t, i) : ''}
     </div>`;
   }).join('');
+}
+
+/** «Статус отдачи» — под «Отдано»: вовремя ли отчитались перед заказчиком. */
+const DELIVERY_FALLBACK = ['Отдано в срок', 'Сообщили о просрочке', 'Не сообщили о просрочке'];
+function deliveryRow(t, i) {
+  const list = (data.deliveryStatuses && data.deliveryStatuses.length) ? data.deliveryStatuses : DELIVERY_FALLBACK;
+  return `<label class="delivery-row"><span>Статус отдачи</span>
+    <select data-d="${i}" class="delivery-sel" data-delivery="${esc(t.delivery || '')}" aria-label="Статус отдачи">
+      <option value="">— выберите —</option>
+      ${list.map((s) => `<option value="${esc(s)}"${s === t.delivery ? ' selected' : ''}>${esc(s)}</option>`).join('')}
+    </select></label>`;
 }
 
 // ---------- Правка ----------
@@ -250,6 +262,28 @@ els.filter.addEventListener('click', (e) => {
   renderFilter();
   loadMine();
 });
+// Статус отдачи — сразу в таблицу
+els.list.addEventListener('change', async (e) => {
+  const sel = e.target.closest('select[data-d]');
+  if (!sel) return;
+  const t = data.tasks[Number(sel.dataset.d)];
+  const prev = t.delivery || '';
+  t.delivery = sel.value;
+  sel.dataset.delivery = sel.value;
+  setMsg(`${t.id || 'Задача'}: «${sel.value || 'без статуса отдачи'}» — сохраняю…`);
+  try {
+    const r = await api({ action: 'setDelivery', row: t.row, id: t.id, origSubject: t.subject, value: sel.value });
+    if (!r.ok) throw new Error(/Неизвестное действие/.test(r.error || '') ? 'веб-приложение ещё старое: нужна новая версия развёртывания' : r.error);
+    saveCache();
+    setMsg(`${t.id || 'Задача'}: статус отдачи «${sel.value || '—'}» ✓`, 'ok');
+  } catch (err) {
+    t.delivery = prev;
+    sel.value = prev;
+    sel.dataset.delivery = prev;
+    setMsg(`${t.id || 'Задача'}: не сохранилось — ${err.message}`, 'err');
+  }
+});
+
 els.list.addEventListener('change', async (e) => {
   const sel = e.target.closest('select[data-i]');
   if (!sel) return;
@@ -257,7 +291,8 @@ els.list.addEventListener('change', async (e) => {
   const t = data.tasks[i];
   const prev = t.status;
   const status = sel.value;
-  const gone = !matches(filter, status);
+  // «Отдано» — карточка остаётся до обновления, чтобы сразу выбрать статус отдачи
+  const gone = !matches(filter, status) && status !== 'Отдано';
   const wasLate = t.overdue;
   t.status = status;
   recount(prev, status);

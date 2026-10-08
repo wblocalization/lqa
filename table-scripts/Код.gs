@@ -1314,7 +1314,7 @@ function getMyOpenTasks(manager, filter) {
     const date = r[COL.DATE - 1];
     tasks.push({
       row: i + 2, id: str_(r[COL.ID - 1]), subject: String(r[COL.SUBJECT - 1]), title: shortSubject_(r[COL.SUBJECT - 1]),
-      ticket: str_(r[COL.TICKET - 1]), status: status, deadline: str_(r[COL.DEADLINE - 1]),
+      ticket: str_(r[COL.TICKET - 1]), status: status, deadline: str_(r[COL.DEADLINE - 1]), delivery: str_(r[COL.DELIVERY - 1]),
       date: fmtDate_(date, 'dd.MM.yy'), due: fmtDate_(due, 'dd.MM'), overdue: late,
       dueToday: isOpen && dueTime !== null && dueTime >= today.getTime() && dueTime < today.getTime() + 86400000,
       sort: filter === 'open' ? (dueTime === null ? Infinity : dueTime) : -(date instanceof Date ? date.getTime() : 0)
@@ -1332,7 +1332,7 @@ function getMyOpenTasks(manager, filter) {
   const lists = getListsData();
   return { manager: manager, filter: filter, tasks: shown,
     more: filter === 'open' ? 0 : Math.max(0, tasks.length - MY_TASKS_LIMIT),
-    counts: counts, overdue: overdue, statuses: lists.statuses, managers: lists.managers };
+    counts: counts, overdue: overdue, statuses: lists.statuses, managers: lists.managers, deliveryStatuses: lists.deliveryStatuses };
 }
 
 /** Поменять только статус (быстрая кнопка в расширении). */
@@ -1342,6 +1342,16 @@ function setTaskStatus(row, id, origSubject, status) {
     const r = locateTaskRow_(sh, Number(row), str_(id), origSubject);
     const cell = sh.getRange(r, COL.STATUS);
     cell.setValue(str_(status));
+    return { ok: true, row: r };
+  });
+}
+
+/** «Статус отдачи заказчику» — рядом со статусом «Отдано» в расширении. */
+function setTaskDelivery(row, id, origSubject, value) {
+  return withScriptLock_(() => {
+    const sh = getTasksSheet();
+    const r = locateTaskRow_(sh, Number(row), str_(id), origSubject);
+    sh.getRange(r, COL.DELIVERY).setValue(str_(value));
     return { ok: true, row: r };
   });
 }
