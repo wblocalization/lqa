@@ -767,6 +767,45 @@ test('Окна переживают то, что делает Google: всё п�
   });
 });
 
+test('Расширение: отчёты, сверка, Excel и письма', () => {
+  const call = b => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify({ token: 'T', ...b }) } }));
+  const L = call({ action: 'reportLists' });
+  assert.ok(L.ok && L.managers.length && L.months.length && L.years.length && L.tickets.length && L.langs.length, JSON.stringify(L).slice(0, 200));
+  const mr = call({ action: 'managerReport', manager: 'Анастасия Лисовая', month: '', by: 'date' });
+  assert.ok(mr.ok && mr.groups.length && typeof mr.copyText === 'string');
+  const tr = call({ action: 'trackerReport', ticket: L.tickets[0] });
+  assert.ok(tr.ok && tr.count > 0 && /Задачи в Band/.test(tr.text));
+  const cr = call({ action: 'customReport', year: '2026', month: '', by: 'due' });
+  assert.ok(cr.ok && cr.totalTasks > 0 && /по дате закрытия/.test(cr.periodLabel));
+  const mp = call({ action: 'moneyPreview', opts: { month: '2026-09' } });
+  assert.ok(mp.ok && mp.lines > 0);
+  // Excel: файл скачивается в расширение, временный — в корзину
+  ['manager', 'custom', 'money'].forEach(kind => {
+    const n = (calls.trashed || []).length;
+    const x = call({ action: 'exportXlsx', kind, manager: 'Анастасия Лисовая', month: '', year: '2026', opts: { month: '2026-09' } });
+    assert.ok(x.ok && x.b64 === 'UEsDBA==' && /\.xlsx$/.test(x.name), kind + ' ' + JSON.stringify(x).slice(0, 200));
+    assert.equal(calls.trashed.length, n + 1);
+  });
+  assert.match(calls.fetched[0][0], /export\?format=xlsx/);
+  assert.equal(calls.fetched[0][1].headers.Authorization, 'Bearer tok');
+  // Письма: включить/выключить, своя почта, «прислать мне»
+  let st = call({ action: 'mailStatus', manager: 'Анастасия Лисовая' });
+  same([st.ok, st.known, st.weekly], [true, true, false]);
+  st = call({ action: 'mailToggle', kind: 'weekly', on: true, manager: 'Анастасия Лисовая' });
+  same([st.weekly, st.due], [true, false]);
+  st = call({ action: 'mailToggle', kind: 'weekly', on: false, manager: 'Анастасия Лисовая' });
+  assert.equal(st.weekly, false);
+  assert.match(call({ action: 'mailEmail', manager: 'Анастасия Лисовая', email: 'не почта' }).error, /Не похоже на почту/);
+  st = call({ action: 'mailEmail', manager: 'Анастасия Лисовая', email: 'nastya@wb.ru' });
+  assert.equal(st.email, 'nastya@wb.ru');
+  const before = calls.mail.length;
+  const t = call({ action: 'mailTest', kind: 'weekly', manager: 'Анастасия Лисовая' });
+  assert.ok(t.ok, JSON.stringify(t));
+  assert.ok(calls.mail.slice(before).every(m => m.to === 'nastya@wb.ru'), 'письмо только мне');
+  assert.equal(calls.mail.length - before, t.sent);
+  assert.match(call({ action: 'mailTest', kind: 'weekly', manager: '' }).error, /Кто вы/);
+});
+
 test('Журнал больше не пишется', () => {
   assert.equal(log() ? log().getLastRow() : 0, logRows0);
   assert.equal(typeof G.logChange, 'undefined');

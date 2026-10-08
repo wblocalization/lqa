@@ -1,14 +1,16 @@
-// Боковая панель: вкладки «Новая задача» / «Мои задачи» / «Смета» и общие настройки.
+// Боковая панель: внизу разделы «Задача» / «Мои» / «Смета» / «Отчёты» / «Письма», сверху — название и настройки.
 import { settings, loadSettings, saveSettings, isConfigured, api, esc, DEFAULT_DISK_FOLDER, setLink, getLists } from './core.js';
 import * as smeta from './smeta.js';
 import * as task from './task.js';
 import * as mine from './mine.js';
+import * as reports from './reports.js';
+import { loadMail } from './mail.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
   settings: $('#settings'), setUrl: $('#setUrl'), setToken: $('#setToken'), setManager: $('#setManager'), setDiskFolder: $('#setDiskFolder'), managerMsg: $('#setManagerMsg'), retryManagers: $('#retryManagers'),
   openSettings: $('#openSettings'), closeSettings: $('#closeSettings'), saveSettings: $('#saveSettings'),
-  tabs: [...document.querySelectorAll('.tab')],
+  tabs: [...document.querySelectorAll('.tabbar .tab')], title: $('#pageTitle'),
 };
 
 // ---------- Вкладки ----------
@@ -18,8 +20,13 @@ function showTab(name) {
     t.setAttribute('aria-selected', String(on));
     $(`#${t.getAttribute('aria-controls')}`).hidden = !on;
   });
+  const titles = { task: 'Новая задача', mine: 'Мои задачи', smeta: 'Смета', reports: 'Отчёты', mail: 'Письма' };
+  els.title.textContent = titles[name];
   if (name === 'task') task.initTaskTab();
   if (name === 'mine') mine.loadMine();
+  if (name === 'reports') { reports.showMenu(); reports.initReports(); }
+  if (name === 'mail') loadMail();
+  window.scrollTo(0, 0);
   try { localStorage.setItem('tab', name); } catch { /* не страшно */ }
 }
 els.tabs.forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));
@@ -128,6 +135,6 @@ if (!isConfigured() || !settings.manager) {
 }
 let startTab = 'task';
 try { startTab = localStorage.getItem('tab') || 'task'; } catch { /* по умолчанию «Новая задача» */ }
-showTab(['smeta', 'mine'].includes(startTab) ? startTab : 'task');
+showTab(['smeta', 'mine', 'reports', 'mail'].includes(startTab) ? startTab : 'task');
 // Вкладка «Новая задача» и так грузит справочники; с других — подтянем их в фоне ради кнопки «Таблица ↗»
 if (isConfigured() && startTab !== 'task') getLists().catch(() => {});

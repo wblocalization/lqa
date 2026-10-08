@@ -140,3 +140,45 @@ export function toast(text, kind = 'ok') {
     toastTimer = setTimeout(() => { el.hidden = true; }, 300);
   }, 2600);
 }
+
+/** Запрос к таблице: ошибка — исключением, а «старый» скрипт — понятным текстом, что сделать. */
+export async function call(payload) {
+  const r = await api(payload);
+  if (r.ok) return r;
+  if (/Неизвестное действие/.test(r.error || '')) {
+    throw new Error('веб-приложение ещё старое. В Apps Script: «Развернуть → Управление развёртываниями → ✏️ → Версия: новая → Развернуть»');
+  }
+  throw new Error(r.error || 'таблица ответила ошибкой');
+}
+
+/** Файл Excel из ответа таблицы (base64) — сразу в «Загрузки». */
+export function saveXlsx(name, b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.append(a); // без этого Chrome иногда забывает имя файла
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+/** Скопировать со ссылками: в Band, почте и Google Docs вставится кликабельным. */
+export async function copyRich(html, text) {
+  try {
+    await navigator.clipboard.write([new ClipboardItem({
+      'text/html': new Blob([html], { type: 'text/html' }),
+      'text/plain': new Blob([text], { type: 'text/plain' }),
+    })]);
+  } catch {
+    await navigator.clipboard.writeText(text);
+  }
+}
+
+/** «102 641,64» */
+export function money(x) {
+  return Number(x || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+}

@@ -8,11 +8,7 @@
 </head>
 <body>
 <header class="top">
-  <nav class="tabs" role="tablist">
-    <button class="tab" role="tab" data-tab="task" aria-controls="tabTask" aria-selected="true" type="button">Новая задача</button>
-    <button class="tab" role="tab" data-tab="mine" aria-controls="tabMine" aria-selected="false" type="button">Мои задачи <span id="mineBadge" class="tab-badge" hidden></span></button>
-    <button class="tab" role="tab" data-tab="smeta" aria-controls="tabSmeta" aria-selected="false" type="button">Смета</button>
-  </nav>
+  <h1 id="pageTitle" class="page-title">Новая задача</h1>
   <a id="openTable" class="icon-btn" href="#" target="_blank" rel="noopener" title="Открыть таблицу" aria-label="Открыть таблицу" hidden>
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
   </a>
@@ -317,7 +313,55 @@
 
     <p id="status" class="status" role="status"></p>
   </section>
+  <section id="tabReports" role="tabpanel" hidden>
+    <div id="rMenu" class="r-menu">
+      <div class="r-sec">Отчёты</div>
+      <button class="r-item" type="button" data-report="manager"><span class="r-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg></span><span class="r-txt"><b>По менеджеру</b><span>SP по тикетам за месяц · скопировать · Excel</span></span><span class="r-go"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></span></button>
+      <button class="r-item" type="button" data-report="tracker"><span class="r-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span><span class="r-txt"><b>Для трекера / Band</b><span>задачи тикета со ссылками — вставить в Band</span></span><span class="r-go"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></span></button>
+      <button class="r-item" type="button" data-report="custom"><span class="r-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg></span><span class="r-txt"><b>Кастомный</b><span>для руководства: продукты, языки, топы · Excel</span></span><span class="r-go"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></span></button>
+      <div class="r-sec">Деньги</div>
+      <button class="r-item" type="button" data-report="money"><span class="r-ic pink"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20V4h6a4 4 0 0 1 0 8H5M5 16h9"/></svg></span><span class="r-txt"><b>Сверка с подрядчиками</b><span>фильтры, итоги, «проверить» → Excel</span></span><span class="r-go"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></span></button>
+    </div>
+    <div id="rView" class="r-view" hidden>
+      <button id="rBack" class="link-btn r-back" type="button">‹ Все отчёты</button>
+      <h2 id="rTitle"></h2>
+      <div id="rForm" class="r-form"></div>
+      <button id="rRun" class="btn primary" type="button">Сформировать</button>
+      <div id="rOut"></div>
+      <div id="rActions" class="two" hidden>
+        <button id="rCopy" class="btn ghost" type="button">Скопировать</button>
+        <button id="rExcel" class="btn ghost" type="button">📥 Скачать Excel</button>
+      </div>
+    </div>
+    <p id="rMsg" class="status" role="status"></p>
+  </section>
+
+  <section id="tabMail" role="tabpanel" hidden>
+    <div class="ml-card">
+      <label>Куда присылать письма — <span id="mlWho"></span> <span class="opt">колонка M в «Списках»; пусто — писем не будет</span>
+        <span class="with-btn"><input id="mlEmail" type="email" placeholder="name@wb.ru"><button id="mlSave" class="btn ghost" type="button">Сохранить</button></span>
+      </label>
+    </div>
+    <div class="r-sec">Письма для всей команды</div>
+    <p class="field-note">Включаете — письма начнут приходить всем менеджерам, у кого вписана почта. «Прислать мне» — только вам, для проверки.</p>
+    <div id="mlList" class="ml-list">
+      <div class="ml-item"><div class="ml-head"><b>Сводка открытых задач</b><label class="switch"><input type="checkbox" data-kind="weekly"><span></span></label></div>
+        <span class="ml-when">по понедельникам в 9:00</span><button class="link-btn" type="button" data-test="weekly">Прислать мне сейчас</button></div>
+      <div class="ml-item"><div class="ml-head"><b>Горящие сроки</b><label class="switch"><input type="checkbox" data-kind="due"><span></span></label></div>
+        <span class="ml-when">каждый день в 9:00 — просроченные, сегодня и завтра</span><button class="link-btn" type="button" data-test="due">Прислать мне сейчас</button></div>
+      <div class="ml-item"><div class="ml-head"><b>Незаполненные поля</b><label class="switch"><input type="checkbox" data-kind="month"><span></span></label></div>
+        <span class="ml-when">26 числа в 10:00 — где не хватает данных для отчёта</span><button class="link-btn" type="button" data-test="month">Прислать мне сейчас</button></div>
+    </div>
+    <p id="mlMsg" class="status" role="status"></p>
+  </section>
 </main>
+<nav class="tabbar" role="tablist">
+  <button class="tab" role="tab" data-tab="task" data-title="Задача" aria-controls="tabTask" aria-selected="true" type="button"><span class="pill"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></span>Задача</button>
+  <button class="tab" role="tab" data-tab="mine" data-title="Мои" aria-controls="tabMine" aria-selected="false" type="button"><span class="pill"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg><span id="mineBadge" class="tab-badge" hidden></span></span>Мои</button>
+  <button class="tab" role="tab" data-tab="smeta" data-title="Смета" aria-controls="tabSmeta" aria-selected="false" type="button"><span class="pill"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20V4h6a4 4 0 0 1 0 8H5M5 16h9"/></svg></span>Смета</button>
+  <button class="tab" role="tab" data-tab="reports" data-title="Отчёты" aria-controls="tabReports" aria-selected="false" type="button"><span class="pill"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>Отчёты</button>
+  <button class="tab" role="tab" data-tab="mail" data-title="Письма" aria-controls="tabMail" aria-selected="false" type="button"><span class="pill"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></span>Письма</button>
+</nav>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 <script type="module" src="app.js"></script>
 </body>

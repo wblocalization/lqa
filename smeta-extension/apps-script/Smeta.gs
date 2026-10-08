@@ -53,6 +53,15 @@ function doPost(e) {
     if (req.action === 'myTasks') { requireTableScript_(); return smetaJson_(Object.assign({ ok: true }, getMyOpenTasks(req.manager || '*', req.filter))); }
     if (req.action === 'searchTasks') return smetaJson_(searchTasks_(req));
     if (req.action === 'getTask') return smetaJson_(getTask_(req));
+    // Отчёты, сверка и письма — вкладки «Отчёты» и «Письма» в расширении
+    if (req.action === 'reportLists') return smetaJson_(reportLists_());
+    if (req.action === 'managerReport') { requireTableScript_(); return smetaJson_(Object.assign({ ok: true }, getManagerReport(String(req.manager || ''), String(req.month || ''), req.by))); }
+    if (req.action === 'trackerReport') { requireTableScript_(); return smetaJson_(Object.assign({ ok: true }, getTrackerReportText(String(req.ticket || '')))); }
+    if (req.action === 'customReport') { requireTableScript_(); return smetaJson_(Object.assign({ ok: true }, getCustomReport(req.year || '', req.month || '', req.by))); }
+    if (req.action === 'moneyPreview') { requireTableScript_(); return smetaJson_(Object.assign({ ok: true }, moneyExportPreview(req.opts || {}))); }
+    if (req.action === 'exportXlsx') return smetaJson_(exportXlsx_(req));
+    if (req.action === 'mailStatus') return smetaJson_(mailStatus_(req));
+    if (req.action === 'mailTest') return smetaJson_(mailTest_(req));
   } catch (err) {
     return smetaJson_({ ok: false, error: String(err && err.message || err) });
   }
@@ -70,6 +79,8 @@ function doPost(e) {
     if (req.action === 'addTask') return smetaJson_(addTask_(req));
     if (req.action === 'setStatus') return smetaJson_(setStatus_(req));
     if (req.action === 'saveTask') return smetaJson_(saveTask_(req));
+    if (req.action === 'mailToggle') return smetaJson_(mailToggle_(req));
+    if (req.action === 'mailEmail') return smetaJson_(mailEmail_(req));
     if (req.action === 'deleteTask') { requireTableScript_(); deleteTask(req.row, req.id, req.origSubject); return smetaJson_({ ok: true }); }
     return smetaJson_({ ok: false, error: 'Неизвестное действие' });
   } catch (err) {
@@ -83,7 +94,7 @@ function doPost(e) {
 
 /** Проверка: открыть адрес веб-приложения в браузере — должно написать, что скрипт работает. */
 function doGet() {
-  return ContentService.createTextOutput('Скрипт работает. Адрес правильный — вставьте его в настройки расширения.\n\nВерсия: 5 октября (удаление задач из расширения).');
+  return ContentService.createTextOutput('Скрипт работает. Адрес правильный — вставьте его в настройки расширения.\n\nВерсия: 9 октября (отчёты, сверка и письма в расширении).');
 }
 
 function smetaLookup_(req) {
@@ -304,4 +315,94 @@ function saveTask_(req) {
 function setStatus_(req) {
   requireTableScript_();
   return setTaskStatus(req.row, req.id, req.origSubject, req.status);
+}
+
+/* ============================================================
+ *  ОТЧЁТЫ, СВЕРКА И ПИСЬМА ИЗ РАСШИРЕНИЯ
+ *  Те же функции, что у окон в таблице (Код.gs).
+ * ============================================================ */
+
+/** Всё для фильтров вкладки «Отчёты» одним запросом. */
+function reportLists_() {
+  requireTableScript_();
+  const lists = getListsData();
+  return {
+    ok: true, managers: lists.managers, contractors: lists.contractors, langs: lists.langs,
+    months: getMonthsList(), years: getDashboardYears(), tickets: getTicketsForReport(),
+    current: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM')
+  };
+}
+
+/**
+ * Excel прямо в расширение: файл собирается как в таблице, скачивается сюда (base64), а временный файл
+ * уходит в корзину Диска. Так ссылка не нужна — у коллеги может не быть доступа к Диску владельца.
+ */
+function exportXlsx_(req) {
+  requireTableScript_();
+  let url;
+  if (req.kind === 'manager') url = exportReportToDoc(String(req.manager || ''), String(req.month || ''), req.by);
+  else if (req.kind === 'custom') url = exportCustomReportToExcel(req.year || '', req.month || '', req.by);
+  else if (req.kind === 'money') url = exportMoneyExcel(req.opts || {}).url;
+  else return { ok: false, error: 'Неизвестный отчёт' };
+  const id = url.match(/\/d\/([^/]+)/)[1];
+  const file = DriveApp.getFileById(id);
+  const name = file.getName();
+  const blob = UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() } }).getBlob();
+  file.setTrashed(true);
+  return { ok: true, name: name.replace(/[\\/:*?"<>|]+/g, ' ') + '.xlsx', b64: Utilities.base64Encode(blob.getBytes()) };
+}
+
+// Письма: расписание общее на всю команду, почта — у каждого своя (колонка M «Списков»)
+const MAIL_KINDS = {
+  weekly: { handler: 'sendWeeklyDigests', send: function (m) { return sendWeeklyDigests(m); }, make: function (b) { return b.onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(9); } },
+  due: { handler: 'sendDueSoonAlerts', send: function (m) { return sendDueSoonAlerts(m); }, make: function (b) { return b.everyDays(1).atHour(9); } },
+  month: { handler: 'sendMonthEndReminders', send: function (m) { return sendMonthEndReminders(m); }, make: function (b) { return b.onMonthDay(26).atHour(10); } }
+};
+
+function mailStatus_(req) {
+  requireTableScript_();
+  const handlers = ScriptApp.getProjectTriggers().map(function (t) { return t.getHandlerFunction(); });
+  const me = req.manager ? managerMailList_(String(req.manager))[0] : null;
+  const out = { ok: true, known: !!me, email: me ? me.email : '' };
+  Object.keys(MAIL_KINDS).forEach(function (k) { out[k] = handlers.indexOf(MAIL_KINDS[k].handler) !== -1; });
+  return out;
+}
+
+function mailToggle_(req) {
+  requireTableScript_();
+  const kind = MAIL_KINDS[req.kind];
+  if (!kind) return { ok: false, error: 'Неизвестное письмо' };
+  if (req.on) replaceTrigger_(kind.handler, kind.make);
+  else ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === kind.handler) ScriptApp.deleteTrigger(t); });
+  return mailStatus_(req);
+}
+
+/** «Прислать мне сейчас» — письмо только этому менеджеру. */
+function mailTest_(req) {
+  requireTableScript_();
+  const kind = MAIL_KINDS[req.kind];
+  if (!kind) return { ok: false, error: 'Неизвестное письмо' };
+  const name = String(req.manager || '').trim();
+  const me = name ? managerMailList_(name)[0] : null; // без имени managerMailList_ вернул бы всех
+  if (!me) return { ok: false, error: 'Выберите себя в настройках расширения (⚙️ → «Кто вы»)' };
+  if (!me.email) return { ok: false, error: 'Сначала впишите почту для писем' };
+  return { ok: true, sent: kind.send(me.manager), email: me.email };
+}
+
+/** Почта для писем этого менеджера — «Списки», колонка M. Пусто — письма не приходят. */
+function mailEmail_(req) {
+  requireTableScript_();
+  const manager = String(req.manager || '').trim();
+  const email = String(req.email || '').trim();
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: 'Не похоже на почту: ' + email };
+  const lst = listsSheet_();
+  const names = lst.getRange(3, 5, 200, 1).getValues();
+  for (let i = 0; i < names.length; i++) {
+    if (!names[i][0]) break;
+    if (String(names[i][0]).trim() === manager) {
+      lst.getRange(3 + i, 13).setValue(email);
+      return mailStatus_(req);
+    }
+  }
+  return { ok: false, error: 'Нет менеджера «' + manager + '» в «Списках»' };
 }

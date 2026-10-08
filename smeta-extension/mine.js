@@ -3,7 +3,7 @@ import { settings, saveSettings, isConfigured, api, esc } from './core.js';
 import { openEditor } from './edit.js';
 import { fillSimilar } from './task.js';
 
-/** «Похожая» — новая задача по образцу этой: открываем вкладку «Новая задача» и заполняем форму. */
+/** «＋ Ещё такую» — новая задача по образцу этой: открываем вкладку «Новая задача» и заполняем форму. */
 function createSimilar(ref) {
   document.querySelector('.tab[data-tab="task"]').click();
   fillSimilar(ref);
@@ -110,7 +110,7 @@ function render() {
           <option value="">— статус —</option>
           ${data.statuses.map((s) => `<option value="${esc(s)}"${s === t.status ? ' selected' : ''}>${esc(s)}</option>`).join('')}
         </select>
-        <button class="btn ghost small" type="button" data-similar="${i}" title="Новая задача по образцу этой">Похожая</button>
+        <button class="btn ghost small" type="button" data-similar="${i}" title="Новая задача по образцу этой: тот же подрядчик, тикет, языки">＋ Ещё такую</button>
         <button class="btn ghost small" type="button" data-edit="${i}">Изменить</button>
       </div>
     </div>`;
@@ -195,7 +195,7 @@ function renderFound() {
     ? found.map((t, i) => `<div class="mine-item">
         <div class="title">${esc(t.title)}</div>
         <div class="row-actions"><span class="meta" style="flex:1">${esc(t.id || '—')}${t.ticket ? ' · ' + esc(t.ticket) : ''} · ${esc(t.date)}${t.status ? ' · ' + esc(t.status) : ''}</span>
-        <button class="btn ghost small" type="button" data-similar-found="${i}" title="Новая задача по образцу этой">Похожая</button>
+        <button class="btn ghost small" type="button" data-similar-found="${i}" title="Новая задача по образцу этой: тот же подрядчик, тикет, языки">＋ Ещё такую</button>
         <button class="btn ghost small" type="button" data-found="${i}">Изменить</button></div>
       </div>`).join('')
     : '<p class="muted">Ничего не нашлось.</p>';

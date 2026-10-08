@@ -1948,14 +1948,15 @@ function styleDocTable_(table, hasHeader) {
 
 const SHEET_URL = 'https://docs.google.com/spreadsheets/d/1ntXZIzlVB0zaoExpWNbB0hlSPD_KI-vHoKs3TEiYz3Q/edit';
 
-/** Менеджеры и почты для рассылки («Списки»: E — имя, M — почта для рассылки). */
-function managerMailList_() {
+/** Менеджеры и почты для рассылки («Списки»: E — имя, M — почта для рассылки). only — только этот менеджер. */
+function managerMailList_(only) {
   const lst = listsSheet_();
   const names = lst.getRange(3, 5, 200, 1).getValues();
   const mails = lst.getRange(3, 13, 200, 1).getValues();
   const out = [];
   for (let i = 0; i < names.length; i++) {
     if (!names[i][0]) break;
+    if (only && str_(names[i][0]) !== only) continue;
     out.push({ manager: str_(names[i][0]), email: str_(mails[i][0]) });
   }
   return out;
@@ -1998,11 +1999,14 @@ function deadlineLabel(row) {
   return 'Срок не указан';
 }
 
-function sendWeeklyDigests() {
+/** Расписание вызывает без имени (письма всем); расширение — с именем, «прислать мне для проверки». Возвращает, сколько писем ушло. */
+function sendWeeklyDigests(only) {
+  only = typeof only === 'string' ? only : ''; // по расписанию сюда приходит объект события
   const sh = getTasksSheet();
   const data = readRows_(sh, TASK_COLS);
   const links = subjectLinks_(sh);
-  managerMailList_().forEach(m => {
+  let sent = 0;
+  managerMailList_(only).forEach(m => {
     if (!m.email) return; // рассылка строго по колонке M «Списков»
     const rows = [];
     data.forEach((r, i) => {
@@ -2019,7 +2023,9 @@ function sendWeeklyDigests() {
       body: 'Привет, ' + m.manager + '!\n\nТвои открытые задачи (' + rows.length + '):\n\n' + rows.map(r => '- ' + r.subject + ' — ' + deadlineLabel(r)).join('\n'),
       htmlBody: mailShell_(m.manager, '<p>Твои открытые задачи (' + rows.length + '):</p>' + cards)
     });
+    sent++;
   });
+  return sent;
 }
 
 function createWeeklyDigestTrigger() {
@@ -2027,7 +2033,9 @@ function createWeeklyDigestTrigger() {
   SpreadsheetApp.getUi().alert('Готово: сводка будет приходить каждый понедельник в 9:00.');
 }
 
-function sendDueSoonAlerts() {
+function sendDueSoonAlerts(only) {
+  only = typeof only === 'string' ? only : '';
+  let sent = 0;
   const sh = getTasksSheet();
   const data = readRows_(sh, TASK_COLS);
   const links = subjectLinks_(sh);
@@ -2035,7 +2043,7 @@ function sendDueSoonAlerts() {
   const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
   const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 
-  managerMailList_().forEach(m => {
+  managerMailList_(only).forEach(m => {
     if (!m.email) return;
     const overdue = [], dueToday = [], dueTomorrow = [];
     data.forEach((r, i) => {
@@ -2074,7 +2082,9 @@ function sendDueSoonAlerts() {
       subject: (overdue.length ? '🔴 Есть просроченные задачи — ' : '🔥 Горящие сроки — ') + total,
       body: plain, htmlBody: mailShell_(m.manager, html)
     });
+    sent++;
   });
+  return sent;
 }
 
 function createDailyDueSoonTrigger() {
@@ -2082,7 +2092,8 @@ function createDailyDueSoonTrigger() {
   SpreadsheetApp.getUi().alert('Готово: напоминания о сроках будут приходить каждый день в 9:00.');
 }
 
-function sendMonthEndReminders() {
+function sendMonthEndReminders(only) {
+  only = typeof only === 'string' ? only : '';
   const sh = getTasksSheet();
   const data = readRows_(sh, TASK_COLS);
   const links = subjectLinks_(sh);
@@ -2095,7 +2106,7 @@ function sendMonthEndReminders() {
   const now = new Date();
   let sent = 0, skippedNoEmail = 0, withGaps = 0;
 
-  managerMailList_().forEach(m => {
+  managerMailList_(only).forEach(m => {
     const gaps = [];
     data.forEach((r, i) => {
       if (str_(r[COL.MANAGER - 1]) !== m.manager || !r[COL.SUBJECT - 1]) return;
@@ -2122,11 +2133,12 @@ function sendMonthEndReminders() {
   });
 
   let ui = null;
-  try { ui = SpreadsheetApp.getUi(); } catch (e) {} // по расписанию окна нет
-  if (!ui) return;
+  if (!only) try { ui = SpreadsheetApp.getUi(); } catch (e) {} // по расписанию и из расширения окна нет
+  if (!ui) return sent;
   if (!withGaps) ui.alert('У всех задач за этот месяц всё заполнено — писать некому.');
   else ui.alert('Отправлено писем: ' + sent + ' из ' + withGaps + '.' +
     (skippedNoEmail ? '\n\n⚠️ Пропущено ' + skippedNoEmail + ' — не заполнена колонка M «Email для рассылки» в «Списках».' : ''));
+  return sent;
 }
 
 function createMonthEndReminderTrigger() {
