@@ -120,6 +120,7 @@ function onOpen() {
     .addItem('👥 Режимы фильтрации для всех менеджеров', 'createAllManagerViews')
     .addItem('🛡 Защитить шапку и справочники', 'protectImportantRanges')
     .addItem('📥 Перенести историю из старой таблицы', 'migrateFromOldTable')
+    .addItem('🩺 Проверить окна', 'diagnoseWindows')
     .addSeparator()
     .addSubMenu(ui.createMenu('✉️ Еженедельная сводка')
       .addItem('Включить (по понедельникам)', 'createWeeklyDigestTrigger')
@@ -263,6 +264,38 @@ function estimateLabelsToUrls_(sh) {
     return [rich[i][0] || SpreadsheetApp.newRichTextValue().setText(cellText_(r[0])).build()];
   }));
   return changed;
+}
+
+/**
+ * «⚙️ Настройки → 🩺 Проверить окна»: если окна (отчёты, «Добавить задачу») открываются пустыми —
+ * показывает, на каком шаге затык: скрипты в окне, общий код окон или связь окна с таблицей.
+ */
+function diagnoseWindows() {
+  const html = '<div style="font:14px/1.6 Arial">' +
+    '<div id="s1">1. Скрипты в окне: <b style="color:#B42318">❌ не запускаются</b></div>' +
+    '<div id="s2">2. Общий код окон: …</div>' +
+    '<div id="s3">3. Связь с таблицей: …</div>' +
+    '<div id="info" style="margin-top:10px;font-size:12px;color:#5F6B7A"></div></div>' +
+    '<script>' +
+    'var ok = function (id, t) { document.getElementById(id).innerHTML = t; };' +
+    'var errs = [];' +
+    'window.onerror = function (m, src, line) { errs.push(m + " (строка " + line + ")"); ok("info", "Ошибки: " + errs.join("; ")); };' +
+    'ok("s1", "1. Скрипты в окне: <b style=\\"color:#15803D\\">✓ работают</b>");' +
+    'ok("info", navigator.userAgent);' +
+    '</script>' + include('Общее') +
+    '<script>' +
+    'ok("s2", typeof run === "function" ? "2. Общий код окон: <b style=\\"color:#15803D\\">✓ загрузился</b>" : "2. Общий код окон: <b style=\\"color:#B42318\\">❌ не загрузился</b>");' +
+    'var t0 = Date.now();' +
+    'var slow = setTimeout(function () { ok("s3", "3. Связь с таблицей: <b style=\\"color:#B42318\\">❌ нет ответа 20 секунд</b>"); }, 20000);' +
+    'google.script.run.withSuccessHandler(function (r) { clearTimeout(slow); ok("s3", "3. Связь с таблицей: <b style=\\"color:#15803D\\">✓ " + r + "</b> (" + (Date.now() - t0) + " мс)"); })' +
+    '.withFailureHandler(function (e) { clearTimeout(slow); ok("s3", "3. Связь с таблицей: <b style=\\"color:#B42318\\">❌ " + (e && e.message || e) + "</b>"); })' +
+    '.diagnosePing();' +
+    '</script>';
+  SpreadsheetApp.getUi().showModalDialog(HtmlService.createHtmlOutput(html).setWidth(460).setHeight(260), 'Проверка окон');
+}
+
+function diagnosePing() {
+  return 'отвечает, менеджеров в «Списках»: ' + getListsData().managers.length;
 }
 
 /** Подключает Общее.html в окна: <?!= include('Общее') ?> */
