@@ -114,7 +114,8 @@ function onOpen() {
     .addItem('Отчёт по переводчику', 'showTranslatorReportSidebar')
     .addItem('Кастомный отчёт', 'showCustomReportSidebar')
     .addSeparator()
-    .addItem('💰 Сверка с подрядчиками', 'showReconcileDialog')
+    .addItem('💰 Сверка с подрядчиками', 'openReconcileSheet')
+    .addItem('📥 Сверка → Excel', 'downloadReconcileExcel')
     .addToUi();
 
   ui.createMenu('⚙️ Настройки')
@@ -1442,217 +1443,125 @@ function exportUrl_(ss) {
 }
 
 // ==================== СВЕРКА С ПОДРЯДЧИКАМИ ====================
-// Разбивка по заказам за месяц: айди, языки, ссылка на смету, сумма с НДС — по подрядчику и/или менеджеру.
-// Суммы — ровно как в таблице, без округления; итог считается в тысячных рубля целыми числами.
+// Отдельный лист «💰 Сверка» на обычных формулах: фильтры сверху (выпадающие списки), ниже — задачи с суммами.
+// Считает сама Google Таблица, мгновенно и без скрипта; скрипт только создаёт лист и выгружает его в Excel.
 
-function showReconcileDialog() {
-  showDialog_('ReconcileDialog', 'Сверка с подрядчиками', 920, 760);
+const RECONCILE_SHEET = '💰 Сверка';
+const RECONCILE_MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+const RECONCILE_HEAD = ['№ задачи', 'Дата', 'Тема письма', 'Языки', 'Менеджер', 'Подрядчик', 'Статус', 'Смета', 'Итого с НДС, ₽', 'Проверить'];
+const RECONCILE_FIRST_ROW = 9; // первая строка задач (над ней — фильтры, итоги и шапка)
+
+/** Меню «📈 Отчёты → 💰 Сверка с подрядчиками»: лист есть — открываем, нет — создаём. */
+function openReconcileSheet() {
+  const sh = ensureReconcileSheet_();
+  SpreadsheetApp.getActive().setActiveSheet(sh);
+  SpreadsheetApp.getActive().toast('Выберите год, месяц, подрядчика или менеджера — таблица ниже пересчитается сама.', 'Сверка', 8);
 }
 
-/** Годы, подрядчики и менеджеры для фильтров окна сверки. */
-function getReconcileOptions() {
-  // Только три колонки, а не вся таблица: окно должно открываться быстро
-  const sh = getTasksSheet();
-  const n = dataRowCount_(sh);
-  const dates = n ? sh.getRange(2, COL.DATE, n, 1).getValues() : [];
-  const people = n ? sh.getRange(2, COL.CONTRACTOR, n, 2).getValues() : []; // подрядчик, менеджер
-  const lists = getListsData();
-  const add = (list, v) => { v = str_(v); if (v && list.indexOf(v) === -1) list.push(v); };
-  const contractors = (lists.contractors || []).slice(), managers = (lists.managers || []).slice();
-  people.forEach(r => { add(contractors, r[0]); add(managers, r[1]); });
-  const years = [];
-  dates.forEach(r => { const d = r[0]; if (d instanceof Date && years.indexOf(d.getFullYear()) === -1) years.push(d.getFullYear()); });
-  const now = new Date();
-  return { years: years.sort((a, b) => b - a), contractors: contractors, managers: managers, year: now.getFullYear(), month: now.getMonth() + 1 };
-}
+/** Создаёт лист сверки (или чинит формулы, если их стёрли). Выбранные фильтры не сбрасывает. */
+function ensureReconcileSheet_() {
+  const ss = SpreadsheetApp.getActive();
+  let sh = ss.getSheetByName(RECONCILE_SHEET);
+  const fresh = !sh;
+  if (!sh) sh = ss.insertSheet(RECONCILE_SHEET);
+  if (sh.getMaxColumns() < 14) sh.insertColumnsAfter(sh.getMaxColumns(), 14 - sh.getMaxColumns());
 
-/**
- * f: { year, month, contractor, manager } — пустое значение = все.
- * Возвращает строки, итоги по подрядчикам и проверки (что стоит поправить до сверки).
- */
-function getReconciliation(f) {
-  // Только строки, числа и списки — чтобы окно точно получило ответ (Google не передаёт в окно даты и т. п.)
-  return JSON.parse(JSON.stringify(reconciliation_(f)));
-}
+  const T = "'" + TASKS_SHEET.replace(/'/g, "''") + "'!";
+  const L = "'" + LISTS_SHEET.replace(/'/g, "''") + "'!";
+  const col = c => T + String.fromCharCode(64 + c) + '2:' + String.fromCharCode(64 + c);
+  const months = '{' + RECONCILE_MONTHS.map(m => '"' + m + '"').join(',') + '}';
 
-function reconciliation_(f) {
-  f = f || {};
-  const started = Date.now();
-  const sh = getTasksSheet();
-  const values = readRows_(sh, TASK_COLS);
-  const tRead = Date.now();
-  const year = f.year ? Number(f.year) : null, month = year && f.month ? Number(f.month) : null;
-  const contractor = str_(f.contractor), manager = str_(f.manager);
-  const fits = r => (str_(r[COL.SUBJECT - 1]) || str_(r[COL.ID - 1])) && inPeriod_(r[COL.DATE - 1], year, month) &&
-    (!contractor || str_(r[COL.CONTRACTOR - 1]) === contractor) && (!manager || str_(r[COL.MANAGER - 1]) === manager);
+  sh.getRange('A1').setValue('Сверка с подрядчиками').setFontSize(16).setFontWeight('bold');
+  sh.getRange('A2').setValue('Выберите фильтры — список ниже пересчитается сам. Суммы — ровно как в листе задач. Excel: «📈 Отчёты → 📥 Сверка → Excel».')
+    .setFontColor('#5F6B7A');
+  sh.getRange('A4:D4').setValues([['Год', 'Месяц', 'Подрядчик', 'Менеджер']]).setFontWeight('bold').setFontColor('#5F6B7A');
+  sh.getRange('F4:H4').setValues([['Задач', 'С суммой', 'Итого с НДС, ₽']]).setFontWeight('bold').setFontColor('#5F6B7A');
 
-  // Ссылки на сметы — только для задач периода и одним запросом (ссылки в ячейках Google читает медленно)
-  const picked = [];
-  values.forEach((r, i) => { if (fits(r)) picked.push(i); });
-  const linkInfo = {};
-  const urls = estimateUrlsFor_(sh, picked, values, linkInfo);
-  const tLinks = Date.now();
-  const estOf = i => urls[i] || '';
-
-  // Одна смета у нескольких задач — среди задач периода. Строки с одним номером — это один заказ
-  // (в старой таблице заказ мог занимать несколько строк: ссылка в каждой, сумма — только в первой)
-  const byUrl = {}, idHasMoney = {}, urlHasMoney = {};
-  picked.forEach(i => {
-    const id = str_(values[i][COL.ID - 1]) || 'строка ' + (i + 2);
-    const url = estOf(i);
-    if (url) { byUrl[url] = byUrl[url] || []; if (byUrl[url].indexOf(id) === -1) byUrl[url].push(id); }
-    const t = values[i][COL.TOTAL - 1];
-    if (typeof t === 'number' && isFinite(t)) { idHasMoney[id] = true; if (url) urlHasMoney[url] = true; }
-  });
-  // В колонке «Смета» вместо ссылки бывает текст («бесплатно», «-») — это пометка, а не смета
-  const noteOf = i => { const v = str_(values[i][COL.ESTIMATE - 1]); return v && !isUrlText_(v) && !ESTIMATE_LABEL_RE.test(v) ? v : ''; };
-
-  const rows = [], issues = [], byContractor = {}, dupShown = {};
-  let sumMilli = 0, withMoney = 0;
-  const issue = (row, kind, text) => issues.push({ row: row.row, id: row.id, kind: kind, text: text });
-  values.forEach((r, i) => {
-    if (!fits(r)) return;
-    const total = r[COL.TOTAL - 1];
-    const isNum = typeof total === 'number' && isFinite(total);
-    const row = {
-      row: i + 2, id: str_(r[COL.ID - 1]), date: fmtDate_(r[COL.DATE - 1], 'dd.MM.yyyy'),
-      subject: stripLinkMarkers_(r[COL.SUBJECT - 1]),
-      languages: str_(r[COL.LANGS - 1]), manager: str_(r[COL.MANAGER - 1]), contractor: str_(r[COL.CONTRACTOR - 1]),
-      status: str_(r[COL.STATUS - 1]), estimate: estOf(i), estimateNote: noteOf(i),
-      total: isNum ? exactMoney_(total) : str_(total), totalText: rub_(total)
-    };
-    rows.push(row);
-    const c = row.contractor || '(подрядчик не указан)';
-    byContractor[c] = byContractor[c] || { count: 0, milli: 0 };
-    byContractor[c].count++;
-    if (isNum) { const m = Math.round(total * 1000); sumMilli += m; byContractor[c].milli += m; withMoney++; }
-
-    const cancelled = row.status === 'Отменено';
-    if (row.total !== '' && !isNum) issue(row, 'text', 'Сумма записана текстом «' + row.total + '» — не попадёт в итог');
-    if (cancelled && row.total !== '') issue(row, 'cancelled', 'Задача отменена, но сумма стоит');
-    if (!cancelled && row.estimate && row.total === '' && !idHasMoney[row.id] && !urlHasMoney[row.estimate]) issue(row, 'noTotal', 'Смета есть, суммы нет');
-    if (!cancelled && row.total !== '' && !row.estimate) issue(row, 'noLink', 'Сумма есть, ссылки на смету нет');
-    if (!cancelled && !row.estimate && !row.estimateNote && row.total === '' && row.status === 'Отдано' && !idHasMoney[row.id]) issue(row, 'empty', 'Задача отдана, а сметы и суммы нет');
-    if (row.estimate && byUrl[row.estimate].length > 1 && !dupShown[row.estimate + '|' + row.id]) {
-      dupShown[row.estimate + '|' + row.id] = true;
-      issue(row, 'dup', 'Та же смета стоит у задач: ' + byUrl[row.estimate].filter(x => x !== row.id).join(', '));
-    }
-    if (isNum && Math.round(Math.abs(total) * 1000) % 10) issue(row, 'extra', 'В сумме доли копейки: ' + rub_(total) + ' ₽ — сверьте со счётом');
-  });
-
-  const monthNames = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
-  const period = year && month ? monthNames[month - 1] + ' ' + year : year ? String(year) : 'всё время';
-  const label = [contractor || 'все подрядчики', manager || 'все менеджеры', period].join(' · ');
-  return {
-    label: label, rows: rows, issues: issues, count: rows.length, withMoney: withMoney,
-    sum: sumMilli / 1000, sumText: rub_(sumMilli / 1000), seconds: Math.round((Date.now() - started) / 100) / 10,
-    timing: { rows: values.length, read: Math.round((tRead - started) / 100) / 10, links: Math.round((tLinks - tRead) / 100) / 10,
-      via: linkInfo.via, hidden: linkInfo.hidden, apiError: linkInfo.apiError || '' },
-    byContractor: Object.keys(byContractor).map(k => ({ name: k, count: byContractor[k].count, sum: byContractor[k].milli / 1000, sumText: rub_(byContractor[k].milli / 1000) }))
-      .sort((a, b) => b.sum - a.sum)
-  };
-}
-
-/**
- * Адреса смет для строк idxs (индексы в values). Голый адрес в ячейке — сразу; «Ссылка на смету …» — ссылка
- * под текстом: через Google Sheets API одним запросом (быстро), если сервис не включён — по кускам подряд идущих строк.
- */
-function estimateUrlsFor_(sh, idxs, values, info) {
-  info = info || {};
-  info.via = 'адреса в ячейках';
-  info.hidden = 0;
-  const out = {};
-  const need = idxs.filter(i => {
-    const v = str_(values[i][COL.ESTIMATE - 1]);
-    if (isUrlText_(v)) { out[i] = v; return false; }
-    return ESTIMATE_LABEL_RE.test(v); // адрес спрятан только под «Ссылка на смету …»; «бесплатно», «-» — просто пометки
-  });
-  if (!need.length) return out;
-  info.hidden = need.length;
-  const needSet = {};
-  need.forEach(i => { needSet[i] = true; });
-  const groups = [];
-  need.forEach(i => { const g = groups[groups.length - 1]; if (g && i === g[1] + 1) g[1] = i; else groups.push([i, i]); });
-  // Строки периода могут быть разбросаны — склеиваем ближайшие куски, чтобы запросов было не больше 20
-  while (groups.length > 20) {
-    let best = 0;
-    for (let k = 1; k < groups.length - 1; k++) if (groups[k + 1][0] - groups[k][1] < groups[best + 1][0] - groups[best][1]) best = k;
-    groups.splice(best, 2, [groups[best][0], groups[best + 1][1]]);
+  // Списки для фильтров — в скрытых колонках L:N (новые подрядчики и годы появляются сами)
+  sh.getRange('L1:N1').setValues([['годы', 'подрядчики', 'менеджеры']]);
+  sh.getRange('L2').setFormula('={"Все";SORT(UNIQUE(FILTER(YEAR(' + col(COL.DATE) + '),ISNUMBER(' + col(COL.DATE) + '))),1,FALSE)}');
+  sh.getRange('M2').setFormula('={"Все";FILTER(' + L + 'G3:G,' + L + 'G3:G<>"")}');
+  sh.getRange('N2').setFormula('={"Все";FILTER(' + L + 'E3:E,' + L + 'E3:E<>"")}');
+  const dv = (a1, rule) => sh.getRange(a1).setDataValidation(rule.setAllowInvalid(true).build());
+  dv('A5', SpreadsheetApp.newDataValidation().requireValueInRange(sh.getRange('L2:L')));
+  dv('B5', SpreadsheetApp.newDataValidation().requireValueInList(['Все'].concat(RECONCILE_MONTHS)));
+  dv('C5', SpreadsheetApp.newDataValidation().requireValueInRange(sh.getRange('M2:M')));
+  dv('D5', SpreadsheetApp.newDataValidation().requireValueInRange(sh.getRange('N2:N')));
+  if (fresh || !str_(sh.getRange('A5').getValue())) {
+    const now = new Date();
+    sh.getRange('A5:D5').setValues([[now.getFullYear(), RECONCILE_MONTHS[now.getMonth()], 'Все', 'Все']]);
   }
-  if (typeof Sheets !== 'undefined' && Sheets.Spreadsheets && Sheets.Spreadsheets.get) {
-    try {
-      const name = "'" + sh.getName().replace(/'/g, "''") + "'!";
-      const col = String.fromCharCode(64 + COL.ESTIMATE);
-      const res = Sheets.Spreadsheets.get(sh.getParent().getId(), {
-        ranges: groups.map(g => name + col + (g[0] + 2) + ':' + col + (g[1] + 2)),
-        fields: 'sheets(data(rowData(values(hyperlink,textFormatRuns(format(link(uri)))))))'
-      });
-      const data = res.sheets[0].data;
-      if (data.length !== groups.length) throw new Error('ответ не по запросу');
-      const got = {};
-      data.forEach((d, gi) => (d.rowData || []).forEach((rd, k) => {
-        const v = (rd.values || [])[0] || {};
-        const url = v.hyperlink || (v.textFormatRuns || []).map(r => r.format && r.format.link && r.format.link.uri).filter(Boolean)[0];
-        if (url) got[groups[gi][0] + k] = url;
-      }));
-      need.forEach(i => { if (got[i]) out[i] = got[i]; });
-      info.via = 'Sheets API';
-      return out;
-    } catch (e) { info.apiError = e.message; /* сервис не ответил — читаем по-старому */ }
-  } else {
-    info.apiError = 'сервис Google Sheets API не включён в Apps Script';
-  }
-  info.via = 'медленный способ';
-  groups.forEach(([a, b]) => {
-    const rich = sh.getRange(a + 2, COL.ESTIMATE, b - a + 1, 1).getRichTextValues();
-    for (let i = a; i <= b; i++) { const u = estimateUrl_(rich[i - a][0], values[i][COL.ESTIMATE - 1]); if (isUrlText_(u) && needSet[i]) out[i] = u; }
-  });
-  return out;
+  sh.getRange('A5:D5').setBackground('#F2EEFF').setFontWeight('bold');
+
+  // Задачи периода: FILTER по году, месяцу, подрядчику и менеджеру, по дате
+  const F = RECONCILE_FIRST_ROW;
+  const data = '{' + [COL.ID, COL.DATE, COL.SUBJECT, COL.LANGS, COL.MANAGER, COL.CONTRACTOR, COL.STATUS, COL.ESTIMATE, COL.TOTAL].map(col).join(',') + '}';
+  const cond = [
+    '(' + col(COL.ID) + '<>"")+(' + col(COL.SUBJECT) + '<>"")',
+    '($A$5="Все")+(IFERROR(YEAR(' + col(COL.DATE) + '),0)&""=$A$5&"")',
+    '($B$5="Все")+(IFERROR(MONTH(' + col(COL.DATE) + '),0)=IFERROR(MATCH($B$5,' + months + ',0),0))',
+    '($C$5="Все")+(' + col(COL.CONTRACTOR) + '=$C$5)',
+    '($D$5="Все")+(' + col(COL.MANAGER) + '=$D$5)'
+  ];
+  sh.getRange(F - 1, 1, 1, RECONCILE_HEAD.length).setValues([RECONCILE_HEAD]).setFontWeight('bold').setBackground(HEAD_BG).setFontColor('#ffffff');
+  sh.getRange(F, 1).setFormula('=IFERROR(SORT(FILTER(' + data + ',' + cond.join(',') + '),2,TRUE,1,TRUE),"")');
+  // «Проверить»: подсказки по каждой строке. Строки с одним номером — один заказ (сумма может стоять в одной из них)
+  const r = c => c + F + ':' + c;
+  const http = 'LEFT(' + r('H') + ',4)="http"';
+  sh.getRange(F, 10).setFormula('=ARRAYFORMULA(IF(' + r('A') + '="",,TRIM(' +
+    'IF((' + r('G') + '="Отменено")*(' + r('I') + '<>""),"отменена, а сумма стоит; ","")&' +
+    'IF((' + r('G') + '<>"Отменено")*(' + http + ')*(' + r('I') + '="")*(COUNTIFS(' + r('A') + ',' + r('A') + ',' + r('I') + ',"<>")=0),"смета есть, суммы нет; ","")&' +
+    'IF((' + r('G') + '<>"Отменено")*(' + r('I') + '<>"")*(' + r('H') + '=""),"сумма есть, сметы нет; ","")&' +
+    'IF((' + http + ')*(COUNTIFS(' + r('H') + ',' + r('H') + ',' + r('A') + ',"<>"&' + r('A') + ')>0),"та же смета у другой задачи; ","")&' +
+    'IF(LEFT(' + r('H') + ',15)="Ссылка на смету","ссылка спрятана под текстом — «⚙️ Настройки → 🔗 Ссылки на сметы — адресами»; ","")' +
+    ')))');
+  sh.getRange('F5').setFormula('=IFERROR(COUNTA(UNIQUE(FILTER(' + r('A') + ',' + r('A') + '<>""))),0)');
+  sh.getRange('G5').setFormula('=COUNT(' + r('I') + ')');
+  sh.getRange('H5').setFormula('=SUM(' + r('I') + ')').setNumberFormat('#,##0.00#');
+  sh.getRange('F5:H5').setFontWeight('bold').setFontSize(13);
+
+  sh.getRange(F, 2, sh.getMaxRows() - F + 1, 1).setNumberFormat('dd.mm.yyyy');
+  sh.getRange(F, 9, sh.getMaxRows() - F + 1, 1).setNumberFormat('#,##0.00#');
+  sh.setFrozenRows(F - 1);
+  [110, 90, 380, 180, 150, 120, 100, 230, 120, 280].forEach((w, i) => sh.setColumnWidth(i + 1, w));
+  sh.hideColumns(12, 3);
+  return sh;
 }
 
-/** Сверка в Excel: все поля для сверки, ссылка на смету ещё и обычным адресом, итог — промежуточный (считает только отфильтрованное). */
-function exportReconciliationToExcel(f) {
-  const rep = getReconciliation(f);
-  const ss = SpreadsheetApp.create('Сверка — ' + rep.label);
+/** «📥 Сверка → Excel»: то, что сейчас на листе «💰 Сверка», отдельным файлом. Итог считает только видимые строки. */
+function exportReconcileSheetToExcel() {
+  const src = SpreadsheetApp.getActive().getSheetByName(RECONCILE_SHEET);
+  if (!src) throw new Error('Сначала откройте «📈 Отчёты → 💰 Сверка с подрядчиками»');
+  const F = RECONCILE_FIRST_ROW;
+  const filters = src.getRange('A5:D5').getValues()[0];
+  const n = Math.max(src.getLastRow() - F + 1, 0);
+  const rows = (n ? src.getRange(F, 1, n, RECONCILE_HEAD.length).getValues() : []).filter(r => str_(r[0]) || str_(r[2]));
+  const label = [filters[2] === 'Все' ? 'все подрядчики' : filters[2], filters[3] === 'Все' ? 'все менеджеры' : filters[3],
+    (filters[1] === 'Все' ? '' : String(filters[1]).toLowerCase() + ' ') + (filters[0] === 'Все' ? 'всё время' : filters[0])].join(' · ');
+  const ss = SpreadsheetApp.create('Сверка — ' + label);
   const sheet = ss.getSheets()[0].setName('Сверка');
-  const head = ['№ задачи', 'Дата', 'Тема письма', 'Языки', 'Менеджер', 'Подрядчик', 'Статус', 'Ссылка на смету', 'Итого с НДС, ₽'];
-  const toDate = s => { const m = String(s).match(/^(\d{2})\.(\d{2})\.(\d{4})$/); return m ? new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1])) : ''; };
-  const data = rep.rows.map(r => [r.id, toDate(r.date), r.subject, r.languages, r.manager, r.contractor, r.status,
-    r.estimate || r.estimateNote, r.total]);
-  sheet.getRange(1, 1, 1, head.length).setValues([head]);
-  if (data.length) {
-    sheet.getRange(2, 1, data.length, head.length).setValues(data);
-    data.forEach((d, i) => {
-      const r = rep.rows[i];
-      if (r.estimate) sheet.getRange(i + 2, 8).setRichTextValue(estimateRich_(r.estimate));
-      sheet.getRange(i + 2, 9).setNumberFormat(moneyFormat_(r.total));
-    });
+  sheet.getRange(1, 1, 1, RECONCILE_HEAD.length).setValues([RECONCILE_HEAD]);
+  if (rows.length) {
+    sheet.getRange(2, 1, rows.length, RECONCILE_HEAD.length).setValues(rows);
+    sheet.getRange(2, 2, rows.length, 1).setNumberFormat('dd.mm.yyyy');
+    sheet.getRange(2, 9, rows.length, 1).setNumberFormat('#,##0.00#');
   }
-  const last = data.length + 2;
+  const last = rows.length + 2;
   sheet.getRange(last, 8).setValue('ИТОГО (по видимым строкам)');
-  // SUBTOTAL — в Excel при фильтре по подрядчику/менеджеру итог пересчитается сам
-  sheet.getRange(last, 9).setFormula(data.length ? '=SUBTOTAL(9,I2:I' + (data.length + 1) + ')' : '=0').setNumberFormat('#,##0.00#');
+  sheet.getRange(last, 9).setFormula(rows.length ? '=SUBTOTAL(9,I2:I' + (rows.length + 1) + ')' : '=0').setNumberFormat('#,##0.00#');
   sheet.getRange(last, 8, 1, 2).setFontWeight('bold');
-  if (data.length) sheet.getRange(2, 2, data.length, 1).setNumberFormat('dd.mm.yyyy');
-  styleReportSheet_(sheet, head.length);
+  styleReportSheet_(sheet, RECONCILE_HEAD.length);
   sheet.setColumnWidth(3, 360);
-  if (data.length) sheet.getRange(1, 1, data.length + 1, head.length).createFilter();
-
-  if (rep.issues.length) {
-    const chk = ss.insertSheet('Проверки');
-    chk.getRange(1, 1, 1, 3).setValues([['№ задачи', 'Строка в таблице', 'Что проверить']]);
-    chk.getRange(2, 1, rep.issues.length, 3).setValues(rep.issues.map(x => [x.id, x.row, x.text]));
-    styleReportSheet_(chk, 3);
-    chk.setColumnWidth(3, 480);
-  }
-  const sum = ss.insertSheet('Итоги по подрядчикам');
-  sum.getRange(1, 1, 1, 3).setValues([['Подрядчик', 'Задач', 'Итого с НДС, ₽']]);
-  if (rep.byContractor.length) {
-    sum.getRange(2, 1, rep.byContractor.length, 3).setValues(rep.byContractor.map(c => [c.name, c.count, c.sum]));
-    sum.getRange(2, 3, rep.byContractor.length, 1).setNumberFormat('#,##0.00#');
-  }
-  styleReportSheet_(sum, 3);
+  if (rows.length) sheet.getRange(1, 1, rows.length + 1, RECONCILE_HEAD.length).createFilter();
   return exportUrl_(ss);
+}
+
+/** Меню: выгрузка в Excel и ссылка на скачивание. */
+function downloadReconcileExcel() {
+  const url = exportReconcileSheetToExcel();
+  const html = HtmlService.createHtmlOutput('<p style="font:14px Arial">Файл готов: <a href="' + url + '" target="_blank">скачать Excel</a></p>' +
+    '<script>window.open(' + JSON.stringify(url) + ', "_blank");</script>').setWidth(320).setHeight(90);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Сверка → Excel');
 }
 
 // ==================== ОТЧЁТ ДЛЯ ТРЕКЕРА (менеджеры) ====================

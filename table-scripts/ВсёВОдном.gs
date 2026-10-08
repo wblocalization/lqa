@@ -126,7 +126,8 @@ function onOpen() {
     .addItem('Отчёт по переводчику', 'showTranslatorReportSidebar')
     .addItem('Кастомный отчёт', 'showCustomReportSidebar')
     .addSeparator()
-    .addItem('💰 Сверка с подрядчиками', 'showReconcileDialog')
+    .addItem('💰 Сверка с подрядчиками', 'openReconcileSheet')
+    .addItem('📥 Сверка → Excel', 'downloadReconcileExcel')
     .addToUi();
 
   ui.createMenu('⚙️ Настройки')
@@ -1454,217 +1455,125 @@ function exportUrl_(ss) {
 }
 
 // ==================== СВЕРКА С ПОДРЯДЧИКАМИ ====================
-// Разбивка по заказам за месяц: айди, языки, ссылка на смету, сумма с НДС — по подрядчику и/или менеджеру.
-// Суммы — ровно как в таблице, без округления; итог считается в тысячных рубля целыми числами.
+// Отдельный лист «💰 Сверка» на обычных формулах: фильтры сверху (выпадающие списки), ниже — задачи с суммами.
+// Считает сама Google Таблица, мгновенно и без скрипта; скрипт только создаёт лист и выгружает его в Excel.
 
-function showReconcileDialog() {
-  showDialog_('ReconcileDialog', 'Сверка с подрядчиками', 920, 760);
+const RECONCILE_SHEET = '💰 Сверка';
+const RECONCILE_MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+const RECONCILE_HEAD = ['№ задачи', 'Дата', 'Тема письма', 'Языки', 'Менеджер', 'Подрядчик', 'Статус', 'Смета', 'Итого с НДС, ₽', 'Проверить'];
+const RECONCILE_FIRST_ROW = 9; // первая строка задач (над ней — фильтры, итоги и шапка)
+
+/** Меню «📈 Отчёты → 💰 Сверка с подрядчиками»: лист есть — открываем, нет — создаём. */
+function openReconcileSheet() {
+  const sh = ensureReconcileSheet_();
+  SpreadsheetApp.getActive().setActiveSheet(sh);
+  SpreadsheetApp.getActive().toast('Выберите год, месяц, подрядчика или менеджера — таблица ниже пересчитается сама.', 'Сверка', 8);
 }
 
-/** Годы, подрядчики и менеджеры для фильтров окна сверки. */
-function getReconcileOptions() {
-  // Только три колонки, а не вся таблица: окно должно открываться быстро
-  const sh = getTasksSheet();
-  const n = dataRowCount_(sh);
-  const dates = n ? sh.getRange(2, COL.DATE, n, 1).getValues() : [];
-  const people = n ? sh.getRange(2, COL.CONTRACTOR, n, 2).getValues() : []; // подрядчик, менеджер
-  const lists = getListsData();
-  const add = (list, v) => { v = str_(v); if (v && list.indexOf(v) === -1) list.push(v); };
-  const contractors = (lists.contractors || []).slice(), managers = (lists.managers || []).slice();
-  people.forEach(r => { add(contractors, r[0]); add(managers, r[1]); });
-  const years = [];
-  dates.forEach(r => { const d = r[0]; if (d instanceof Date && years.indexOf(d.getFullYear()) === -1) years.push(d.getFullYear()); });
-  const now = new Date();
-  return { years: years.sort((a, b) => b - a), contractors: contractors, managers: managers, year: now.getFullYear(), month: now.getMonth() + 1 };
-}
+/** Создаёт лист сверки (или чинит формулы, если их стёрли). Выбранные фильтры не сбрасывает. */
+function ensureReconcileSheet_() {
+  const ss = SpreadsheetApp.getActive();
+  let sh = ss.getSheetByName(RECONCILE_SHEET);
+  const fresh = !sh;
+  if (!sh) sh = ss.insertSheet(RECONCILE_SHEET);
+  if (sh.getMaxColumns() < 14) sh.insertColumnsAfter(sh.getMaxColumns(), 14 - sh.getMaxColumns());
 
-/**
- * f: { year, month, contractor, manager } — пустое значение = все.
- * Возвращает строки, итоги по подрядчикам и проверки (что стоит поправить до сверки).
- */
-function getReconciliation(f) {
-  // Только строки, числа и списки — чтобы окно точно получило ответ (Google не передаёт в окно даты и т. п.)
-  return JSON.parse(JSON.stringify(reconciliation_(f)));
-}
+  const T = "'" + TASKS_SHEET.replace(/'/g, "''") + "'!";
+  const L = "'" + LISTS_SHEET.replace(/'/g, "''") + "'!";
+  const col = c => T + String.fromCharCode(64 + c) + '2:' + String.fromCharCode(64 + c);
+  const months = '{' + RECONCILE_MONTHS.map(m => '"' + m + '"').join(',') + '}';
 
-function reconciliation_(f) {
-  f = f || {};
-  const started = Date.now();
-  const sh = getTasksSheet();
-  const values = readRows_(sh, TASK_COLS);
-  const tRead = Date.now();
-  const year = f.year ? Number(f.year) : null, month = year && f.month ? Number(f.month) : null;
-  const contractor = str_(f.contractor), manager = str_(f.manager);
-  const fits = r => (str_(r[COL.SUBJECT - 1]) || str_(r[COL.ID - 1])) && inPeriod_(r[COL.DATE - 1], year, month) &&
-    (!contractor || str_(r[COL.CONTRACTOR - 1]) === contractor) && (!manager || str_(r[COL.MANAGER - 1]) === manager);
+  sh.getRange('A1').setValue('Сверка с подрядчиками').setFontSize(16).setFontWeight('bold');
+  sh.getRange('A2').setValue('Выберите фильтры — список ниже пересчитается сам. Суммы — ровно как в листе задач. Excel: «📈 Отчёты → 📥 Сверка → Excel».')
+    .setFontColor('#5F6B7A');
+  sh.getRange('A4:D4').setValues([['Год', 'Месяц', 'Подрядчик', 'Менеджер']]).setFontWeight('bold').setFontColor('#5F6B7A');
+  sh.getRange('F4:H4').setValues([['Задач', 'С суммой', 'Итого с НДС, ₽']]).setFontWeight('bold').setFontColor('#5F6B7A');
 
-  // Ссылки на сметы — только для задач периода и одним запросом (ссылки в ячейках Google читает медленно)
-  const picked = [];
-  values.forEach((r, i) => { if (fits(r)) picked.push(i); });
-  const linkInfo = {};
-  const urls = estimateUrlsFor_(sh, picked, values, linkInfo);
-  const tLinks = Date.now();
-  const estOf = i => urls[i] || '';
-
-  // Одна смета у нескольких задач — среди задач периода. Строки с одним номером — это один заказ
-  // (в старой таблице заказ мог занимать несколько строк: ссылка в каждой, сумма — только в первой)
-  const byUrl = {}, idHasMoney = {}, urlHasMoney = {};
-  picked.forEach(i => {
-    const id = str_(values[i][COL.ID - 1]) || 'строка ' + (i + 2);
-    const url = estOf(i);
-    if (url) { byUrl[url] = byUrl[url] || []; if (byUrl[url].indexOf(id) === -1) byUrl[url].push(id); }
-    const t = values[i][COL.TOTAL - 1];
-    if (typeof t === 'number' && isFinite(t)) { idHasMoney[id] = true; if (url) urlHasMoney[url] = true; }
-  });
-  // В колонке «Смета» вместо ссылки бывает текст («бесплатно», «-») — это пометка, а не смета
-  const noteOf = i => { const v = str_(values[i][COL.ESTIMATE - 1]); return v && !isUrlText_(v) && !ESTIMATE_LABEL_RE.test(v) ? v : ''; };
-
-  const rows = [], issues = [], byContractor = {}, dupShown = {};
-  let sumMilli = 0, withMoney = 0;
-  const issue = (row, kind, text) => issues.push({ row: row.row, id: row.id, kind: kind, text: text });
-  values.forEach((r, i) => {
-    if (!fits(r)) return;
-    const total = r[COL.TOTAL - 1];
-    const isNum = typeof total === 'number' && isFinite(total);
-    const row = {
-      row: i + 2, id: str_(r[COL.ID - 1]), date: fmtDate_(r[COL.DATE - 1], 'dd.MM.yyyy'),
-      subject: stripLinkMarkers_(r[COL.SUBJECT - 1]),
-      languages: str_(r[COL.LANGS - 1]), manager: str_(r[COL.MANAGER - 1]), contractor: str_(r[COL.CONTRACTOR - 1]),
-      status: str_(r[COL.STATUS - 1]), estimate: estOf(i), estimateNote: noteOf(i),
-      total: isNum ? exactMoney_(total) : str_(total), totalText: rub_(total)
-    };
-    rows.push(row);
-    const c = row.contractor || '(подрядчик не указан)';
-    byContractor[c] = byContractor[c] || { count: 0, milli: 0 };
-    byContractor[c].count++;
-    if (isNum) { const m = Math.round(total * 1000); sumMilli += m; byContractor[c].milli += m; withMoney++; }
-
-    const cancelled = row.status === 'Отменено';
-    if (row.total !== '' && !isNum) issue(row, 'text', 'Сумма записана текстом «' + row.total + '» — не попадёт в итог');
-    if (cancelled && row.total !== '') issue(row, 'cancelled', 'Задача отменена, но сумма стоит');
-    if (!cancelled && row.estimate && row.total === '' && !idHasMoney[row.id] && !urlHasMoney[row.estimate]) issue(row, 'noTotal', 'Смета есть, суммы нет');
-    if (!cancelled && row.total !== '' && !row.estimate) issue(row, 'noLink', 'Сумма есть, ссылки на смету нет');
-    if (!cancelled && !row.estimate && !row.estimateNote && row.total === '' && row.status === 'Отдано' && !idHasMoney[row.id]) issue(row, 'empty', 'Задача отдана, а сметы и суммы нет');
-    if (row.estimate && byUrl[row.estimate].length > 1 && !dupShown[row.estimate + '|' + row.id]) {
-      dupShown[row.estimate + '|' + row.id] = true;
-      issue(row, 'dup', 'Та же смета стоит у задач: ' + byUrl[row.estimate].filter(x => x !== row.id).join(', '));
-    }
-    if (isNum && Math.round(Math.abs(total) * 1000) % 10) issue(row, 'extra', 'В сумме доли копейки: ' + rub_(total) + ' ₽ — сверьте со счётом');
-  });
-
-  const monthNames = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
-  const period = year && month ? monthNames[month - 1] + ' ' + year : year ? String(year) : 'всё время';
-  const label = [contractor || 'все подрядчики', manager || 'все менеджеры', period].join(' · ');
-  return {
-    label: label, rows: rows, issues: issues, count: rows.length, withMoney: withMoney,
-    sum: sumMilli / 1000, sumText: rub_(sumMilli / 1000), seconds: Math.round((Date.now() - started) / 100) / 10,
-    timing: { rows: values.length, read: Math.round((tRead - started) / 100) / 10, links: Math.round((tLinks - tRead) / 100) / 10,
-      via: linkInfo.via, hidden: linkInfo.hidden, apiError: linkInfo.apiError || '' },
-    byContractor: Object.keys(byContractor).map(k => ({ name: k, count: byContractor[k].count, sum: byContractor[k].milli / 1000, sumText: rub_(byContractor[k].milli / 1000) }))
-      .sort((a, b) => b.sum - a.sum)
-  };
-}
-
-/**
- * Адреса смет для строк idxs (индексы в values). Голый адрес в ячейке — сразу; «Ссылка на смету …» — ссылка
- * под текстом: через Google Sheets API одним запросом (быстро), если сервис не включён — по кускам подряд идущих строк.
- */
-function estimateUrlsFor_(sh, idxs, values, info) {
-  info = info || {};
-  info.via = 'адреса в ячейках';
-  info.hidden = 0;
-  const out = {};
-  const need = idxs.filter(i => {
-    const v = str_(values[i][COL.ESTIMATE - 1]);
-    if (isUrlText_(v)) { out[i] = v; return false; }
-    return ESTIMATE_LABEL_RE.test(v); // адрес спрятан только под «Ссылка на смету …»; «бесплатно», «-» — просто пометки
-  });
-  if (!need.length) return out;
-  info.hidden = need.length;
-  const needSet = {};
-  need.forEach(i => { needSet[i] = true; });
-  const groups = [];
-  need.forEach(i => { const g = groups[groups.length - 1]; if (g && i === g[1] + 1) g[1] = i; else groups.push([i, i]); });
-  // Строки периода могут быть разбросаны — склеиваем ближайшие куски, чтобы запросов было не больше 20
-  while (groups.length > 20) {
-    let best = 0;
-    for (let k = 1; k < groups.length - 1; k++) if (groups[k + 1][0] - groups[k][1] < groups[best + 1][0] - groups[best][1]) best = k;
-    groups.splice(best, 2, [groups[best][0], groups[best + 1][1]]);
+  // Списки для фильтров — в скрытых колонках L:N (новые подрядчики и годы появляются сами)
+  sh.getRange('L1:N1').setValues([['годы', 'подрядчики', 'менеджеры']]);
+  sh.getRange('L2').setFormula('={"Все";SORT(UNIQUE(FILTER(YEAR(' + col(COL.DATE) + '),ISNUMBER(' + col(COL.DATE) + '))),1,FALSE)}');
+  sh.getRange('M2').setFormula('={"Все";FILTER(' + L + 'G3:G,' + L + 'G3:G<>"")}');
+  sh.getRange('N2').setFormula('={"Все";FILTER(' + L + 'E3:E,' + L + 'E3:E<>"")}');
+  const dv = (a1, rule) => sh.getRange(a1).setDataValidation(rule.setAllowInvalid(true).build());
+  dv('A5', SpreadsheetApp.newDataValidation().requireValueInRange(sh.getRange('L2:L')));
+  dv('B5', SpreadsheetApp.newDataValidation().requireValueInList(['Все'].concat(RECONCILE_MONTHS)));
+  dv('C5', SpreadsheetApp.newDataValidation().requireValueInRange(sh.getRange('M2:M')));
+  dv('D5', SpreadsheetApp.newDataValidation().requireValueInRange(sh.getRange('N2:N')));
+  if (fresh || !str_(sh.getRange('A5').getValue())) {
+    const now = new Date();
+    sh.getRange('A5:D5').setValues([[now.getFullYear(), RECONCILE_MONTHS[now.getMonth()], 'Все', 'Все']]);
   }
-  if (typeof Sheets !== 'undefined' && Sheets.Spreadsheets && Sheets.Spreadsheets.get) {
-    try {
-      const name = "'" + sh.getName().replace(/'/g, "''") + "'!";
-      const col = String.fromCharCode(64 + COL.ESTIMATE);
-      const res = Sheets.Spreadsheets.get(sh.getParent().getId(), {
-        ranges: groups.map(g => name + col + (g[0] + 2) + ':' + col + (g[1] + 2)),
-        fields: 'sheets(data(rowData(values(hyperlink,textFormatRuns(format(link(uri)))))))'
-      });
-      const data = res.sheets[0].data;
-      if (data.length !== groups.length) throw new Error('ответ не по запросу');
-      const got = {};
-      data.forEach((d, gi) => (d.rowData || []).forEach((rd, k) => {
-        const v = (rd.values || [])[0] || {};
-        const url = v.hyperlink || (v.textFormatRuns || []).map(r => r.format && r.format.link && r.format.link.uri).filter(Boolean)[0];
-        if (url) got[groups[gi][0] + k] = url;
-      }));
-      need.forEach(i => { if (got[i]) out[i] = got[i]; });
-      info.via = 'Sheets API';
-      return out;
-    } catch (e) { info.apiError = e.message; /* сервис не ответил — читаем по-старому */ }
-  } else {
-    info.apiError = 'сервис Google Sheets API не включён в Apps Script';
-  }
-  info.via = 'медленный способ';
-  groups.forEach(([a, b]) => {
-    const rich = sh.getRange(a + 2, COL.ESTIMATE, b - a + 1, 1).getRichTextValues();
-    for (let i = a; i <= b; i++) { const u = estimateUrl_(rich[i - a][0], values[i][COL.ESTIMATE - 1]); if (isUrlText_(u) && needSet[i]) out[i] = u; }
-  });
-  return out;
+  sh.getRange('A5:D5').setBackground('#F2EEFF').setFontWeight('bold');
+
+  // Задачи периода: FILTER по году, месяцу, подрядчику и менеджеру, по дате
+  const F = RECONCILE_FIRST_ROW;
+  const data = '{' + [COL.ID, COL.DATE, COL.SUBJECT, COL.LANGS, COL.MANAGER, COL.CONTRACTOR, COL.STATUS, COL.ESTIMATE, COL.TOTAL].map(col).join(',') + '}';
+  const cond = [
+    '(' + col(COL.ID) + '<>"")+(' + col(COL.SUBJECT) + '<>"")',
+    '($A$5="Все")+(IFERROR(YEAR(' + col(COL.DATE) + '),0)&""=$A$5&"")',
+    '($B$5="Все")+(IFERROR(MONTH(' + col(COL.DATE) + '),0)=IFERROR(MATCH($B$5,' + months + ',0),0))',
+    '($C$5="Все")+(' + col(COL.CONTRACTOR) + '=$C$5)',
+    '($D$5="Все")+(' + col(COL.MANAGER) + '=$D$5)'
+  ];
+  sh.getRange(F - 1, 1, 1, RECONCILE_HEAD.length).setValues([RECONCILE_HEAD]).setFontWeight('bold').setBackground(HEAD_BG).setFontColor('#ffffff');
+  sh.getRange(F, 1).setFormula('=IFERROR(SORT(FILTER(' + data + ',' + cond.join(',') + '),2,TRUE,1,TRUE),"")');
+  // «Проверить»: подсказки по каждой строке. Строки с одним номером — один заказ (сумма может стоять в одной из них)
+  const r = c => c + F + ':' + c;
+  const http = 'LEFT(' + r('H') + ',4)="http"';
+  sh.getRange(F, 10).setFormula('=ARRAYFORMULA(IF(' + r('A') + '="",,TRIM(' +
+    'IF((' + r('G') + '="Отменено")*(' + r('I') + '<>""),"отменена, а сумма стоит; ","")&' +
+    'IF((' + r('G') + '<>"Отменено")*(' + http + ')*(' + r('I') + '="")*(COUNTIFS(' + r('A') + ',' + r('A') + ',' + r('I') + ',"<>")=0),"смета есть, суммы нет; ","")&' +
+    'IF((' + r('G') + '<>"Отменено")*(' + r('I') + '<>"")*(' + r('H') + '=""),"сумма есть, сметы нет; ","")&' +
+    'IF((' + http + ')*(COUNTIFS(' + r('H') + ',' + r('H') + ',' + r('A') + ',"<>"&' + r('A') + ')>0),"та же смета у другой задачи; ","")&' +
+    'IF(LEFT(' + r('H') + ',15)="Ссылка на смету","ссылка спрятана под текстом — «⚙️ Настройки → 🔗 Ссылки на сметы — адресами»; ","")' +
+    ')))');
+  sh.getRange('F5').setFormula('=IFERROR(COUNTA(UNIQUE(FILTER(' + r('A') + ',' + r('A') + '<>""))),0)');
+  sh.getRange('G5').setFormula('=COUNT(' + r('I') + ')');
+  sh.getRange('H5').setFormula('=SUM(' + r('I') + ')').setNumberFormat('#,##0.00#');
+  sh.getRange('F5:H5').setFontWeight('bold').setFontSize(13);
+
+  sh.getRange(F, 2, sh.getMaxRows() - F + 1, 1).setNumberFormat('dd.mm.yyyy');
+  sh.getRange(F, 9, sh.getMaxRows() - F + 1, 1).setNumberFormat('#,##0.00#');
+  sh.setFrozenRows(F - 1);
+  [110, 90, 380, 180, 150, 120, 100, 230, 120, 280].forEach((w, i) => sh.setColumnWidth(i + 1, w));
+  sh.hideColumns(12, 3);
+  return sh;
 }
 
-/** Сверка в Excel: все поля для сверки, ссылка на смету ещё и обычным адресом, итог — промежуточный (считает только отфильтрованное). */
-function exportReconciliationToExcel(f) {
-  const rep = getReconciliation(f);
-  const ss = SpreadsheetApp.create('Сверка — ' + rep.label);
+/** «📥 Сверка → Excel»: то, что сейчас на листе «💰 Сверка», отдельным файлом. Итог считает только видимые строки. */
+function exportReconcileSheetToExcel() {
+  const src = SpreadsheetApp.getActive().getSheetByName(RECONCILE_SHEET);
+  if (!src) throw new Error('Сначала откройте «📈 Отчёты → 💰 Сверка с подрядчиками»');
+  const F = RECONCILE_FIRST_ROW;
+  const filters = src.getRange('A5:D5').getValues()[0];
+  const n = Math.max(src.getLastRow() - F + 1, 0);
+  const rows = (n ? src.getRange(F, 1, n, RECONCILE_HEAD.length).getValues() : []).filter(r => str_(r[0]) || str_(r[2]));
+  const label = [filters[2] === 'Все' ? 'все подрядчики' : filters[2], filters[3] === 'Все' ? 'все менеджеры' : filters[3],
+    (filters[1] === 'Все' ? '' : String(filters[1]).toLowerCase() + ' ') + (filters[0] === 'Все' ? 'всё время' : filters[0])].join(' · ');
+  const ss = SpreadsheetApp.create('Сверка — ' + label);
   const sheet = ss.getSheets()[0].setName('Сверка');
-  const head = ['№ задачи', 'Дата', 'Тема письма', 'Языки', 'Менеджер', 'Подрядчик', 'Статус', 'Ссылка на смету', 'Итого с НДС, ₽'];
-  const toDate = s => { const m = String(s).match(/^(\d{2})\.(\d{2})\.(\d{4})$/); return m ? new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1])) : ''; };
-  const data = rep.rows.map(r => [r.id, toDate(r.date), r.subject, r.languages, r.manager, r.contractor, r.status,
-    r.estimate || r.estimateNote, r.total]);
-  sheet.getRange(1, 1, 1, head.length).setValues([head]);
-  if (data.length) {
-    sheet.getRange(2, 1, data.length, head.length).setValues(data);
-    data.forEach((d, i) => {
-      const r = rep.rows[i];
-      if (r.estimate) sheet.getRange(i + 2, 8).setRichTextValue(estimateRich_(r.estimate));
-      sheet.getRange(i + 2, 9).setNumberFormat(moneyFormat_(r.total));
-    });
+  sheet.getRange(1, 1, 1, RECONCILE_HEAD.length).setValues([RECONCILE_HEAD]);
+  if (rows.length) {
+    sheet.getRange(2, 1, rows.length, RECONCILE_HEAD.length).setValues(rows);
+    sheet.getRange(2, 2, rows.length, 1).setNumberFormat('dd.mm.yyyy');
+    sheet.getRange(2, 9, rows.length, 1).setNumberFormat('#,##0.00#');
   }
-  const last = data.length + 2;
+  const last = rows.length + 2;
   sheet.getRange(last, 8).setValue('ИТОГО (по видимым строкам)');
-  // SUBTOTAL — в Excel при фильтре по подрядчику/менеджеру итог пересчитается сам
-  sheet.getRange(last, 9).setFormula(data.length ? '=SUBTOTAL(9,I2:I' + (data.length + 1) + ')' : '=0').setNumberFormat('#,##0.00#');
+  sheet.getRange(last, 9).setFormula(rows.length ? '=SUBTOTAL(9,I2:I' + (rows.length + 1) + ')' : '=0').setNumberFormat('#,##0.00#');
   sheet.getRange(last, 8, 1, 2).setFontWeight('bold');
-  if (data.length) sheet.getRange(2, 2, data.length, 1).setNumberFormat('dd.mm.yyyy');
-  styleReportSheet_(sheet, head.length);
+  styleReportSheet_(sheet, RECONCILE_HEAD.length);
   sheet.setColumnWidth(3, 360);
-  if (data.length) sheet.getRange(1, 1, data.length + 1, head.length).createFilter();
-
-  if (rep.issues.length) {
-    const chk = ss.insertSheet('Проверки');
-    chk.getRange(1, 1, 1, 3).setValues([['№ задачи', 'Строка в таблице', 'Что проверить']]);
-    chk.getRange(2, 1, rep.issues.length, 3).setValues(rep.issues.map(x => [x.id, x.row, x.text]));
-    styleReportSheet_(chk, 3);
-    chk.setColumnWidth(3, 480);
-  }
-  const sum = ss.insertSheet('Итоги по подрядчикам');
-  sum.getRange(1, 1, 1, 3).setValues([['Подрядчик', 'Задач', 'Итого с НДС, ₽']]);
-  if (rep.byContractor.length) {
-    sum.getRange(2, 1, rep.byContractor.length, 3).setValues(rep.byContractor.map(c => [c.name, c.count, c.sum]));
-    sum.getRange(2, 3, rep.byContractor.length, 1).setNumberFormat('#,##0.00#');
-  }
-  styleReportSheet_(sum, 3);
+  if (rows.length) sheet.getRange(1, 1, rows.length + 1, RECONCILE_HEAD.length).createFilter();
   return exportUrl_(ss);
+}
+
+/** Меню: выгрузка в Excel и ссылка на скачивание. */
+function downloadReconcileExcel() {
+  const url = exportReconcileSheetToExcel();
+  const html = HtmlService.createHtmlOutput('<p style="font:14px Arial">Файл готов: <a href="' + url + '" target="_blank">скачать Excel</a></p>' +
+    '<script>window.open(' + JSON.stringify(url) + ', "_blank");</script>').setWidth(320).setHeight(90);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Сверка → Excel');
 }
 
 // ==================== ОТЧЁТ ДЛЯ ТРЕКЕРА (менеджеры) ====================
@@ -3289,6 +3198,5 @@ const HTML_FILES = {
   "AddTranslatorTaskDialog": "<!DOCTYPE html>\n<html>\n<head>\n<base target=\"_top\">\n<?!= include('Общее') ?>\n</head>\n<body class=\"has-foot\">\n  <div class=\"stack\">\n    <div class=\"two\">\n      <label class=\"field\">Дата<input type=\"date\" id=\"date\"></label>\n      <label class=\"field\"><span>Сторона <span class=\"req\">*</span></span><select id=\"side\"></select></label>\n    </div>\n    <label class=\"field\">Раздел<select id=\"razdel\"><option value=\"\">Сначала выберите сторону</option></select></label>\n    <label class=\"field\"><span>Задача <span class=\"req\">*</span></span><input type=\"text\" id=\"task\" placeholder=\"Например: перевести баннер главной страницы\"></label>\n    <div class=\"two\">\n      <label class=\"field\">Заказчик<input type=\"text\" id=\"customer\" placeholder=\"@nick\"></label>\n      <label class=\"field\">Ссылка на Band<input type=\"url\" id=\"link\" placeholder=\"https://band.wb.ru/…\"></label>\n    </div>\n    <div class=\"field\">Переводчик<div id=\"translators\"></div></div>\n    <div class=\"field\">Редактор<div id=\"editors\"></div></div>\n    <div class=\"two\">\n      <label class=\"field\">Готовность<select id=\"readiness\">\n        <option>Не начато</option><option>В работе</option><option>Готово</option><option>На проверке</option></select></label>\n      <label class=\"field\">Комментарий<input type=\"text\" id=\"comment\"></label>\n    </div>\n    <div id=\"msg\" class=\"msg\"></div>\n  </div>\n  <div class=\"foot\"><button class=\"btn primary grow\" id=\"submitBtn\" type=\"button\">Добавить задачу</button></div>\n\n<script>\n  let CATEGORIES = {};\n  $('#date').value = todayIso();\n\n  run('getContentCategories').then(d => {\n    CATEGORIES = d;\n    fillSelect($('#side'), Object.keys(d), 'Выберите…');\n  }).catch(e => setMsg($('#msg'), 'Не получилось загрузить разделы: ' + e.message, 'err'));\n\n  run('getTranslatorNames').then(names => {\n    renderChips($('#translators'), [{ items: names }], []);\n    renderChips($('#editors'), [{ items: names }], []);\n  }).catch(e => setMsg($('#msg'), 'Не получилось загрузить людей: ' + e.message, 'err'));\n\n  $('#side').addEventListener('change', () => {\n    const items = CATEGORIES[$('#side').value] || [];\n    fillSelect($('#razdel'), items, items.length ? 'Выберите…' : '—', items.length === 1 ? items[0] : '');\n  });\n\n  $('#submitBtn').addEventListener('click', () => {\n    if (!$('#side').value) return setMsg($('#msg'), 'Выберите сторону', 'err');\n    if (!$('#task').value.trim()) return setMsg($('#msg'), 'Опишите задачу', 'err');\n    const task = {\n      date: $('#date').value, side: $('#side').value, razdel: $('#razdel').value, task: $('#task').value,\n      customer: $('#customer').value, link: $('#link').value,\n      translator: chipValues($('#translators')).join(', '), editor: chipValues($('#editors')).join(', '),\n      readiness: $('#readiness').value, comment: $('#comment').value\n    };\n    const btn = $('#submitBtn');\n    btn.disabled = true; btn.textContent = 'Добавляю…';\n    run('submitNewTranslatorTask', task).then(() => {\n      setMsg($('#msg'), 'Добавлено! Закрываю…', 'ok');\n      setTimeout(() => google.script.host.close(), 900);\n    }).catch(e => {\n      setMsg($('#msg'), 'Не добавилось: ' + e.message, 'err');\n      btn.disabled = false; btn.textContent = 'Добавить задачу';\n    });\n  });\n</script>\n</body>\n</html>\n",
   "SearchEditTranslatorSidebar": "<!DOCTYPE html>\n<html>\n<head>\n<base target=\"_top\">\n<?!= include('Общее') ?>\n</head>\n<body class=\"has-foot\">\n  <div class=\"stack\">\n    <label class=\"field\">Найти<input type=\"text\" id=\"q\" placeholder=\"Задача, заказчик, раздел или имя\"></label>\n    <div class=\"small muted\" id=\"qHint\">Ваши задачи:</div>\n    <div class=\"results\" id=\"results\"></div>\n\n    <div id=\"editor\" class=\"stack\" hidden>\n      <div class=\"card\"><div class=\"t\" id=\"cardTitle\"></div><div class=\"small muted\" id=\"cardMeta\"></div></div>\n      <div class=\"field\">Готовность<div class=\"seg\" id=\"readySeg\"></div></div>\n      <label class=\"field\">Задача<input type=\"text\" id=\"f_task\"></label>\n      <label class=\"field\">Ссылка на Band<input type=\"url\" id=\"f_link\"></label>\n      <div class=\"field\">Переводчик<div id=\"f_translators\"></div></div>\n      <div class=\"field\">Редактор<div id=\"f_editors\"></div></div>\n      <details class=\"more\">\n        <summary>Дата, сторона, раздел, заказчик, комментарий</summary>\n        <div class=\"stack\">\n          <div class=\"two\">\n            <label class=\"field\">Дата<input type=\"date\" id=\"f_date\"></label>\n            <label class=\"field\">Сторона<select id=\"f_side\"></select></label>\n          </div>\n          <label class=\"field\">Раздел<select id=\"f_razdel\"></select></label>\n          <label class=\"field\">Заказчик<input type=\"text\" id=\"f_customer\"></label>\n          <label class=\"field\">Комментарий<textarea id=\"f_comment\"></textarea></label>\n        </div>\n      </details>\n    </div>\n    <div id=\"msg\" class=\"msg\"></div>\n  </div>\n\n  <div class=\"foot col\" id=\"foot\" hidden>\n    <button class=\"btn primary full\" id=\"saveBtn\" type=\"button\">Сохранить</button>\n    <button class=\"link-danger\" id=\"deleteBtn\" type=\"button\">Удалить задачу</button>\n  </div>\n\n<script>\n  const READY = ['Не начато', 'В работе', 'На проверке', 'Готово'];\n  const READY_COLORS = { 'Не начато': '#EFEFEF', 'В работе': '#D6E4F0', 'Готово': '#D9EAD3', 'На проверке': '#FFF2CC' };\n  let CATEGORIES = {}, PEOPLE = [], current = null, readiness = '';\n\n  Promise.all([run('getContentCategories'), run('getTranslatorNames')]).then(([cats, names]) => {\n    CATEGORIES = cats; PEOPLE = names;\n    fillSelect($('#f_side'), Object.keys(cats), '—');\n    search('');\n  }).catch(e => setMsg($('#msg'), 'Не получилось загрузить списки: ' + e.message, 'err'));\n\n  let timer = null, seq = 0;\n  $('#q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => search($('#q').value), 350); });\n\n  function search(q) {\n    const my = ++seq;\n    $('#qHint').textContent = q.trim() ? 'Найдено:' : 'Ваши задачи (или последние, если вашей почты нет в «Списках»):';\n    run('searchTranslatorTasks', q).then(list => {\n      if (my !== seq) return;\n      $('#results').innerHTML = list.length ? list.map(r =>\n        `<button type=\"button\" data-row=\"${r.row}\">${esc(r.title)} <span class=\"d\">· ${esc(r.side)} · ${esc(r.date)}${r.readiness ? ' · ' + esc(r.readiness) : ''}</span></button>`\n      ).join('') : '<div class=\"small muted\" style=\"padding:8px 10px\">Ничего не найдено</div>';\n    }).catch(e => setMsg($('#msg'), 'Поиск не сработал: ' + e.message, 'err'));\n  }\n\n  $('#results').addEventListener('click', e => {\n    const b = e.target.closest('button[data-row]');\n    if (!b) return;\n    $$('#results button').forEach(x => x.classList.toggle('on', x === b));\n    run('getTranslatorTaskForEdit', Number(b.dataset.row)).then(fill).catch(err => setMsg($('#msg'), 'Не открылась: ' + err.message, 'err'));\n  });\n\n  function renderReady() {\n    $('#readySeg').innerHTML = READY.map(s =>\n      `<button type=\"button\" data-s=\"${esc(s)}\" class=\"${s === readiness ? 'on' : ''}\" style=\"${s === readiness ? 'background:' + READY_COLORS[s] : ''}\">${esc(s)}</button>`).join('');\n  }\n  $('#readySeg').addEventListener('click', e => {\n    const b = e.target.closest('button[data-s]');\n    if (b) { readiness = b.dataset.s; renderReady(); }\n  });\n\n  function peopleChips(el, chosen) {\n    renderChips(el, [{ items: PEOPLE }, { title: 'Другие', items: chosen.filter(n => !PEOPLE.includes(n)) }], chosen);\n  }\n\n  function updateRazdel(selected) {\n    const items = CATEGORIES[$('#f_side').value] || [];\n    fillSelect($('#f_razdel'), items.includes(selected) || !selected ? items : items.concat([selected]), '—', selected);\n  }\n  $('#f_side').addEventListener('change', () => updateRazdel(''));\n\n  function fill(t) {\n    current = t;\n    readiness = t.readiness || 'Не начато';\n    $('#cardTitle').textContent = t.task || '(задача не заполнена)';\n    $('#cardMeta').textContent = [t.side, t.razdel, t.customer].filter(Boolean).join(' · ');\n    renderReady();\n    $('#f_task').value = t.task; $('#f_link').value = t.link; $('#f_date').value = t.date;\n    $('#f_side').value = t.side; updateRazdel(t.razdel);\n    $('#f_customer').value = t.customer; $('#f_comment').value = t.comment;\n    peopleChips($('#f_translators'), t.translatorNames);\n    peopleChips($('#f_editors'), t.editorNames);\n    $('#editor').hidden = false; $('#foot').hidden = false;\n    setMsg($('#msg'), '');\n  }\n\n  $('#saveBtn').addEventListener('click', () => {\n    if (!current) return;\n    const task = {\n      row: current.row, origKey: current.origKey, readiness: readiness,\n      task: $('#f_task').value, link: $('#f_link').value, date: $('#f_date').value, side: $('#f_side').value,\n      razdel: $('#f_razdel').value, customer: $('#f_customer').value, comment: $('#f_comment').value,\n      translator: chipValues($('#f_translators')).join(', '), editor: chipValues($('#f_editors')).join(', ')\n    };\n    const btn = $('#saveBtn');\n    btn.disabled = true;\n    setMsg($('#msg'), 'Сохраняю…');\n    run('saveTranslatorTaskEdits', task)\n      .then(r => run('getTranslatorTaskForEdit', r.row)).then(fill)\n      .then(() => { setMsg($('#msg'), 'Сохранено ✓', 'ok'); search($('#q').value); })\n      .catch(e => setMsg($('#msg'), 'Не сохранилось: ' + e.message, 'err'))\n      .finally(() => { btn.disabled = false; });\n  });\n\n  $('#deleteBtn').addEventListener('click', () => {\n    if (!current) return;\n    if (!confirm('Удалить задачу «' + (current.task || '') + '»? Отменить будет нельзя.')) return;\n    run('deleteTranslatorTask', current.row, current.origKey).then(() => {\n      current = null;\n      $('#editor').hidden = true; $('#foot').hidden = true;\n      setMsg($('#msg'), 'Удалено.', 'ok');\n      search($('#q').value);\n    }).catch(e => setMsg($('#msg'), 'Не удалилось: ' + e.message, 'err'));\n  });\n</script>\n</body>\n</html>\n",
   "TranslatorReportSidebar": "<!DOCTYPE html>\n<html>\n<head>\n<base target=\"_top\">\n<?!= include('Общее') ?>\n</head>\n<body>\n  <h2>Отчёт по переводчику</h2>\n  <div class=\"stack\">\n    <div class=\"two\">\n      <label class=\"field\">Переводчик<select id=\"translator\"></select></label>\n      <label class=\"field\">Месяц<select id=\"month\"></select></label>\n    </div>\n    <div class=\"two\">\n      <button class=\"btn primary\" id=\"runBtn\" type=\"button\">Сформировать отчёт</button>\n      <button class=\"btn\" id=\"trackerBtn\" type=\"button\">Список для трекера</button>\n    </div>\n  </div>\n  <div id=\"results\"></div>\n  <pre class=\"out\" id=\"trackerOut\" hidden></pre>\n  <div class=\"two\" style=\"margin-top:8px\">\n    <button class=\"btn\" id=\"exportBtn\" type=\"button\" hidden>📥 Скачать Excel</button>\n    <button class=\"btn\" id=\"trackerCopy\" type=\"button\" hidden>Скопировать список</button>\n  </div>\n  <div id=\"msg\" class=\"msg\" style=\"margin-top:6px\"></div>\n\n<script>\n  let trackerText = '';\n  const badge = r => r === 'Готово' ? 'b-done' : r === 'В работе' ? 'b-progress' : r === 'На проверке' ? 'b-review' : '';\n\n  Promise.all([run('getTranslatorNames'), run('getMonthsList')]).then(([names, months]) => {\n    fillSelect($('#translator'), names, 'Выберите…');\n    $('#month').innerHTML = '<option value=\"\">Все месяцы</option>' + months.map(m => `<option value=\"${m.value}\">${esc(m.label)}</option>`).join('');\n  }).catch(e => setMsg($('#msg'), 'Не получилось загрузить списки: ' + e.message, 'err'));\n\n  function need() {\n    if ($('#translator').value) return true;\n    setMsg($('#msg'), 'Выберите переводчика', 'err');\n    return false;\n  }\n\n  $('#runBtn').addEventListener('click', () => {\n    if (!need()) return;\n    $('#trackerOut').hidden = true; $('#trackerCopy').hidden = true;\n    $('#results').innerHTML = '<p class=\"muted\">Считаю…</p>';\n    setMsg($('#msg'), '');\n    run('getTranslatorReport', $('#translator').value, $('#month').value).then(d => {\n      if (!d.total) { $('#results').innerHTML = '<p class=\"muted\">Ничего не найдено.</p>'; $('#exportBtn').hidden = true; return; }\n      let html = `<div class=\"tiles\">\n        <div class=\"tile\"><div class=\"num\">${d.total}</div><div class=\"lbl\">всего</div></div>\n        <div class=\"tile\"><div class=\"num\">${d.done}</div><div class=\"lbl\">готово</div></div>\n        <div class=\"tile\"><div class=\"num\">${d.inProgress}</div><div class=\"lbl\">в работе</div></div></div>`;\n      Object.keys(d.bySide).forEach(side => {\n        const tasks = d.bySide[side];\n        html += `<div class=\"group\"><h4>${esc(side)} (${tasks.length})</h4>` + tasks.map(t =>\n          `<div class=\"line\"><span>${t.link ? `<a href=\"${esc(t.link)}\" target=\"_blank\">${esc(t.task)}</a>` : esc(t.task)}</span>` +\n          `<span class=\"badge ${badge(t.readiness)}\">${esc(t.readiness)}</span></div>`).join('') + '</div>';\n      });\n      $('#results').innerHTML = html;\n      $('#exportBtn').hidden = false;\n    }).catch(e => { $('#results').innerHTML = ''; setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'); });\n  });\n\n  $('#exportBtn').addEventListener('click', () => {\n    setMsg($('#msg'), 'Готовлю файл…');\n    run('exportTranslatorReportToExcel', $('#translator').value, $('#month').value)\n      .then(url => { setMsg($('#msg'), 'Готово — файл скачивается', 'ok'); window.open(url, '_blank'); })\n      .catch(e => setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'));\n  });\n\n  $('#trackerBtn').addEventListener('click', () => {\n    if (!need()) return;\n    setMsg($('#msg'), 'Считаю…');\n    run('getTranslatorTrackerReportText', $('#translator').value).then(r => {\n      trackerText = r.text;\n      $('#trackerOut').textContent = r.text;\n      $('#trackerOut').hidden = !r.count; $('#trackerCopy').hidden = !r.count;\n      setMsg($('#msg'), r.count ? '' : 'Задач не найдено');\n    }).catch(e => setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'));\n  });\n  $('#trackerCopy').addEventListener('click', () => copyText(trackerText).then(() => setMsg($('#msg'), 'Скопировано', 'ok')));\n</script>\n</body>\n</html>\n",
-  "MigrateDialog": "<!DOCTYPE html>\n<html>\n<head>\n<base target=\"_top\">\n<?!= include('Общее') ?>\n<style>\n  .drop { display: block; border: 2px dashed var(--field); border-radius: 10px; padding: 22px 14px; text-align: center;\n    cursor: pointer; font-size: 13px; font-weight: 400; color: var(--soft); }\n  .drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }\n  .drop b { color: var(--ink); }\n  .drop input { display: none; }\n  .or { text-align: center; font-size: 12px; color: var(--soft); }\n</style>\n</head>\n<body class=\"has-foot\">\n  <div class=\"stack\">\n    <label class=\"drop\" id=\"drop\">\n      <input type=\"file\" id=\"file\" accept=\".xlsx\">\n      <b id=\"fileName\">Выберите файл Excel</b><br>\n      или перетащите его сюда\n      <div class=\"small\" style=\"margin-top:6px\">Старая таблица (Файл → Скачать → Microsoft Excel) или файл с колонками новой таблицы</div>\n    </label>\n    <div class=\"or\">— или —</div>\n    <label class=\"field\">Ссылка на старую таблицу\n      <input type=\"url\" id=\"link\" placeholder=\"https://docs.google.com/spreadsheets/d/…\"></label>\n    <div id=\"plan\" class=\"preview\" hidden></div>\n    <div id=\"msg\" class=\"msg\"></div>\n  </div>\n  <div class=\"foot\">\n    <button class=\"btn\" id=\"checkBtn\" type=\"button\">Проверить</button>\n    <button class=\"btn primary grow\" id=\"goBtn\" type=\"button\" disabled>Перенести</button>\n  </div>\n\n<script src=\"https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js\"></script>\n<script>\n// xlsx-parse:start\n  /** Лист «Localization Misc» из файла Excel → { values, links, merges } для migrationPreviewFromData. */\n  function oldSheetFromWorkbook(XLSX, wb) {\n    const COLS = 19, BAND = 5;\n    const name = wb.SheetNames.find(n => n.trim() === 'Localization Misc');\n    if (!name) throw new Error('В файле нет листа «Localization Misc». Это точно старая таблица?');\n    const ws = wb.Sheets[name];\n    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');\n    const values = [], links = [];\n    let last = 0;\n    for (let r = 0; r <= range.e.r; r++) {\n      const row = [];\n      let link = '';\n      for (let c = 0; c < COLS; c++) {\n        const cell = ws[XLSX.utils.encode_cell({ r: r, c: c })];\n        row.push(xlsxCellValue(XLSX, cell));\n        if (c === BAND && cell && cell.l && /^https?:\\/\\//i.test(cell.l.Target || '')) link = cell.l.Target;\n      }\n      if (link || row.some(v => v !== '')) last = r + 1;\n      values.push(row);\n      links.push(link);\n    }\n    values.length = last;\n    links.length = last;\n    const merges = (ws['!merges'] || [])\n      .filter(m => m.s.c < COLS && m.s.r < last)\n      .map(m => [m.s.r + 1, m.s.c + 1, m.e.r - m.s.r + 1, m.e.c - m.s.c + 1]);\n    return { values: values, links: links, merges: merges };\n  }\n\n  /** Как getValues(): число, строка, логическое; дата — { d: 'yyyy-MM-dd' } (Date через google.script.run не пройдёт). */\n  function xlsxCellValue(XLSX, cell) {\n    if (!cell || cell.v == null || cell.t === 'e' || cell.t === 'z') return '';\n    if (cell.t === 'n' && cell.z && XLSX.SSF.is_date(cell.z)) {\n      const p = XLSX.SSF.parse_date_code(cell.v);\n      const pad = n => String(n).padStart(2, '0');\n      return { d: p.y + '-' + pad(p.m) + '-' + pad(p.d) };\n    }\n    return typeof cell.v === 'string' ? cell.v.replace(/\\r\\n?/g, '\\n') : cell.v;\n  }\n  /**\n   * Файл в формате новой таблицы (шапка «№ задачи», «Тикет», «Тема письма»…), например «Перенос — задачи из старой таблицы.xlsx».\n   * Возвращает { kind: 'tasks', sheets: [{ name, archive, rows: [{ values, link, link2 }] }] } или null.\n   */\n  function tasksFileFromWorkbook(XLSX, wb) {\n    const COLS = 18, SUBJ = 2, EST = 10, COMMENT = 16; // A..R, R — жалобы на заказчика\n    const sheets = [];\n    wb.SheetNames.forEach(name => {\n      const ws = wb.Sheets[name];\n      if (!ws || !ws['!ref']) return;\n      const at = (r, c) => ws[XLSX.utils.encode_cell({ r: r, c: c })];\n      const head = c => String((at(0, c) || {}).v || '').trim();\n      if (head(0) !== '№ задачи' || head(SUBJ) !== 'Тема письма') return;\n      const range = XLSX.utils.decode_range(ws['!ref']);\n      const rows = [];\n      for (let r = 1; r <= range.e.r; r++) {\n        const values = [];\n        for (let c = 0; c < COLS; c++) values.push(xlsxCellValue(XLSX, at(r, c)));\n        if (!values.some(v => v !== '')) continue;\n        const target = c => { const cell = at(r, c); return cell && cell.l && /^https?:\\/\\//i.test(cell.l.Target || '') ? cell.l.Target : ''; };\n        if (target(EST)) values[EST] = target(EST); // «Ссылка на смету …» → сам адрес\n        // Доп. ссылки, сложенные в комментарий, — обратно в ссылки после темы\n        const extra = [];\n        values[COMMENT] = String(values[COMMENT] || '').split('\\n').filter(line => {\n          const m = line.match(/^\\s*(?:Доп\\. ссылк[аи] на Band|Ещё ссылки)\\s*:\\s*(.*)$/i);\n          if (m) extra.push(...(m[1].match(/https?:\\/\\/\\S+/g) || []));\n          return !m;\n        }).join('\\n');\n        rows.push({ values: values, link: target(SUBJ), link2: extra.join('\\n') });\n      }\n      sheets.push({ name: name, archive: /^(данные до|архив)/i.test(name.trim()), rows: rows });\n    });\n    return sheets.length ? { kind: 'tasks', sheets: sheets } : null;\n  }\n// xlsx-parse:end\n\n  let source = null;   // данные из файла\n  let mode = '';       // 'file' | 'link'\n  let fileError = '';  // почему файл не прочитался — показываем и при «Проверить»\n\n  function resetPlan() {\n    $('#plan').hidden = true;\n    $('#goBtn').disabled = true;\n  }\n\n  function readFile(file) {\n    resetPlan();\n    source = null;\n    fileError = '';\n    if (!file) return;\n    if (!/\\.xlsx$/i.test(file.name)) return setMsg($('#msg'), 'Нужен файл .xlsx', 'err');\n    $('#fileName').textContent = file.name;\n    $('#link').value = '';\n    setMsg($('#msg'), 'Читаю файл…');\n    if (typeof XLSX === 'undefined') return setMsg($('#msg'), 'Не загрузилась читалка Excel. Проверьте интернет или вставьте ссылку.', 'err');\n    file.arrayBuffer().then(buf => {\n      const wb = XLSX.read(new Uint8Array(buf), { type: 'array', cellNF: true, cellDates: false });\n      source = tasksFileFromWorkbook(XLSX, wb);\n      if (!source) {\n        if (!wb.SheetNames.some(n => n.trim() === 'Localization Misc')) {\n          throw new Error('в нём нет ни листа «Localization Misc» (старая таблица), ни листа с колонками новой таблицы («№ задачи», «Тикет», «Тема письма»…)');\n        }\n        source = oldSheetFromWorkbook(XLSX, wb);\n      }\n      mode = 'file';\n      check();\n    }).catch(e => {\n      fileError = 'Не получилось прочитать файл: ' + e.message;\n      setMsg($('#msg'), fileError, 'err');\n    });\n  }\n\n  function check() {\n    resetPlan();\n    if (!source && $('#link').value.trim()) mode = 'link';\n    if (!mode || (mode === 'file' && !source)) return setMsg($('#msg'), fileError || 'Выберите файл или вставьте ссылку', 'err');\n    setMsg($('#msg'), 'Считаю, что перенести…');\n    if (source && source.kind === 'tasks') return checkTasksFile();\n    const call = mode === 'file' ? run('migrationPreviewFromData', source) : run('migrationPreviewFromLink', $('#link').value);\n    call.then(p => {\n      $('#plan').hidden = false;\n      if (!p.count) {\n        $('#plan').innerHTML = 'Переносить нечего: ' + p.skippedExisting + ' задач уже есть в новой таблице.';\n        return setMsg($('#msg'), '');\n      }\n      $('#plan').innerHTML =\n        '<b>Будет добавлено задач: ' + p.count + '</b> (с ' + esc(p.from) + ' по ' + esc(p.to) + ')<br>' +\n        '<span class=\"small\">Уже есть в новой таблице — пропущу: ' + p.skippedExisting +\n        '. Пустые строки — пропущу: ' + p.skippedEmpty + '.</span><br>' +\n        '<span class=\"small\">После переноса весь лист отсортируется по дате: свежие сверху.</span>';\n      $('#goBtn').disabled = false;\n      setMsg($('#msg'), '');\n    }).catch(e => setMsg($('#msg'), e.message, 'err'));\n  }\n\n  /** Файл в формате новой таблицы: что уйдёт в задачи, что — в архив. */\n  function checkTasksFile() {\n    run('migrationPreviewFromTasksFile', source).then(p => {\n      $('#plan').hidden = false;\n      const total = p.main + p.archives.reduce((n, a) => n + a.count, 0);\n      const lines = ['<b>В «📌 Задачи (менеджеры)»: ' + p.main + '</b>' + (p.mainSkipped ? ' <span class=\"small\">(уже есть — пропущу ' + p.mainSkipped + ')</span>' : '')]\n        .concat(p.archives.map(a => '<b>На лист «' + esc(a.name) + '»: ' + a.count + '</b>' + (a.skipped ? ' <span class=\"small\">(уже есть — пропущу ' + a.skipped + ')</span>' : '')));\n      $('#plan').innerHTML = total\n        ? lines.join('<br>') + '<br><span class=\"small\">Ссылки на Band и сметы станут ссылками, листы отсортируются по дате: свежие сверху.</span>'\n        : 'Переносить нечего: всё из файла уже есть в таблице.';\n      $('#goBtn').disabled = !total;\n      setMsg($('#msg'), '');\n    }).catch(e => setMsg($('#msg'), e.message, 'err'));\n  }\n\n  $('#file').addEventListener('change', e => readFile(e.target.files[0]));\n  const drop = $('#drop');\n  ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));\n  ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));\n  drop.addEventListener('drop', e => readFile(e.dataTransfer.files[0]));\n  $('#link').addEventListener('input', () => {\n    source = null; mode = ''; resetPlan();\n    $('#fileName').textContent = 'Выберите файл Excel';\n  });\n  $('#checkBtn').addEventListener('click', check);\n\n  $('#goBtn').addEventListener('click', () => {\n    const btn = $('#goBtn');\n    btn.disabled = true; $('#checkBtn').disabled = true;\n    btn.textContent = 'Переношу… (до пары минут)';\n    const tasksFile = source && source.kind === 'tasks';\n    const call = tasksFile ? run('migrationApplyFromTasksFile', source)\n      : mode === 'file' ? run('migrationApplyFromData', source) : run('migrationApplyFromLink', $('#link').value);\n    call.then(r => {\n      btn.textContent = 'Готово';\n      if (tasksFile) {\n        $('#plan').innerHTML = '<b>Готово: в задачи — ' + r.added + ', в архив — ' + r.archived + '.</b> Цвета, списки и ссылки обновлены.';\n        return setMsg($('#msg'), '');\n      }\n      $('#plan').innerHTML = '<b>Перенесено задач: ' + r.added + '.</b> Лист отсортирован по дате, цвета и списки обновлены.' +\n        (mode === 'link' ? '<br><span class=\"small\">Новые номера теперь сверяются со старой таблицей. Появятся там новые задачи — запустите перенос ещё раз, он добавит только новые.</span>'\n                         : '<br><span class=\"small\">Появятся в старой таблице новые задачи — скачайте файл заново и перенесите ещё раз: добавятся только новые.</span>');\n      setMsg($('#msg'), '');\n    }).catch(e => {\n      setMsg($('#msg'), 'Не перенеслось: ' + e.message, 'err');\n      btn.disabled = false; $('#checkBtn').disabled = false; btn.textContent = 'Перенести';\n    });\n  });\n</script>\n</body>\n</html>\n",
-  "ReconcileDialog": "<!DOCTYPE html>\n<html>\n<head>\n<base target=\"_top\">\n<?!= include('Общее') ?>\n<style>\n  .filters { display: grid; grid-template-columns: 1fr 1fr 1.4fr 1.4fr; gap: 10px; }\n  .acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }\n  .grid { width: 100%; border-collapse: collapse; font-size: 12.5px; }\n  .grid th { text-align: left; font-size: 11.5px; color: var(--soft); font-weight: 700; padding: 6px 8px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: #fff; }\n  .grid td { padding: 6px 8px; border-bottom: 1px solid #F0F1F3; vertical-align: top; }\n  .grid td.num, .grid th.num { text-align: right; white-space: nowrap; }\n  .grid tr.bad td { background: var(--warn-soft); }\n  .grid tfoot td { font-weight: 700; border-top: 2px solid var(--line); border-bottom: none; }\n  .wrap { border: 1px solid var(--line); border-radius: 8px; max-height: 330px; overflow: auto; margin-top: 8px; }\n  .id { white-space: nowrap; font-weight: 700; }\n  .issues { margin-top: 10px; }\n  .issues li { margin: 2px 0; }\n  .issues ul { margin: 6px 0 0; padding-left: 18px; }\n</style>\n</head>\n<body>\n  <h2>Сверка с подрядчиками</h2>\n  <div class=\"filters\">\n    <label class=\"field\">Год<select id=\"year\"></select></label>\n    <label class=\"field\">Месяц<select id=\"month\">\n      <option value=\"\">Весь год</option><option value=\"1\">Январь</option><option value=\"2\">Февраль</option><option value=\"3\">Март</option>\n      <option value=\"4\">Апрель</option><option value=\"5\">Май</option><option value=\"6\">Июнь</option><option value=\"7\">Июль</option>\n      <option value=\"8\">Август</option><option value=\"9\">Сентябрь</option><option value=\"10\">Октябрь</option>\n      <option value=\"11\">Ноябрь</option><option value=\"12\">Декабрь</option></select></label>\n    <label class=\"field\">Подрядчик<select id=\"contractor\"></select></label>\n    <label class=\"field\">Менеджер<select id=\"manager\"></select></label>\n  </div>\n  <div class=\"acts\">\n    <button class=\"btn primary\" id=\"runBtn\" type=\"button\">Показать</button>\n    <button class=\"btn\" id=\"excelBtn\" type=\"button\" disabled>📥 Скачать Excel</button>\n    <button class=\"btn\" id=\"copyBtn\" type=\"button\" disabled>📋 Скопировать таблицу</button>\n  </div>\n  <p class=\"small muted\" style=\"margin:6px 0 0\">Период — по дате задачи. Суммы — ровно как в таблице, без округления.</p>\n  <div id=\"msg\" class=\"msg\" style=\"margin-top:6px\"></div>\n  <div id=\"results\"></div>\n\n<script>\n  let last = null;\n  const filters = () => ({ year: $('#year').value, month: $('#year').value ? $('#month').value : '', contractor: $('#contractor').value, manager: $('#manager').value });\n\n  // Фильтры работают сразу (текущий месяц, все), списки подрядчиков и менеджеров догружаются в фоне\n  (() => {\n    const now = new Date(), y = now.getFullYear();\n    fillSelect($('#year'), [String(y), String(y - 1)], 'Всё время', String(y));\n    $('#month').value = String(now.getMonth() + 1);\n    fillSelect($('#contractor'), [], 'Все подрядчики (загружаю список…)');\n    fillSelect($('#manager'), [], 'Все менеджеры (загружаю список…)');\n  })();\n  run('getReconcileOptions').then(o => {\n    const keep = sel => sel.value;\n    const year = keep($('#year')), contractor = keep($('#contractor')), manager = keep($('#manager'));\n    fillSelect($('#year'), o.years.map(String), 'Всё время', year || '');\n    if (year && !o.years.map(String).includes(year)) $('#year').insertAdjacentHTML('beforeend', `<option value=\"${esc(year)}\" selected>${esc(year)}</option>`);\n    fillSelect($('#contractor'), o.contractors, 'Все подрядчики', contractor);\n    fillSelect($('#manager'), o.managers, 'Все менеджеры', manager);\n  }).catch(e => {\n    fillSelect($('#contractor'), [], 'Все подрядчики');\n    fillSelect($('#manager'), [], 'Все менеджеры');\n    setMsg($('#msg'), 'Списки подрядчиков и менеджеров не загрузились: ' + e.message + '. Сверка по всем всё равно работает.', 'err');\n  });\n\n  function render(d) {\n    const bad = new Set(d.issues.filter(x => x.kind !== 'extra').map(x => x.row));\n    const tm = d.timing || {};\n    let html = `<p class=\"small muted\" style=\"margin:10px 0 0\"><b>${esc(d.label)}</b>${d.seconds != null ? ` · посчитано за ${d.seconds} с` : ''}${d.waited != null ? ` · окно ждало ${d.waited} с` : ''}</p>` +\n      (tm.read != null ? `<p class=\"small muted\" style=\"margin:2px 0 0\">таблица (${tm.rows} строк): ${tm.read} с · ссылки на сметы: ${tm.links} с, ${esc(tm.via)}` +\n        (tm.hidden ? ` — ссылок под текстом: ${tm.hidden}` : '') + (tm.apiError ? ` (API: ${esc(tm.apiError)})` : '') + '</p>' : '') +\n      (tm.hidden ? '<p class=\"hint\" style=\"margin-top:6px\">Часть ссылок на сметы спрятана под текстом «Ссылка на смету …» — их читать дольше. Один раз нажмите «⚙️ Настройки → 🔗 Ссылки на сметы — адресами».</p>' : '') + `<div class=\"tiles\">\n      <div class=\"tile\"><div class=\"num\">${d.count}</div><div class=\"lbl\">задач</div></div>\n      <div class=\"tile\"><div class=\"num\">${d.withMoney}</div><div class=\"lbl\">с суммой</div></div>\n      <div class=\"tile\"><div class=\"num\">${esc(d.sumText)}</div><div class=\"lbl\">₽ с НДС</div></div></div>`;\n    if (d.issues.length) {\n      html += `<div class=\"hint issues\"><b>Проверить перед сверкой: ${d.issues.length}</b><ul>` +\n        d.issues.map(x => `<li><b>${esc(x.id || 'строка ' + x.row)}</b> — ${esc(x.text)}</li>`).join('') + '</ul></div>';\n    }\n    if (!$('#contractor').value && d.byContractor.length > 1) {\n      html += '<h3>По подрядчикам</h3><table class=\"grid\">' + d.byContractor.map(c =>\n        `<tr><td>${esc(c.name)}</td><td class=\"num\">${c.count} задач</td><td class=\"num\"><b>${esc(c.sumText)} ₽</b></td></tr>`).join('') + '</table>';\n    }\n    html += '<div class=\"wrap\"><table class=\"grid\"><thead><tr><th>№ задачи</th><th>Тема письма</th><th>Языки</th><th>Менеджер</th><th>Смета</th><th class=\"num\">Итого с НДС, ₽</th></tr></thead><tbody>' +\n      (d.rows.length ? d.rows.map(r => `<tr class=\"${bad.has(r.row) ? 'bad' : ''}\">\n        <td class=\"id\">${esc(r.id)}<div class=\"small muted\">${esc(r.date)}</div></td>\n        <td>${r.link ? `<a href=\"${esc(r.link)}\" target=\"_blank\">${esc(r.subject)}</a>` : esc(r.subject)}<div class=\"small muted\">${esc([r.contractor, r.status].filter(Boolean).join(' · '))}</div></td>\n        <td>${esc(r.languages)}</td><td>${esc(r.manager)}</td>\n        <td class=\"num\" style=\"text-align:left\">${r.estimate ? `<a href=\"${esc(r.estimate)}\" target=\"_blank\">смета ↗</a>` : `<span class=\"muted\">${esc(r.estimateNote || '—')}</span>`}</td>\n        <td class=\"num\">${esc(r.totalText) || '<span class=\"muted\">—</span>'}</td></tr>`).join('')\n        : '<tr><td colspan=\"6\" class=\"muted\">Задач за этот период нет</td></tr>') +\n      `</tbody><tfoot><tr><td colspan=\"5\">Итого</td><td class=\"num\">${esc(d.sumText)}</td></tr></tfoot></table></div>`;\n    $('#results').innerHTML = html;\n  }\n\n  // Пока считает — видно, сколько секунд прошло; через минуту — подсказка, где смотреть ошибку\n  let timer = null, startedAt = 0;\n  function waiting() {\n    const t0 = startedAt = Date.now();\n    clearInterval(timer);\n    const tick = () => {\n      const sec = Math.round((Date.now() - t0) / 1000);\n      $('#results').innerHTML = `<p class=\"muted\">Считаю… ${sec} с</p>` + (sec >= 60\n        ? '<p class=\"hint\">Что-то долго. Проверьте «Расширения → Apps Script → Выполнения» (слева): там видно, на чём остановилось и какая ошибка. Пришлите скрин.</p>' : '');\n    };\n    tick();\n    timer = setInterval(tick, 1000);\n  }\n  $('#runBtn').addEventListener('click', () => {\n    waiting();\n    $('#runBtn').disabled = true;\n    $('#excelBtn').disabled = $('#copyBtn').disabled = true;\n    setMsg($('#msg'), '');\n    run('getReconciliation', filters()).then(d => {\n      clearInterval(timer);\n      if (!d || !d.rows) throw new Error('таблица вернула пустой ответ — обновите страницу таблицы (F5) и попробуйте ещё раз');\n      last = d;\n      d.waited = Math.round((Date.now() - startedAt) / 100) / 10;\n      render(d);\n      $('#excelBtn').disabled = $('#copyBtn').disabled = false;\n    }).catch(e => { clearInterval(timer); $('#results').innerHTML = ''; setMsg($('#msg'), 'Не получилось: ' + (e && e.message || e), 'err'); })\n      .finally(() => { $('#runBtn').disabled = false; });\n  });\n\n  $('#excelBtn').addEventListener('click', () => {\n    setMsg($('#msg'), 'Готовлю файл…');\n    run('exportReconciliationToExcel', filters()).then(url => { setMsg($('#msg'), 'Готово — файл скачивается', 'ok'); window.open(url, '_blank'); })\n      .catch(e => setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'));\n  });\n\n  // Таблица для письма подрядчику: ссылки на сметы остаются кликабельными\n  $('#copyBtn').addEventListener('click', () => {\n    if (!last) return;\n    const td = 'style=\"border:1px solid #ccc;padding:4px 8px\"';\n    const html = `<table style=\"border-collapse:collapse\"><tr><th ${td}>№ задачи</th><th ${td}>Языки</th><th ${td}>Смета</th><th ${td}>Итого с НДС, ₽</th></tr>` +\n      last.rows.map(r => `<tr><td ${td}>${esc(r.id)}</td><td ${td}>${esc(r.languages)}</td><td ${td}>${r.estimate ? `<a href=\"${esc(r.estimate)}\">Ссылка на смету ${esc(r.id)}</a>` : esc(r.estimateNote || '')}</td><td ${td} align=\"right\">${esc(r.totalText)}</td></tr>`).join('') +\n      `<tr><td ${td} colspan=\"3\"><b>Итого</b></td><td ${td} align=\"right\"><b>${esc(last.sumText)}</b></td></tr></table>`;\n    copyHtml(html).then(() => setMsg($('#msg'), 'Скопировано — вставьте в письмо или документ', 'ok'));\n  });\n</script>\n</body>\n</html>\n"
+  "MigrateDialog": "<!DOCTYPE html>\n<html>\n<head>\n<base target=\"_top\">\n<?!= include('Общее') ?>\n<style>\n  .drop { display: block; border: 2px dashed var(--field); border-radius: 10px; padding: 22px 14px; text-align: center;\n    cursor: pointer; font-size: 13px; font-weight: 400; color: var(--soft); }\n  .drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }\n  .drop b { color: var(--ink); }\n  .drop input { display: none; }\n  .or { text-align: center; font-size: 12px; color: var(--soft); }\n</style>\n</head>\n<body class=\"has-foot\">\n  <div class=\"stack\">\n    <label class=\"drop\" id=\"drop\">\n      <input type=\"file\" id=\"file\" accept=\".xlsx\">\n      <b id=\"fileName\">Выберите файл Excel</b><br>\n      или перетащите его сюда\n      <div class=\"small\" style=\"margin-top:6px\">Старая таблица (Файл → Скачать → Microsoft Excel) или файл с колонками новой таблицы</div>\n    </label>\n    <div class=\"or\">— или —</div>\n    <label class=\"field\">Ссылка на старую таблицу\n      <input type=\"url\" id=\"link\" placeholder=\"https://docs.google.com/spreadsheets/d/…\"></label>\n    <div id=\"plan\" class=\"preview\" hidden></div>\n    <div id=\"msg\" class=\"msg\"></div>\n  </div>\n  <div class=\"foot\">\n    <button class=\"btn\" id=\"checkBtn\" type=\"button\">Проверить</button>\n    <button class=\"btn primary grow\" id=\"goBtn\" type=\"button\" disabled>Перенести</button>\n  </div>\n\n<script src=\"https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js\"></script>\n<script>\n// xlsx-parse:start\n  /** Лист «Localization Misc» из файла Excel → { values, links, merges } для migrationPreviewFromData. */\n  function oldSheetFromWorkbook(XLSX, wb) {\n    const COLS = 19, BAND = 5;\n    const name = wb.SheetNames.find(n => n.trim() === 'Localization Misc');\n    if (!name) throw new Error('В файле нет листа «Localization Misc». Это точно старая таблица?');\n    const ws = wb.Sheets[name];\n    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');\n    const values = [], links = [];\n    let last = 0;\n    for (let r = 0; r <= range.e.r; r++) {\n      const row = [];\n      let link = '';\n      for (let c = 0; c < COLS; c++) {\n        const cell = ws[XLSX.utils.encode_cell({ r: r, c: c })];\n        row.push(xlsxCellValue(XLSX, cell));\n        if (c === BAND && cell && cell.l && /^https?:\\/\\//i.test(cell.l.Target || '')) link = cell.l.Target;\n      }\n      if (link || row.some(v => v !== '')) last = r + 1;\n      values.push(row);\n      links.push(link);\n    }\n    values.length = last;\n    links.length = last;\n    const merges = (ws['!merges'] || [])\n      .filter(m => m.s.c < COLS && m.s.r < last)\n      .map(m => [m.s.r + 1, m.s.c + 1, m.e.r - m.s.r + 1, m.e.c - m.s.c + 1]);\n    return { values: values, links: links, merges: merges };\n  }\n\n  /** Как getValues(): число, строка, логическое; дата — { d: 'yyyy-MM-dd' } (Date через google.script.run не пройдёт). */\n  function xlsxCellValue(XLSX, cell) {\n    if (!cell || cell.v == null || cell.t === 'e' || cell.t === 'z') return '';\n    if (cell.t === 'n' && cell.z && XLSX.SSF.is_date(cell.z)) {\n      const p = XLSX.SSF.parse_date_code(cell.v);\n      const pad = n => String(n).padStart(2, '0');\n      return { d: p.y + '-' + pad(p.m) + '-' + pad(p.d) };\n    }\n    return typeof cell.v === 'string' ? cell.v.replace(/\\r\\n?/g, '\\n') : cell.v;\n  }\n  /**\n   * Файл в формате новой таблицы (шапка «№ задачи», «Тикет», «Тема письма»…), например «Перенос — задачи из старой таблицы.xlsx».\n   * Возвращает { kind: 'tasks', sheets: [{ name, archive, rows: [{ values, link, link2 }] }] } или null.\n   */\n  function tasksFileFromWorkbook(XLSX, wb) {\n    const COLS = 18, SUBJ = 2, EST = 10, COMMENT = 16; // A..R, R — жалобы на заказчика\n    const sheets = [];\n    wb.SheetNames.forEach(name => {\n      const ws = wb.Sheets[name];\n      if (!ws || !ws['!ref']) return;\n      const at = (r, c) => ws[XLSX.utils.encode_cell({ r: r, c: c })];\n      const head = c => String((at(0, c) || {}).v || '').trim();\n      if (head(0) !== '№ задачи' || head(SUBJ) !== 'Тема письма') return;\n      const range = XLSX.utils.decode_range(ws['!ref']);\n      const rows = [];\n      for (let r = 1; r <= range.e.r; r++) {\n        const values = [];\n        for (let c = 0; c < COLS; c++) values.push(xlsxCellValue(XLSX, at(r, c)));\n        if (!values.some(v => v !== '')) continue;\n        const target = c => { const cell = at(r, c); return cell && cell.l && /^https?:\\/\\//i.test(cell.l.Target || '') ? cell.l.Target : ''; };\n        if (target(EST)) values[EST] = target(EST); // «Ссылка на смету …» → сам адрес\n        // Доп. ссылки, сложенные в комментарий, — обратно в ссылки после темы\n        const extra = [];\n        values[COMMENT] = String(values[COMMENT] || '').split('\\n').filter(line => {\n          const m = line.match(/^\\s*(?:Доп\\. ссылк[аи] на Band|Ещё ссылки)\\s*:\\s*(.*)$/i);\n          if (m) extra.push(...(m[1].match(/https?:\\/\\/\\S+/g) || []));\n          return !m;\n        }).join('\\n');\n        rows.push({ values: values, link: target(SUBJ), link2: extra.join('\\n') });\n      }\n      sheets.push({ name: name, archive: /^(данные до|архив)/i.test(name.trim()), rows: rows });\n    });\n    return sheets.length ? { kind: 'tasks', sheets: sheets } : null;\n  }\n// xlsx-parse:end\n\n  let source = null;   // данные из файла\n  let mode = '';       // 'file' | 'link'\n  let fileError = '';  // почему файл не прочитался — показываем и при «Проверить»\n\n  function resetPlan() {\n    $('#plan').hidden = true;\n    $('#goBtn').disabled = true;\n  }\n\n  function readFile(file) {\n    resetPlan();\n    source = null;\n    fileError = '';\n    if (!file) return;\n    if (!/\\.xlsx$/i.test(file.name)) return setMsg($('#msg'), 'Нужен файл .xlsx', 'err');\n    $('#fileName').textContent = file.name;\n    $('#link').value = '';\n    setMsg($('#msg'), 'Читаю файл…');\n    if (typeof XLSX === 'undefined') return setMsg($('#msg'), 'Не загрузилась читалка Excel. Проверьте интернет или вставьте ссылку.', 'err');\n    file.arrayBuffer().then(buf => {\n      const wb = XLSX.read(new Uint8Array(buf), { type: 'array', cellNF: true, cellDates: false });\n      source = tasksFileFromWorkbook(XLSX, wb);\n      if (!source) {\n        if (!wb.SheetNames.some(n => n.trim() === 'Localization Misc')) {\n          throw new Error('в нём нет ни листа «Localization Misc» (старая таблица), ни листа с колонками новой таблицы («№ задачи», «Тикет», «Тема письма»…)');\n        }\n        source = oldSheetFromWorkbook(XLSX, wb);\n      }\n      mode = 'file';\n      check();\n    }).catch(e => {\n      fileError = 'Не получилось прочитать файл: ' + e.message;\n      setMsg($('#msg'), fileError, 'err');\n    });\n  }\n\n  function check() {\n    resetPlan();\n    if (!source && $('#link').value.trim()) mode = 'link';\n    if (!mode || (mode === 'file' && !source)) return setMsg($('#msg'), fileError || 'Выберите файл или вставьте ссылку', 'err');\n    setMsg($('#msg'), 'Считаю, что перенести…');\n    if (source && source.kind === 'tasks') return checkTasksFile();\n    const call = mode === 'file' ? run('migrationPreviewFromData', source) : run('migrationPreviewFromLink', $('#link').value);\n    call.then(p => {\n      $('#plan').hidden = false;\n      if (!p.count) {\n        $('#plan').innerHTML = 'Переносить нечего: ' + p.skippedExisting + ' задач уже есть в новой таблице.';\n        return setMsg($('#msg'), '');\n      }\n      $('#plan').innerHTML =\n        '<b>Будет добавлено задач: ' + p.count + '</b> (с ' + esc(p.from) + ' по ' + esc(p.to) + ')<br>' +\n        '<span class=\"small\">Уже есть в новой таблице — пропущу: ' + p.skippedExisting +\n        '. Пустые строки — пропущу: ' + p.skippedEmpty + '.</span><br>' +\n        '<span class=\"small\">После переноса весь лист отсортируется по дате: свежие сверху.</span>';\n      $('#goBtn').disabled = false;\n      setMsg($('#msg'), '');\n    }).catch(e => setMsg($('#msg'), e.message, 'err'));\n  }\n\n  /** Файл в формате новой таблицы: что уйдёт в задачи, что — в архив. */\n  function checkTasksFile() {\n    run('migrationPreviewFromTasksFile', source).then(p => {\n      $('#plan').hidden = false;\n      const total = p.main + p.archives.reduce((n, a) => n + a.count, 0);\n      const lines = ['<b>В «📌 Задачи (менеджеры)»: ' + p.main + '</b>' + (p.mainSkipped ? ' <span class=\"small\">(уже есть — пропущу ' + p.mainSkipped + ')</span>' : '')]\n        .concat(p.archives.map(a => '<b>На лист «' + esc(a.name) + '»: ' + a.count + '</b>' + (a.skipped ? ' <span class=\"small\">(уже есть — пропущу ' + a.skipped + ')</span>' : '')));\n      $('#plan').innerHTML = total\n        ? lines.join('<br>') + '<br><span class=\"small\">Ссылки на Band и сметы станут ссылками, листы отсортируются по дате: свежие сверху.</span>'\n        : 'Переносить нечего: всё из файла уже есть в таблице.';\n      $('#goBtn').disabled = !total;\n      setMsg($('#msg'), '');\n    }).catch(e => setMsg($('#msg'), e.message, 'err'));\n  }\n\n  $('#file').addEventListener('change', e => readFile(e.target.files[0]));\n  const drop = $('#drop');\n  ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));\n  ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));\n  drop.addEventListener('drop', e => readFile(e.dataTransfer.files[0]));\n  $('#link').addEventListener('input', () => {\n    source = null; mode = ''; resetPlan();\n    $('#fileName').textContent = 'Выберите файл Excel';\n  });\n  $('#checkBtn').addEventListener('click', check);\n\n  $('#goBtn').addEventListener('click', () => {\n    const btn = $('#goBtn');\n    btn.disabled = true; $('#checkBtn').disabled = true;\n    btn.textContent = 'Переношу… (до пары минут)';\n    const tasksFile = source && source.kind === 'tasks';\n    const call = tasksFile ? run('migrationApplyFromTasksFile', source)\n      : mode === 'file' ? run('migrationApplyFromData', source) : run('migrationApplyFromLink', $('#link').value);\n    call.then(r => {\n      btn.textContent = 'Готово';\n      if (tasksFile) {\n        $('#plan').innerHTML = '<b>Готово: в задачи — ' + r.added + ', в архив — ' + r.archived + '.</b> Цвета, списки и ссылки обновлены.';\n        return setMsg($('#msg'), '');\n      }\n      $('#plan').innerHTML = '<b>Перенесено задач: ' + r.added + '.</b> Лист отсортирован по дате, цвета и списки обновлены.' +\n        (mode === 'link' ? '<br><span class=\"small\">Новые номера теперь сверяются со старой таблицей. Появятся там новые задачи — запустите перенос ещё раз, он добавит только новые.</span>'\n                         : '<br><span class=\"small\">Появятся в старой таблице новые задачи — скачайте файл заново и перенесите ещё раз: добавятся только новые.</span>');\n      setMsg($('#msg'), '');\n    }).catch(e => {\n      setMsg($('#msg'), 'Не перенеслось: ' + e.message, 'err');\n      btn.disabled = false; $('#checkBtn').disabled = false; btn.textContent = 'Перенести';\n    });\n  });\n</script>\n</body>\n</html>\n"
 };

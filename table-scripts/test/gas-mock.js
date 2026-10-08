@@ -97,6 +97,7 @@ class Sheet {
   peek(r, c) { const row = this.cells[r - 1]; return row && row[c - 1] ? row[c - 1] : { v: '' }; }
   getName() { return this.name; }
   getParent() { return this.ss; }
+  hideColumns(c, n) { (this.hidden = this.hidden || []).push([c, n]); return this; }
   setName(n) { this.name = n; return this; }
   getLastRow() {
     for (let r = this.cells.length; r >= 1; r--) if (this.cells[r - 1].some(c => c.v !== '' && c.v !== null && c.v !== undefined)) return r;
@@ -217,6 +218,8 @@ class Range {
   fmt(k, v) { this.each((r, c) => { const cell = this.sh.cell(r, c); (cell.f = cell.f || {})[k] = v; }); return this; }
   setBackground(v) { return this.fmt('bg', v); }
   setNumberFormat(v) { return this.fmt('num', v); }
+  setFormula(v) { this.each((r, c) => { this.sh.cell(r, c).formula = v; }); return this; }
+  getFormula() { return this.sh.peek(this.r, this.c).formula || ''; }
   getNumberFormat() { const f = this.sh.peek(this.r, this.c).f; return (f && f.num) || ''; }
   setNote(v) { this.sh.cell(this.r, this.c).note = String(v == null ? '' : v); return this; }
   getNote() { return this.sh.peek(this.r, this.c).note || ''; }
@@ -248,6 +251,7 @@ class Spreadsheet {
   getSheets() { return this.sheets; }
   insertSheet(name, idx) { const sh = new Sheet(this, name, [], 1000, 26); this.sheets.splice(idx ?? this.sheets.length, 0, sh); return sh; }
   toast(msg) { calls.toasts.push(msg); }
+  setActiveSheet(sh) { this.active = sh; return sh; }
 }
 
 function reviveFixture(fx) {

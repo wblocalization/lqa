@@ -59,7 +59,7 @@ test('onOpen строит меню', () => {
 test('Окна открываются', { skip: !process.env.BUNDLE }, () => {
   assert.match(G.include('Общее'), /<style>/);
   ['showAddTaskDialog', 'showSearchEditSidebar', 'showDashboard', 'showManagerReportSidebar', 'showCustomReportSidebar',
-   'showAddTranslatorTaskDialog', 'showSearchEditTranslatorSidebar', 'showTranslatorReportSidebar', 'migrateFromOldTable', 'showReconcileDialog'].forEach(f => G[f]());
+   'showAddTranslatorTaskDialog', 'showSearchEditTranslatorSidebar', 'showTranslatorReportSidebar', 'migrateFromOldTable'].forEach(f => G[f]());
 });
 
 test('До оформления (в «Списках» ещё нет колонки O) справочники читаются', () => {
@@ -651,69 +651,49 @@ test('Суммы смет: без округления, прежняя сумм�
   assert.match(cell().getNote(), /стало 1 000,00 ₽$/);
 });
 
-test('Сверка с подрядчиками: строки, точный итог, проверки, Excel', () => {
-  const add = t => G.submitNewTaskFromDialog({ contractor: 'LogrusIT', manager: 'Тест Сверка', date: '2026-09-20', languages: ['Казахский'], ...t });
-  const id2 = add({ subject: 'Сверка 2', total: '0.1', estimateLink: 'https://disk/b' }); // та же смета, что у «Сверка 1»
-  const id3 = add({ subject: 'Сверка 3', total: '0.2', status: 'Отменено' });
-  const id4 = add({ subject: 'Сверка 4', estimateLink: 'https://disk/c' });
-  const o = G.getReconcileOptions();
-  assert.ok(o.managers.includes('Тест Сверка') && o.contractors.includes('LogrusIT'));
-  const rep = G.getReconciliation({ year: 2026, month: 9, manager: 'Тест Сверка' });
-  same(rep.rows.map(x => x.subject.replace(/^.*\] /, '')).sort(), ['Сверка 1', 'Сверка 2', 'Сверка 3', 'Сверка 4']);
-  same([rep.count, rep.withMoney, rep.sum, rep.sumText], [4, 3, 1000.3, '1 000,30']);
-  const kinds = rep.issues.map(x => x.id + ':' + x.kind).sort();
-  same(kinds.filter(k => /dup|cancelled|noTotal/.test(k)).length, 4, kinds.join(' '));
-  assert.ok(kinds.includes(id3 + ':cancelled') && kinds.includes(id4 + ':noTotal') && kinds.includes(id2 + ':dup'));
-  const row2 = rep.rows.find(x => x.id === id2);
-  same([row2.estimate, row2.languages, row2.totalText, row2.date], ['https://disk/b', 'Казахский', '0,10', '20.09.2026']);
-  assert.equal(G.getReconciliation({ year: 2026, month: 10, manager: 'Тест Сверка' }).count, 0);
-  // Заказ из старой таблицы на несколько строк: номер один, ссылка в каждой, сумма в первой — это не ошибка
-  const ids = rep.rows.map(x => x.id);
-  const multi = G.getReconciliation({ year: 2026 }).issues.filter(x => /LIT-26-1953/.test(x.id) && /noTotal|dup/.test(x.kind));
-  same(multi, [], JSON.stringify(multi));
-  assert.ok(ids.length === 4);
-  // Быстрый путь: ссылки на сметы одним запросом к Google Sheets API — только строки периода
-  const asked = [];
-  ctx.Sheets = { Spreadsheets: { get: (id, opt) => {
-    asked.push(...opt.ranges);
-    return { sheets: [{ data: opt.ranges.map(r => {
-      const m = r.match(/!K(\d+):K(\d+)$/), out = [];
-      for (let row = Number(m[1]); row <= Number(m[2]); row++) {
-        const url = G.linksFromRich_(tasks().getRange(row, 11).getRichTextValue()).link;
-        out.push({ values: [url ? { hyperlink: url } : {}] });
-      }
-      return { rowData: out };
-    }) }] };
-  } } };
-  try {
-    // Адреса в ячейках — ничего не запрашиваем, читается мгновенно
-    const fast = G.getReconciliation({ year: 2026, month: 9, manager: 'Тест Сверка' });
-    same(fast.rows.map(x => x.estimate), rep.rows.map(x => x.estimate));
-    same(fast.issues, rep.issues);
-    assert.equal(asked.length, 0);
-    assert.ok(typeof fast.seconds === 'number');
-    // Прежний вид «Ссылка на смету …» — адрес берётся одним запросом к API
-    const r2 = rowOf(id2);
-    tasks().getRange(r2, 11).setRichTextValue(new RichBuilder().setText('Ссылка на смету ' + id2).setLinkUrl('https://disk/b').build());
-    const viaApi = G.getReconciliation({ year: 2026, month: 9, manager: 'Тест Сверка' });
-    same(viaApi.rows.map(x => x.estimate), rep.rows.map(x => x.estimate));
-    assert.ok(asked.length === 1 && /^'📌 Задачи \(менеджеры\)'!K\d+:K\d+$/.test(asked[0]), asked.join(' '));
-    tasks().getRange(r2, 11).setRichTextValue(G.estimateRich_('https://disk/b'));
-  } finally { delete ctx.Sheets; }
-  assert.equal(G.getReconciliation({ year: 2026, month: 9, manager: 'Тест Сверка', contractor: 'GlobalDoc' }).count, 0);
-  // Excel: все поля, ссылка на смету ещё и адресом, проверки — отдельным листом
+test('Сверка с подрядчиками: лист на формулах и выгрузка в Excel', () => {
+  G.openReconcileSheet();
+  const sh = ss.getSheetByName('💰 Сверка');
+  assert.ok(sh, 'лист создан');
+  assert.equal(ss.active, sh, 'лист открыт');
+  // Фильтры: год и месяц — текущие, подрядчик и менеджер — «Все»; выпадающие списки
+  const now = new CDate();
+  same(sh.getRange('A5:D5').getValues()[0], [now.getFullYear(), ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'][now.getMonth()], 'Все', 'Все']);
+  ['A5', 'B5', 'C5', 'D5'].forEach(a => assert.ok(sh.getRange(a).getDataValidation(), 'нет списка в ' + a));
+  same(sh.getRange(8, 1, 1, 10).getValues()[0], ['№ задачи', 'Дата', 'Тема письма', 'Языки', 'Менеджер', 'Подрядчик', 'Статус', 'Смета', 'Итого с НДС, ₽', 'Проверить']);
+  // Выбранные фильтры не сбрасываются при повторном открытии
+  sh.getRange('A5:D5').setValues([[2026, 'Сентябрь', 'LogrusIT', 'Все']]);
+  G.openReconcileSheet();
+  same(sh.getRange('A5:D5').getValues()[0], [2026, 'Сентябрь', 'LogrusIT', 'Все']);
+  // Excel: берём то, что посчитал лист (в тесте формулы не считаются — кладём значения сами)
+  const d1 = new CDate(2026, 8, 15), d2 = new CDate(2026, 8, 20);
+  sh.getRange(9, 1, 3, 10).setValues([
+    ['LIT-26-1', d1, 'Тема 1', 'Казахский', 'Анастасия Лисовая', 'LogrusIT', 'Отдано', 'https://disk/a', 1000.005, ''],
+    ['LIT-26-2', d2, 'Тема 2', 'Грузинский', 'Анастасия Лисовая', 'LogrusIT', 'В работе', 'https://disk/b', '', 'смета есть, суммы нет'],
+    ['LIT-26-3', d2, 'Тема 3', 'Армянский', 'Ольга Шешина', 'LogrusIT', 'Отдано', 'бесплатно', 0.2, ''],
+  ]);
   const n0 = calls.created.length;
-  assert.match(G.exportReconciliationToExcel({ year: 2026, month: 9, manager: 'Тест Сверка' }), /export\?format=xlsx/);
+  assert.match(G.exportReconcileSheetToExcel(), /export\?format=xlsx/);
   const book = calls.created[n0];
-  const sh = book.getSheetByName('Сверка');
-  same(sh.getRange(1, 1, 1, 9).getValues()[0], ['№ задачи', 'Дата', 'Тема письма', 'Языки', 'Менеджер', 'Подрядчик', 'Статус', 'Ссылка на смету', 'Итого с НДС, ₽']);
-  const body = sh.getRange(2, 1, 4, 9).getValues();
-  const b2 = body.find(x => x[0] === id2);
-  same([b2[7], b2[8]], ['https://disk/b', 0.1]);
-  assert.ok(b2[1] instanceof CDate);
-  assert.equal(sh.getRange(6, 8).getValue(), 'ИТОГО (по видимым строкам)');
-  assert.ok(book.getSheetByName('Проверки').getLastRow() >= 5);
-  assert.equal(book.getSheetByName('Итоги по подрядчикам').getRange(2, 3).getValue(), 1000.3);
+  assert.match(book.title, /Сверка — LogrusIT · все менеджеры · сентябрь 2026/);
+  const x = book.getSheetByName('Сверка');
+  same(x.getRange(1, 1, 1, 10).getValues()[0], ['№ задачи', 'Дата', 'Тема письма', 'Языки', 'Менеджер', 'Подрядчик', 'Статус', 'Смета', 'Итого с НДС, ₽', 'Проверить']);
+  same(x.getRange(2, 1, 3, 1).getValues().map(r => r[0]), ['LIT-26-1', 'LIT-26-2', 'LIT-26-3']);
+  same([x.getRange(2, 8).getValue(), x.getRange(2, 9).getValue(), x.getRange(3, 10).getValue()], ['https://disk/a', 1000.005, 'смета есть, суммы нет']);
+  assert.equal(x.getRange(5, 8).getValue(), 'ИТОГО (по видимым строкам)');
+  // Формулы листа: фильтр по листу задач, проверка и итоги
+  const f = sh.getRange(9, 1).getFormula();
+  assert.match(f, /^=IFERROR\(SORT\(FILTER\(\{'📌 Задачи \(менеджеры\)'!A2:A,'📌 Задачи \(менеджеры\)'!D2:D,/);
+  assert.match(f, /\(\$C\$5="Все"\)\+\('📌 Задачи \(менеджеры\)'!M2:M=\$C\$5\)/);
+  assert.match(sh.getRange(9, 10).getFormula(), /^=ARRAYFORMULA\(IF\(A9:A="",,TRIM\(/);
+  same(['F5', 'G5', 'H5'].map(a => sh.getRange(a).getFormula()), ['=IFERROR(COUNTA(UNIQUE(FILTER(A9:A,A9:A<>""))),0)', '=COUNT(I9:I)', '=SUM(I9:I)']);
+  // Скобки в формулах сходятся
+  [f, sh.getRange(9, 10).getFormula(), sh.getRange('L2').getFormula()].forEach(x => {
+    const t = x.replace(/"[^"]*"/g, '');
+    assert.equal((t.match(/\(/g) || []).length, (t.match(/\)/g) || []).length, x);
+    assert.equal((t.match(/\{/g) || []).length, (t.match(/\}/g) || []).length, x);
+  });
+  assert.ok(sh.hidden && sh.hidden.some(h => h[0] === 12), 'служебные колонки спрятаны');
 });
 
 test('Журнал больше не пишется', () => {
