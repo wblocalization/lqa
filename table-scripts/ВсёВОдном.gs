@@ -297,13 +297,31 @@ function diagnoseWindows() {
     '</script>' + include('Общее') +
     '<script>' +
     'ok("s2", typeof run === "function" ? "2. Общий код окон: <b style=\\"color:#15803D\\">✓ загрузился</b>" : "2. Общий код окон: <b style=\\"color:#B42318\\">❌ не загрузился</b>");' +
+    // Не загрузился — ищем, какой кусок общего кода браузер не может прочитать, и показываем его со спецсимволами
+    'if (typeof run !== "function") {' +
+    '  var sc = document.scripts, text = "";' +
+    '  for (var i = 0; i < sc.length; i++) if (sc[i].text.indexOf("function make" + "LinkList(root") !== -1) text = sc[i].text;' +
+    '  var lines = text.split("\\n"), bad = [];' +
+    '  var chunks = [], cur = [];' +
+    '  lines.forEach(function (l, n) { if (/^  (function|const|let) /.test(l) && cur.length) { chunks.push(cur); cur = []; } cur.push({ n: n + 1, l: l }); });' +
+    '  chunks.push(cur);' +
+    '  chunks.forEach(function (c) { try { new Function(c.map(function (x) { return x.l; }).join("\\n")); } catch (e) { bad.push({ c: c, e: e.message }); } });' +
+    '  var show = function (l) { return l.replace(/[^\\x20-\\x7E\\u0400-\\u04FF«»—…·]/g, function (ch) { return "[U+" + ch.charCodeAt(0).toString(16).toUpperCase() + "]"; }); };' +
+    '  var out = "Строк в общем коде: " + lines.length + ". ";' +
+    '  if (!bad.length) out += "Каждый кусок по отдельности читается — значит, сломано на стыке.";' +
+    '  bad.slice(0, 2).forEach(function (b) {' +
+    '    out += "<br><b>Ошибка: " + b.e + "</b> в строках " + b.c[0].n + "–" + b.c[b.c.length - 1].n + ":<pre style=\\"white-space:pre-wrap;font-size:11px;background:#F6F7F9;padding:6px;max-height:150px;overflow:auto\\">" +' +
+    '      b.c.slice(0, 40).map(function (x) { return x.n + ": " + show(x.l).replace(/</g, "&lt;"); }).join("\\n") + "</pre>";' +
+    '  });' +
+    '  ok("info", out + "<br>" + (errs.length ? "Ошибки: " + errs.join("; ") : ""));' +
+    '}' +
     'var t0 = Date.now();' +
     'var slow = setTimeout(function () { ok("s3", "3. Связь с таблицей: <b style=\\"color:#B42318\\">❌ нет ответа 20 секунд</b>"); }, 20000);' +
     'google.script.run.withSuccessHandler(function (r) { clearTimeout(slow); ok("s3", "3. Связь с таблицей: <b style=\\"color:#15803D\\">✓ " + r + "</b> (" + (Date.now() - t0) + " мс)"); })' +
     '.withFailureHandler(function (e) { clearTimeout(slow); ok("s3", "3. Связь с таблицей: <b style=\\"color:#B42318\\">❌ " + (e && e.message || e) + "</b>"); })' +
     '.diagnosePing();' +
     '</script>';
-  SpreadsheetApp.getUi().showModalDialog(HtmlService.createHtmlOutput(html).setWidth(460).setHeight(260), 'Проверка окон');
+  SpreadsheetApp.getUi().showModalDialog(HtmlService.createHtmlOutput(html).setWidth(620).setHeight(520), 'Проверка окон');
 }
 
 function diagnosePing() {
