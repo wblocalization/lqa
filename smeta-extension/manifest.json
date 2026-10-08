@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Задачи и сметы",
-  "version": "1.5.0",
-  "description": "Добавляет задачи менеджеров в таблицу, показывает ваши открытые задачи и записывает сметы — без захода в таблицу.",
+  "version": "1.6.0",
+  "description": "Добавляет задачи менеджеров в таблицу, показывает ваши открытые задачи, записывает сметы и создаёт задачи в трекере из сообщений Band — без захода в таблицу.",
   "action": {
     "default_title": "Задачи и сметы",
     "default_icon": {
@@ -24,17 +24,31 @@
     "clipboardRead",
     "clipboardWrite",
     "alarms",
-    "scripting"
+    "scripting",
+    "contextMenus"
   ],
   "host_permissions": [
     "https://script.google.com/*",
     "https://script.googleusercontent.com/*",
-    "https://disk.wb.ru/*"
+    "https://disk.wb.ru/*",
+    "https://tracker.wb.ru/*",
+    "https://band.wb.ru/*"
   ],
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://band.wb.ru/*"
+      ],
+      "js": [
+        "band.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
 }

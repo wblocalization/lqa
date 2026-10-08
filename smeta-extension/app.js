@@ -5,6 +5,7 @@ import * as task from './task.js';
 import * as mine from './mine.js';
 import * as reports from './reports.js';
 import { loadMail } from './mail.js';
+import * as tracker from './tracker.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
@@ -14,22 +15,42 @@ const els = {
 };
 
 // ---------- Вкладки ----------
+// «Задача в трекере» — без своей кнопки внизу: открывается из Band (правый клик) или «＋ создать» у тикета
 function showTab(name) {
   els.tabs.forEach((t) => {
     const on = t.dataset.tab === name;
     t.setAttribute('aria-selected', String(on));
     $(`#${t.getAttribute('aria-controls')}`).hidden = !on;
   });
-  const titles = { task: 'Новая задача', mine: 'Мои задачи', smeta: 'Смета', reports: 'Отчёты', mail: 'Письма' };
+  $('#tabTracker').hidden = name !== 'tracker';
+  const titles = { task: 'Новая задача', mine: 'Мои задачи', smeta: 'Смета', reports: 'Отчёты', mail: 'Письма', tracker: 'Задача в трекер' };
   els.title.textContent = titles[name];
   if (name === 'task') task.initTaskTab();
   if (name === 'mine') mine.loadMine();
   if (name === 'reports') { reports.showMenu(); reports.initReports(); }
   if (name === 'mail') loadMail();
   window.scrollTo(0, 0);
+  if (name === 'tracker') return; // в трекер попадаем на минутку — при следующем открытии панели вернёмся куда были
   try { localStorage.setItem('tab', name); } catch { /* не страшно */ }
 }
 els.tabs.forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));
+
+// ---------- Задача в трекер ----------
+function openTracker(draft) {
+  showTab('tracker');
+  tracker.openForm(draft);
+}
+tracker.setHooks({
+  back: () => showTab('task'),
+  toTask: (created) => { showTab('task'); task.fillFromTracker(created); },
+});
+$('#tNewTicket').addEventListener('click', () => openTracker(null));
+// Правый клик по сообщению в Band → черновик в storage → форма с текстом сообщения
+async function pickDraft() {
+  const d = await tracker.takeDraft();
+  if (d) openTracker(d);
+}
+chrome.storage.onChanged.addListener((changes) => { if (changes.trackerDraft && changes.trackerDraft.newValue) pickDraft(); });
 
 // ---------- Настройки ----------
 /**
@@ -142,5 +163,6 @@ if (!isConfigured() || !settings.manager) {
 let startTab = 'task';
 try { startTab = localStorage.getItem('tab') || 'task'; } catch { /* по умолчанию «Новая задача» */ }
 showTab(['smeta', 'mine', 'reports', 'mail'].includes(startTab) ? startTab : 'task');
+pickDraft(); // панель открылась по правому клику в Band — черновик уже ждёт
 // Вкладка «Новая задача» и так грузит справочники; с других — подтянем их в фоне ради кнопки «Таблица ↗»
 if (isConfigured() && startTab !== 'task') getLists().catch(() => {});

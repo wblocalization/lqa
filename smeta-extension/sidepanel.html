@@ -79,9 +79,10 @@
         <label><span>Подрядчик <span class="req">*</span></span>
           <select id="tContractor" required></select>
         </label>
-        <label>Тикет в трекере
+        <div class="field-group">
+          <span class="field-label"><label for="tTicketNum">Тикет в трекере</label> <button id="tNewTicket" class="link-btn strong" type="button" title="Создать задачу в tracker.wb.ru — номер подставится сюда">＋ создать</button></span>
           <span class="prefixed"><span>LOCAL-</span><input id="tTicketNum" type="text" inputmode="numeric" placeholder="1234"></span>
-        </label>
+        </div>
       </div>
 
       <div id="tSuggest" class="suggest" hidden>
@@ -166,6 +167,34 @@
     <p id="tMsg" class="status" role="status"></p>
   </section>
 
+  <section id="tabTracker" role="tabpanel" hidden>
+    <form id="trForm" class="task-form">
+      <p id="trFrom" class="tr-from" hidden></p>
+      <label><span>Название <span class="req">*</span></span>
+        <input id="trTitle" type="text" required placeholder="Коротко: что нужно сделать">
+      </label>
+      <label>Описание <span class="opt">Markdown: **жирный**, [текст](ссылка)</span>
+        <textarea id="trDesc" rows="9"></textarea>
+      </label>
+      <p class="field-note">Задача появится на доске «Редакция → Локализация» (LOCAL) от вашего имени — нужен вход в tracker.wb.ru в этом браузере.</p>
+      <button id="trSubmit" class="btn primary" type="submit">Создать в трекере</button>
+      <button id="trBack" class="btn ghost" type="button">Отмена</button>
+    </form>
+
+    <section id="trDone" class="done" hidden>
+      <span class="done-check" aria-hidden="true">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      </span>
+      <h2>Создано: <a id="trDoneKey" href="#" target="_blank" rel="noopener"></a></h2>
+      <p id="trDoneTitle" class="done-subject"></p>
+      <button id="trToTask" class="btn primary" type="button">Добавить в таблицу →</button>
+      <button id="trCopy" class="btn ghost" type="button">Скопировать ссылку</button>
+      <button id="trAgain" class="btn ghost" type="button">Ещё задачу в трекер</button>
+    </section>
+
+    <p id="trMsg" class="status" role="status"></p>
+  </section>
+
   <section id="tabMine" role="tabpanel" hidden>
     <div id="mineView">
       <form id="mSearchForm" class="with-btn mine-search">
@@ -203,7 +232,7 @@
         <div id="eLink2"></div>
       </div>
       <div class="two">
-        <label>Тикет в трекере
+        <label><span>Тикет в трекере <button id="tNewTicket" class="link-btn strong" type="button" title="Создать задачу в tracker.wb.ru — номер подставится сюда">＋ создать</button></span>
           <span class="prefixed"><span>LOCAL-</span><input id="eTicketNum" type="text" inputmode="numeric" placeholder="1234"></span>
         </label>
         <label>Дата получения <input id="eDate" type="date"></label>
