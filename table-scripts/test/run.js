@@ -292,9 +292,9 @@ test('Расширение (Smeta.gs): добавить задачу и запи
   const w = call({ action: 'write', task: add.id, total: 1234.5, link: 'https://disk/x' });
   assert.ok(w.ok, JSON.stringify(w));
   assert.equal(tasks().getRange(rowOf(add.id), 12).getValue(), 1234.5);
-  // В ячейке сметы — «Ссылка на смету номер» со ссылкой; повторная запись видит старую ссылку
+  // В ячейке сметы — сам адрес ссылкой (таблица читает его мгновенно); повторная запись видит старую ссылку
   const r = rowOf(add.id);
-  assert.equal(tasks().getRange(r, 11).getValue(), 'Ссылка на смету ' + add.id);
+  assert.equal(tasks().getRange(r, 11).getValue(), 'https://disk/x');
   assert.equal(G.linksFromRich_(tasks().getRange(r, 11).getRichTextValue()).link, 'https://disk/x');
   const again = call({ action: 'write', task: add.id, total: 1, link: 'https://disk/y' });
   same([again.error, again.link], ['exists', 'https://disk/x']);
@@ -305,15 +305,21 @@ test('Расширение (Smeta.gs): добавить задачу и запи
   G.saveTaskEdits(t);
   assert.equal(G.getTaskForEdit(r).estimateLink, 'https://disk/x');
   G.saveTaskEdits({ ...t, estimateLink: 'https://disk/z' });
-  same([tasks().getRange(r, 11).getValue(), G.getTaskForEdit(r).estimateLink], ['Ссылка на смету ' + add.id, 'https://disk/z']);
-  // Адрес, вписанный руками, тоже становится «Ссылка на смету номер»
+  same([tasks().getRange(r, 11).getValue(), G.getTaskForEdit(r).estimateLink], ['https://disk/z', 'https://disk/z']);
+  // Адрес, вписанный руками, так и остаётся адресом
   tasks().getRange(r, 11).setValue('https://disk/hand');
   G.onEdit({ range: tasks().getRange(r, 11), source: ss, oldValue: 'Смета', value: 'https://disk/hand' });
-  same([tasks().getRange(r, 11).getValue(), G.getTaskForEdit(r).estimateLink], ['Ссылка на смету ' + add.id, 'https://disk/hand']);
-  // Подпись прежнего вида переделывается при «Оформить таблицу»
-  tasks().getRange(r, 11).setRichTextValue(new RichBuilder().setText('Смета [' + add.id + ']').setLinkUrl('https://disk/old').build());
-  G.estimateLinksToLabels_(tasks());
-  same([tasks().getRange(r, 11).getValue(), G.getTaskForEdit(r).estimateLink], ['Ссылка на смету ' + add.id, 'https://disk/old']);
+  same([tasks().getRange(r, 11).getValue(), G.getTaskForEdit(r).estimateLink], ['https://disk/hand', 'https://disk/hand']);
+  // Прежний вид («Ссылка на смету …», «Смета [номер]» — адрес под текстом) переделывается в адрес из меню
+  tasks().getRange(r, 11).setRichTextValue(new RichBuilder().setText('Ссылка на смету ' + add.id).setLinkUrl('https://disk/old').build());
+  const other = r + 1, otherWas = tasks().getRange(other, 11).getValue();
+  G.convertEstimateLabelsToUrls();
+  same([tasks().getRange(r, 11).getValue(), G.getTaskForEdit(r).estimateLink], ['https://disk/old', 'https://disk/old']);
+  assert.equal(tasks().getRange(other, 11).getValue(), otherWas, 'остальные ячейки не тронуты');
+  tasks().getRange(r, 11).setRichTextValue(new RichBuilder().setText('Смета [' + add.id + ']').setLinkUrl('https://disk/old2').build());
+  assert.equal(G.estimateLabelsToUrls_(tasks()), 1);
+  assert.equal(tasks().getRange(r, 11).getValue(), 'https://disk/old2');
+  assert.equal(G.estimateLabelsToUrls_(tasks()), 0);
 });
 
 test('Расширение: удалить задачу', () => {
@@ -512,7 +518,7 @@ test('Перенос из файла с колонками новой табли
   assert.equal(G.linksFromRich_(rt).link, 'https://band.wb.ru/wb/pl/tpw8mh66tpd7ung4siq9g96hoh');
   assert.equal(G.linksFromRich_(rt).link2.split('\n').length, 2, rt.getText());
   assert.ok(!/Доп\. ссылка|Ещё ссылки/.test(tasks().getRange(row, 17).getValue()));
-  same([tasks().getRange(row, 11).getValue(), G.getTaskForEdit(row).estimateLink], ['Ссылка на смету LIT-26-2188', 'https://disk.wb.ru/f/83009693']);
+  same([tasks().getRange(row, 11).getValue(), G.getTaskForEdit(row).estimateLink], ['https://disk.wb.ru/f/83009693', 'https://disk.wb.ru/f/83009693']);
   assert.ok(tasks().getRange(row, 4).getValue() instanceof CDate);
   // Повторно — ничего не задваивается
   const again = G.migrationPreviewFromTasksFile(src);
@@ -557,7 +563,7 @@ test('Перенос истории из старой таблицы', { skip: !
   const complained = rows.findIndex(r => r[0] === 'LIT-25-159') + 1;
   same([tasks().getRange(complained, 18).getValue(), /Жалобы/.test(tasks().getRange(complained, 17).getValue())], ['Прислал задачу после 19:00', false]);
   // Смета из старой таблицы — тоже «Ссылка на смету номер» со ссылкой
-  same([tasks().getRange(multi, 11).getValue(), G.getTaskForEdit(multi).estimateLink], ['Ссылка на смету LIT-26-2188', 'https://disk.wb.ru/f/83009693']);
+  same([tasks().getRange(multi, 11).getValue(), G.getTaskForEdit(multi).estimateLink], ['https://disk.wb.ru/f/83009693', 'https://disk.wb.ru/f/83009693']);
   assert.ok(!/Ещё ссылки/.test(tasks().getRange(multi, 17).getValue()));
   const firstOld = rows.findIndex(r => r[0] === 'LIT-25-1') + 1;
   assert.equal(G.linksFromRich_(tasks().getRange(firstOld, 3).getRichTextValue()).link.slice(0, 26), 'https://band.wb.ru/wb/pl/g');
@@ -661,6 +667,11 @@ test('Сверка с подрядчиками: строки, точный ит�
   const row2 = rep.rows.find(x => x.id === id2);
   same([row2.estimate, row2.languages, row2.totalText, row2.date], ['https://disk/b', 'Казахский', '0,10', '20.09.2026']);
   assert.equal(G.getReconciliation({ year: 2026, month: 10, manager: 'Тест Сверка' }).count, 0);
+  // Заказ из старой таблицы на несколько строк: номер один, ссылка в каждой, сумма в первой — это не ошибка
+  const ids = rep.rows.map(x => x.id);
+  const multi = G.getReconciliation({ year: 2026 }).issues.filter(x => /LIT-26-1953/.test(x.id) && /noTotal|dup/.test(x.kind));
+  same(multi, [], JSON.stringify(multi));
+  assert.ok(ids.length === 4);
   // Быстрый путь: ссылки на сметы одним запросом к Google Sheets API — только строки периода
   const asked = [];
   ctx.Sheets = { Spreadsheets: { get: (id, opt) => {
@@ -675,11 +686,19 @@ test('Сверка с подрядчиками: строки, точный ит�
     }) }] };
   } } };
   try {
+    // Адреса в ячейках — ничего не запрашиваем, читается мгновенно
     const fast = G.getReconciliation({ year: 2026, month: 9, manager: 'Тест Сверка' });
     same(fast.rows.map(x => x.estimate), rep.rows.map(x => x.estimate));
     same(fast.issues, rep.issues);
-    assert.ok(asked.length >= 1 && asked.every(r => /^'📌 Задачи \(менеджеры\)'!K\d+:K\d+$/.test(r)), asked.join(' '));
+    assert.equal(asked.length, 0);
     assert.ok(typeof fast.seconds === 'number');
+    // Прежний вид «Ссылка на смету …» — адрес берётся одним запросом к API
+    const r2 = rowOf(id2);
+    tasks().getRange(r2, 11).setRichTextValue(new RichBuilder().setText('Ссылка на смету ' + id2).setLinkUrl('https://disk/b').build());
+    const viaApi = G.getReconciliation({ year: 2026, month: 9, manager: 'Тест Сверка' });
+    same(viaApi.rows.map(x => x.estimate), rep.rows.map(x => x.estimate));
+    assert.ok(asked.length === 1 && /^'📌 Задачи \(менеджеры\)'!K\d+:K\d+$/.test(asked[0]), asked.join(' '));
+    tasks().getRange(r2, 11).setRichTextValue(G.estimateRich_('https://disk/b'));
   } finally { delete ctx.Sheets; }
   assert.equal(G.getReconciliation({ year: 2026, month: 9, manager: 'Тест Сверка', contractor: 'GlobalDoc' }).count, 0);
   // Excel: все поля, ссылка на смету ещё и адресом, проверки — отдельным листом
@@ -687,12 +706,12 @@ test('Сверка с подрядчиками: строки, точный ит�
   assert.match(G.exportReconciliationToExcel({ year: 2026, month: 9, manager: 'Тест Сверка' }), /export\?format=xlsx/);
   const book = calls.created[n0];
   const sh = book.getSheetByName('Сверка');
-  same(sh.getRange(1, 1, 1, 10).getValues()[0], ['№ задачи', 'Дата', 'Тема письма', 'Языки', 'Менеджер', 'Подрядчик', 'Статус', 'Смета', 'Ссылка на смету', 'Итого с НДС, ₽']);
-  const body = sh.getRange(2, 1, 4, 10).getValues();
+  same(sh.getRange(1, 1, 1, 9).getValues()[0], ['№ задачи', 'Дата', 'Тема письма', 'Языки', 'Менеджер', 'Подрядчик', 'Статус', 'Ссылка на смету', 'Итого с НДС, ₽']);
+  const body = sh.getRange(2, 1, 4, 9).getValues();
   const b2 = body.find(x => x[0] === id2);
-  same([b2[7], b2[8], b2[9]], ['Ссылка на смету ' + id2, 'https://disk/b', 0.1]);
+  same([b2[7], b2[8]], ['https://disk/b', 0.1]);
   assert.ok(b2[1] instanceof CDate);
-  assert.equal(sh.getRange(6, 9).getValue(), 'ИТОГО (по видимым строкам)');
+  assert.equal(sh.getRange(6, 8).getValue(), 'ИТОГО (по видимым строкам)');
   assert.ok(book.getSheetByName('Проверки').getLastRow() >= 5);
   assert.equal(book.getSheetByName('Итоги по подрядчикам').getRange(2, 3).getValue(), 1000.3);
 });

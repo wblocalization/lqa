@@ -84,7 +84,7 @@
         <td class="id">${esc(r.id)}<div class="small muted">${esc(r.date)}</div></td>
         <td>${r.link ? `<a href="${esc(r.link)}" target="_blank">${esc(r.subject)}</a>` : esc(r.subject)}<div class="small muted">${esc([r.contractor, r.status].filter(Boolean).join(' · '))}</div></td>
         <td>${esc(r.languages)}</td><td>${esc(r.manager)}</td>
-        <td class="num" style="text-align:left">${r.estimate ? `<a href="${esc(r.estimate)}" target="_blank">смета ↗</a>` : '<span class="muted">—</span>'}</td>
+        <td class="num" style="text-align:left">${r.estimate ? `<a href="${esc(r.estimate)}" target="_blank">смета ↗</a>` : `<span class="muted">${esc(r.estimateNote || '—')}</span>`}</td>
         <td class="num">${esc(r.totalText) || '<span class="muted">—</span>'}</td></tr>`).join('')
         : '<tr><td colspan="6" class="muted">Задач за этот период нет</td></tr>') +
       `</tbody><tfoot><tr><td colspan="5">Итого</td><td class="num">${esc(d.sumText)}</td></tr></tfoot></table></div>`;
@@ -113,7 +113,7 @@
     if (!last) return;
     const td = 'style="border:1px solid #ccc;padding:4px 8px"';
     const html = `<table style="border-collapse:collapse"><tr><th ${td}>№ задачи</th><th ${td}>Языки</th><th ${td}>Смета</th><th ${td}>Итого с НДС, ₽</th></tr>` +
-      last.rows.map(r => `<tr><td ${td}>${esc(r.id)}</td><td ${td}>${esc(r.languages)}</td><td ${td}>${r.estimate ? `<a href="${esc(r.estimate)}">Ссылка на смету ${esc(r.id)}</a>` : ''}</td><td ${td} align="right">${esc(r.totalText)}</td></tr>`).join('') +
+      last.rows.map(r => `<tr><td ${td}>${esc(r.id)}</td><td ${td}>${esc(r.languages)}</td><td ${td}>${r.estimate ? `<a href="${esc(r.estimate)}">Ссылка на смету ${esc(r.id)}</a>` : esc(r.estimateNote || '')}</td><td ${td} align="right">${esc(r.totalText)}</td></tr>`).join('') +
       `<tr><td ${td} colspan="3"><b>Итого</b></td><td ${td} align="right"><b>${esc(last.sumText)}</b></td></tr></table>`;
     copyHtml(html).then(() => setMsg($('#msg'), 'Скопировано — вставьте в письмо или документ', 'ok'));
   });

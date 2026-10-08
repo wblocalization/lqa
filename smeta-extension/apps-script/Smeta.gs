@@ -124,10 +124,8 @@ function smetaWrite_(req) {
   }
 
   const sheet = t.sheet;
-  // В ячейке — короткое «Ссылка на смету LIT-26-2232», адрес — ссылкой под ним
-  const rowId = String(t.values[t.col.task] || '').trim();
-  sheet.getRange(t.row, t.col.link + 1).setRichTextValue(
-    SpreadsheetApp.newRichTextValue().setText('Ссылка на смету' + (rowId ? ' ' + rowId : '')).setLinkUrl(link).build());
+  // В ячейке — сам адрес ссылкой: так таблица читает его мгновенно (сверка, отчёты), а в Excel он виден как есть
+  sheet.getRange(t.row, t.col.link + 1).setRichTextValue(SpreadsheetApp.newRichTextValue().setText(link).setLinkUrl(link).build());
   // Сумма — ровно как в смете, без округления до копеек (в сметах бывает три знака после запятой)
   const exact = Math.round(total * 1000) / 1000;
   const cell = sheet.getRange(t.row, t.col.total + 1);

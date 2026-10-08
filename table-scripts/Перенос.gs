@@ -296,7 +296,7 @@ function writeArchiveSheet_(name, rows) {
     sh.getRange(2, COL.TOTAL, n, 1).setNumberFormat('#,##0.00');
     SpreadsheetApp.flush();
     sh.getRange(2, 1, n, TASK_COLS).sort({ column: COL.DATE, ascending: false });
-    estimateLinksToLabels_(sh);
+    estimateLabelsToUrls_(sh);
   });
 }
 

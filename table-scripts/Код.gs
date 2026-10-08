@@ -121,6 +121,7 @@ function onOpen() {
     .addItem('🎨 Оформить таблицу', 'setupDesign')
     .addItem('👥 Режимы фильтрации для всех менеджеров', 'createAllManagerViews')
     .addItem('🛡 Защитить шапку и справочники', 'protectImportantRanges')
+    .addItem('🔗 Ссылки на сметы — адресами', 'convertEstimateLabelsToUrls')
     .addItem('📥 Перенести историю из старой таблицы', 'migrateFromOldTable')
     .addSeparator()
     .addSubMenu(ui.createMenu('✉️ Еженедельная сводка')
@@ -174,10 +175,6 @@ function onTasksEdit_(e) {
       });
     }
     if (col <= COL.LANGS && lastCol >= COL.LANGS) colorizeLanguagesCell(sh, row + i);
-    // Вставили адрес сметы — показываем коротко «Ссылка на смету номер»
-    if (col <= COL.ESTIMATE && lastCol >= COL.ESTIMATE && isUrlText_(r[COL.ESTIMATE - 1])) {
-      sh.getRange(row + i, COL.ESTIMATE).setRichTextValue(estimateRich_(r[COL.ESTIMATE - 1], r[COL.ID - 1]));
-    }
   });
 }
 
@@ -204,21 +201,33 @@ function htmlSource_(name) {
   return typeof HTML_FILES !== 'undefined' && HTML_FILES[name] != null ? HTML_FILES[name] : null;
 }
 
-/** Адреса смет, вписанные текстом (в т. ч. перенесённые), → «Ссылка на смету номер» со ссылкой. */
-function estimateLinksToLabels_(sh) {
+/**
+ * «Ссылка на смету LIT-26-2232» (адрес спрятан под текстом) → сам адрес ссылкой.
+ * Адрес в ячейке таблица читает мгновенно, а спрятанный под текстом — медленно (из-за этого тормозила сверка).
+ * Возвращает, сколько ячеек переделано.
+ */
+function estimateLabelsToUrls_(sh) {
   const n = dataRowCount_(sh);
-  if (!n) return;
+  if (!n) return 0;
   const range = sh.getRange(2, COL.ESTIMATE, n, 1);
   const values = range.getValues();
-  // Голый адрес или подпись прежнего вида («Смета [номер]») → «Ссылка на смету номер»
-  if (!values.some(r => isUrlText_(r[0]) || (ESTIMATE_LABEL_RE.test(str_(r[0])) && !/^Ссылка на смету/.test(str_(r[0]))))) return;
-  const ids = sh.getRange(2, COL.ID, n, 1).getValues();
+  if (!values.some(r => ESTIMATE_LABEL_RE.test(str_(r[0])))) return 0;
   const rich = range.getRichTextValues();
+  let changed = 0;
   range.setRichTextValues(values.map((r, i) => {
-    const url = estimateUrl_(rich[i][0], r[0]);
-    if (isUrlText_(url) && (isUrlText_(r[0]) || ESTIMATE_LABEL_RE.test(str_(r[0])))) return [estimateRich_(url, ids[i][0])];
+    if (ESTIMATE_LABEL_RE.test(str_(r[0]))) {
+      const url = estimateUrl_(rich[i][0], r[0]);
+      if (isUrlText_(url)) { changed++; return [estimateRich_(url)]; }
+    }
     return [rich[i][0] || SpreadsheetApp.newRichTextValue().setText(cellText_(r[0])).build()];
   }));
+  return changed;
+}
+
+/** Меню «⚙️ Настройки»: все «Ссылка на смету …» → адресами (один раз после обновления). */
+function convertEstimateLabelsToUrls() {
+  const n = withScriptLock_(() => estimateLabelsToUrls_(getTasksSheet()));
+  SpreadsheetApp.getUi().alert(n ? 'Готово: ссылок на сметы переделано в адреса — ' + n + '.' : 'Все ссылки на сметы уже адресами — переделывать нечего.');
 }
 
 /** Подключает Общее.html в окна: <?!= include('Общее') ?> */
@@ -331,14 +340,13 @@ function linksFromRich_(rt) {
   return { link: urls[0] || '', link2: hasMarker ? urls.slice(1).join('\n') : '' };
 }
 
-// Смета: в ячейке короткая ссылка «Ссылка на смету LIT-26-2232» вместо длинного адреса
+// Смета: в ячейке — сам адрес ссылкой. Прежний вид «Ссылка на смету LIT-26-2232» (адрес под текстом) тоже понимаем
 const ESTIMATE_LABEL_RE = /^(Смета|Ссылка на смету)( \[[^\]]*\]| \S+)?$/; // и прежний вид «Смета [номер]»
 const isUrlText_ = v => /^https?:\/\/\S+$/i.test(str_(v));
 
-function estimateRich_(url, id) {
+function estimateRich_(url) {
   url = str_(url);
-  const label = url ? 'Ссылка на смету' + (str_(id) ? ' ' + str_(id) : '') : '';
-  const b = SpreadsheetApp.newRichTextValue().setText(label);
+  const b = SpreadsheetApp.newRichTextValue().setText(url);
   return (url ? b.setLinkUrl(url) : b).build();
 }
 
@@ -969,7 +977,7 @@ function submitNewTaskFromDialog(task) {
     ];
     sh.getRange(row, 1, 1, TASK_COLS).setValues([values]);
     if (task.link || task.link2) sh.getRange(row, COL.SUBJECT).setRichTextValue(buildSubjectRich_(subject, task.link, task.link2));
-    if (task.estimateLink) sh.getRange(row, COL.ESTIMATE).setRichTextValue(estimateRich_(task.estimateLink, id));
+    if (task.estimateLink) sh.getRange(row, COL.ESTIMATE).setRichTextValue(estimateRich_(task.estimateLink));
     if (values[COL.TOTAL - 1] !== '') sh.getRange(row, COL.TOTAL).setNumberFormat(moneyFormat_(values[COL.TOTAL - 1]));
     if (values[COL.LANGS - 1]) colorizeLanguagesCell(sh, row);
     colorizeRowDirectly(sh, row);
@@ -1086,7 +1094,7 @@ function saveTaskEdits(task) {
     const id = str_(old[COL.ID - 1]);
     sh.getRange(row, COL.TICKET).setValue(next[COL.TICKET - 1]);
     sh.getRange(row, COL.DATE, 1, TASK_COLS - COL.DATE + 1).setValues([next.slice(COL.DATE - 1)]);
-    if (next[COL.ESTIMATE - 1]) sh.getRange(row, COL.ESTIMATE).setRichTextValue(estimateRich_(next[COL.ESTIMATE - 1], id));
+    if (next[COL.ESTIMATE - 1]) sh.getRange(row, COL.ESTIMATE).setRichTextValue(estimateRich_(next[COL.ESTIMATE - 1]));
     noteMoneyEdit_(sh.getRange(row, COL.TOTAL), old[COL.TOTAL - 1], next[COL.TOTAL - 1], old[COL.ESTIMATE - 1], next[COL.ESTIMATE - 1]);
 
     // Тема со ссылками: пишем, только если что-то поменялось, чтобы не трогать лишнее
@@ -1478,14 +1486,20 @@ function getReconciliation(f) {
   const urls = estimateUrlsFor_(sh, picked, values);
   const estOf = i => urls[i] || '';
 
-  // Одна смета у нескольких задач — среди задач периода
-  const byUrl = {};
+  // Одна смета у нескольких задач — среди задач периода. Строки с одним номером — это один заказ
+  // (в старой таблице заказ мог занимать несколько строк: ссылка в каждой, сумма — только в первой)
+  const byUrl = {}, idHasMoney = {}, urlHasMoney = {};
   picked.forEach(i => {
+    const id = str_(values[i][COL.ID - 1]) || 'строка ' + (i + 2);
     const url = estOf(i);
-    if (url) (byUrl[url] = byUrl[url] || []).push(str_(values[i][COL.ID - 1]) || 'строка ' + (i + 2));
+    if (url) { byUrl[url] = byUrl[url] || []; if (byUrl[url].indexOf(id) === -1) byUrl[url].push(id); }
+    const t = values[i][COL.TOTAL - 1];
+    if (typeof t === 'number' && isFinite(t)) { idHasMoney[id] = true; if (url) urlHasMoney[url] = true; }
   });
+  // В колонке «Смета» вместо ссылки бывает текст («бесплатно», «-») — это пометка, а не смета
+  const noteOf = i => { const v = str_(values[i][COL.ESTIMATE - 1]); return v && !isUrlText_(v) && !ESTIMATE_LABEL_RE.test(v) ? v : ''; };
 
-  const rows = [], issues = [], byContractor = {};
+  const rows = [], issues = [], byContractor = {}, dupShown = {};
   let sumMilli = 0, withMoney = 0;
   const issue = (row, kind, text) => issues.push({ row: row.row, id: row.id, kind: kind, text: text });
   values.forEach((r, i) => {
@@ -1496,7 +1510,7 @@ function getReconciliation(f) {
       row: i + 2, id: str_(r[COL.ID - 1]), date: fmtDate_(r[COL.DATE - 1], 'dd.MM.yyyy'),
       subject: stripLinkMarkers_(r[COL.SUBJECT - 1]),
       languages: str_(r[COL.LANGS - 1]), manager: str_(r[COL.MANAGER - 1]), contractor: str_(r[COL.CONTRACTOR - 1]),
-      status: str_(r[COL.STATUS - 1]), estimate: estOf(i),
+      status: str_(r[COL.STATUS - 1]), estimate: estOf(i), estimateNote: noteOf(i),
       total: isNum ? exactMoney_(total) : str_(total), totalText: rub_(total)
     };
     rows.push(row);
@@ -1508,10 +1522,11 @@ function getReconciliation(f) {
     const cancelled = row.status === 'Отменено';
     if (row.total !== '' && !isNum) issue(row, 'text', 'Сумма записана текстом «' + row.total + '» — не попадёт в итог');
     if (cancelled && row.total !== '') issue(row, 'cancelled', 'Задача отменена, но сумма стоит');
-    if (!cancelled && row.estimate && row.total === '') issue(row, 'noTotal', 'Смета есть, суммы нет');
+    if (!cancelled && row.estimate && row.total === '' && !idHasMoney[row.id] && !urlHasMoney[row.estimate]) issue(row, 'noTotal', 'Смета есть, суммы нет');
     if (!cancelled && row.total !== '' && !row.estimate) issue(row, 'noLink', 'Сумма есть, ссылки на смету нет');
-    if (!cancelled && !row.estimate && row.total === '' && row.status === 'Отдано') issue(row, 'empty', 'Задача отдана, а сметы и суммы нет');
-    if (row.estimate && byUrl[row.estimate].length > 1) {
+    if (!cancelled && !row.estimate && !row.estimateNote && row.total === '' && row.status === 'Отдано' && !idHasMoney[row.id]) issue(row, 'empty', 'Задача отдана, а сметы и суммы нет');
+    if (row.estimate && byUrl[row.estimate].length > 1 && !dupShown[row.estimate + '|' + row.id]) {
+      dupShown[row.estimate + '|' + row.id] = true;
       issue(row, 'dup', 'Та же смета стоит у задач: ' + byUrl[row.estimate].filter(x => x !== row.id).join(', '));
     }
     if (isNum && Math.round(Math.abs(total) * 1000) % 10) issue(row, 'extra', 'В сумме доли копейки: ' + rub_(total) + ' ₽ — сверьте со счётом');
@@ -1537,7 +1552,7 @@ function estimateUrlsFor_(sh, idxs, values) {
   const need = idxs.filter(i => {
     const v = str_(values[i][COL.ESTIMATE - 1]);
     if (isUrlText_(v)) { out[i] = v; return false; }
-    return v !== '';
+    return ESTIMATE_LABEL_RE.test(v); // адрес спрятан только под «Ссылка на смету …»; «бесплатно», «-» — просто пометки
   });
   if (!need.length) return out;
   const needSet = {};
@@ -1572,7 +1587,7 @@ function estimateUrlsFor_(sh, idxs, values) {
   }
   groups.forEach(([a, b]) => {
     const rich = sh.getRange(a + 2, COL.ESTIMATE, b - a + 1, 1).getRichTextValues();
-    for (let i = a; i <= b; i++) { const u = estimateUrl_(rich[i - a][0], values[i][COL.ESTIMATE - 1]); if (u && needSet[i]) out[i] = u; }
+    for (let i = a; i <= b; i++) { const u = estimateUrl_(rich[i - a][0], values[i][COL.ESTIMATE - 1]); if (isUrlText_(u) && needSet[i]) out[i] = u; }
   });
   return out;
 }
@@ -1582,24 +1597,24 @@ function exportReconciliationToExcel(f) {
   const rep = getReconciliation(f);
   const ss = SpreadsheetApp.create('Сверка — ' + rep.label);
   const sheet = ss.getSheets()[0].setName('Сверка');
-  const head = ['№ задачи', 'Дата', 'Тема письма', 'Языки', 'Менеджер', 'Подрядчик', 'Статус', 'Смета', 'Ссылка на смету', 'Итого с НДС, ₽'];
+  const head = ['№ задачи', 'Дата', 'Тема письма', 'Языки', 'Менеджер', 'Подрядчик', 'Статус', 'Ссылка на смету', 'Итого с НДС, ₽'];
   const toDate = s => { const m = String(s).match(/^(\d{2})\.(\d{2})\.(\d{4})$/); return m ? new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1])) : ''; };
   const data = rep.rows.map(r => [r.id, toDate(r.date), r.subject, r.languages, r.manager, r.contractor, r.status,
-    r.estimate ? 'Ссылка на смету ' + r.id : '', r.estimate, r.total]);
+    r.estimate || r.estimateNote, r.total]);
   sheet.getRange(1, 1, 1, head.length).setValues([head]);
   if (data.length) {
     sheet.getRange(2, 1, data.length, head.length).setValues(data);
     data.forEach((d, i) => {
       const r = rep.rows[i];
-      if (r.estimate) sheet.getRange(i + 2, 8).setRichTextValue(estimateRich_(r.estimate, r.id));
-      sheet.getRange(i + 2, 10).setNumberFormat(moneyFormat_(r.total));
+      if (r.estimate) sheet.getRange(i + 2, 8).setRichTextValue(estimateRich_(r.estimate));
+      sheet.getRange(i + 2, 9).setNumberFormat(moneyFormat_(r.total));
     });
   }
   const last = data.length + 2;
-  sheet.getRange(last, 9).setValue('ИТОГО (по видимым строкам)');
+  sheet.getRange(last, 8).setValue('ИТОГО (по видимым строкам)');
   // SUBTOTAL — в Excel при фильтре по подрядчику/менеджеру итог пересчитается сам
-  sheet.getRange(last, 10).setFormula(data.length ? '=SUBTOTAL(9,J2:J' + (data.length + 1) + ')' : '=0').setNumberFormat('#,##0.00#');
-  sheet.getRange(last, 9, 1, 2).setFontWeight('bold');
+  sheet.getRange(last, 9).setFormula(data.length ? '=SUBTOTAL(9,I2:I' + (data.length + 1) + ')' : '=0').setNumberFormat('#,##0.00#');
+  sheet.getRange(last, 8, 1, 2).setFontWeight('bold');
   if (data.length) sheet.getRange(2, 2, data.length, 1).setNumberFormat('dd.mm.yyyy');
   styleReportSheet_(sheet, head.length);
   sheet.setColumnWidth(3, 360);
@@ -2338,7 +2353,7 @@ function designTasksSheet_(sh) {
     if (moneyFormat_(r[COL.TOTAL - 1]) !== '#,##0.00') sh.getRange(i + 2, COL.TOTAL).setNumberFormat(moneyFormat_(r[COL.TOTAL - 1]));
   });
   sh.getRange(2, COL.ESTIMATE, maxRows - 1, 1).setHorizontalAlignment('center');
-  estimateLinksToLabels_(sh);
+  estimateLabelsToUrls_(sh);
   sh.getRange(2, COL.SP, maxRows - 1, 1).setNumberFormat('0');
 
   // Языки: если «чипы» не включены — каждый язык своим цветом текста (одним запросом на весь лист)
