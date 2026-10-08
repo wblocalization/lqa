@@ -114,7 +114,14 @@ function onOpen() {
     .addItem('Отчёт по переводчику', 'showTranslatorReportSidebar')
     .addItem('Кастомный отчёт', 'showCustomReportSidebar')
     .addSeparator()
-    .addItem('💰 Выгрузка для сверки (Excel)', 'showMoneyExportDialog')
+    .addSubMenu(ui.createMenu('💰 Выгрузка для сверки (Excel)')
+      .addItem('Этот месяц — по дате поступления', 'moneyExportThisMonth')
+      .addItem('Прошлый месяц — по дате поступления', 'moneyExportLastMonth')
+      .addItem('Этот месяц — по дате закрытия', 'moneyExportThisMonthDue')
+      .addItem('Прошлый месяц — по дате закрытия', 'moneyExportLastMonthDue')
+      .addItem('Всё время', 'moneyExportAll')
+      .addSeparator()
+      .addItem('Выбрать месяц, подрядчика, менеджера…', 'showMoneyExportDialog'))
     .addToUi();
 
   ui.createMenu('⚙️ Настройки')
@@ -1498,6 +1505,31 @@ function exportUrl_(ss) {
 
 function showMoneyExportDialog() {
   showDialog_('MoneyExportDialog', 'Выгрузка для сверки', 440, 470);
+}
+
+// Пункты меню: файл собирается сразу, без окна с выбором — потом фильтр в Excel
+function moneyExportThisMonth() { moneyExportFromMenu_(0, 'date'); }
+function moneyExportLastMonth() { moneyExportFromMenu_(-1, 'date'); }
+function moneyExportThisMonthDue() { moneyExportFromMenu_(0, 'due'); }
+function moneyExportLastMonthDue() { moneyExportFromMenu_(-1, 'due'); }
+function moneyExportAll() { moneyExportFromMenu_(null, 'date'); }
+
+/** shift: 0 — этот месяц, -1 — прошлый, null — всё время. Ссылку показываем окном без запросов к скрипту. */
+function moneyExportFromMenu_(shift, by) {
+  const now = new Date();
+  const month = shift === null ? '' : fmtDate_(new Date(now.getFullYear(), now.getMonth() + shift, 1), 'yyyy-MM');
+  SpreadsheetApp.getActive().toast('Собираю файл… обычно 5–15 секунд', 'Выгрузка для сверки', 30);
+  const r = exportMoneyExcel({ month: month, by: by });
+  const issues = r.issues ? '⚠️ Проверить: ' + r.issues + ' — лист «Проверить».' : '✓ Всё сходится.';
+  const html = HtmlService.createHtmlOutput(
+    '<div style="font:14px Arial;line-height:1.5">' +
+    '<b>' + esc_(r.name) + '</b><br>' +
+    r.orders + ' заказов · ' + r.lines + ' строк · ' + esc_(rub_(r.total)) + ' ₽ с НДС<br>' + esc_(issues) +
+    '<p><a href="' + esc_(r.url) + '" target="_blank" style="font-size:16px;font-weight:bold">📥 Скачать Excel</a>' +
+    ' &nbsp; <a href="' + esc_(r.sheetUrl) + '" target="_blank">открыть в Google</a></p></div>'
+  ).setWidth(420).setHeight(170);
+  SpreadsheetApp.getActive().toast('Готово', 'Выгрузка для сверки', 3);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Выгрузка для сверки');
 }
 
 function getMoneyExportOptions() {

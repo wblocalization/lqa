@@ -730,6 +730,12 @@ test('Выгрузка для сверки: все колонки как в та
   assert.equal(why(a), '');
   // Сам лист задач не тронут: ссылка так и осталась как была
   assert.equal(sh.getRange(rowOf(b), 11).getValue(), 'Ссылка на смету ' + b);
+  // Из меню — сразу файл и окно со ссылкой
+  const nMenu = calls.created.length;
+  G.moneyExportAll();
+  assert.equal(calls.created.length, nMenu + 1);
+  G.moneyExportLastMonthDue();
+  assert.match(calls.created[nMenu + 1].title, /по дате закрытия/);
   // Без фильтров — все задачи
   assert.ok(G.exportMoneyExcel({}).lines >= 5);
 });
