@@ -57,22 +57,16 @@ const val = (id) => ($(`#${id}`) || {}).value || '';
 // ---------- Отчёты ----------
 const REPORTS = {
   manager: {
-    title: 'По менеджеру',
-    form: () => `${select('rfManager', 'Менеджер', lists.managers, settings.manager)}<div class="two">${monthSel('Все месяцы')}${bySel()}</div>`,
-    run: () => call({ action: 'managerReport', manager: val('rfManager'), month: val('rfMonth'), by: val('rfBy') }),
-    render: renderManager, copy: true, excel: () => ({ kind: 'manager', manager: val('rfManager'), month: val('rfMonth'), by: val('rfBy') }),
-  },
-  tracker: {
-    title: 'Для трекера / Band',
-    form: () => `<label>Тикет<input id="rfTicket" type="text" list="rfTickets" placeholder="LOCAL-1234" autocomplete="off"></label>
-      <datalist id="rfTickets">${lists.tickets.map((t) => `<option value="${esc(t)}">`).join('')}</datalist>
-      <p class="field-note">Задачи тикета со ссылками на Band — скопируйте и вставьте в Band.</p>`,
+    title: 'По менеджеру — для Band',
+    // «Кто вы» не выбран — человека выбирают здесь
+    form: () => `${select('rfManager', 'Чей отчёт', lists.managers, settings.manager, settings.manager ? null : 'Выберите…')}
+      <div class="two">${monthSel('Все месяцы')}${bySel()}</div>
+      <p class="field-note">Все тикеты за месяц: задачи со ссылками на Band внутри и SP — «Скопировать для Band» и вставить.</p>`,
     run: () => {
-      const t = val('rfTicket').trim();
-      if (!t) throw new Error('Впишите или выберите тикет');
-      return call({ action: 'trackerReport', ticket: /^\d+$/.test(t) ? `LOCAL-${t}` : t });
+      if (!val('rfManager')) throw new Error('Выберите, чей отчёт');
+      return call({ action: 'managerReport', manager: val('rfManager'), month: val('rfMonth'), by: val('rfBy') });
     },
-    render: renderTracker, copy: true,
+    render: renderManager, copy: true, excel: () => ({ kind: 'manager', manager: val('rfManager'), month: val('rfMonth'), by: val('rfBy') }),
   },
   custom: {
     title: 'Кастомный',
@@ -106,6 +100,7 @@ function open(name) {
   els.out.innerHTML = '';
   els.actions.hidden = true;
   els.copy.hidden = !r.copy;
+  els.copy.textContent = '📋 Скопировать для Band';
   els.excel.hidden = !r.excel;
   els.run.hidden = !!r.live;
   setMsg('');
@@ -150,14 +145,9 @@ function renderManager(d) {
   if (!d.groups.length) return '<p class="muted center">За этот период задач нет.</p>';
   return tiles([[d.taskCount, 'тикетов'], [d.lineCount, 'задач'], [d.grandTotal, 'SP'], [money(d.grandMoney), '₽ с НДС']]) +
     d.groups.map((g) => `<div class="r-group"><h3>${esc(g.ticket || '(без тикета)')}</h3>${g.lines.map((l) =>
-      `<div class="r-line"><span>${link(l.subject, l.link)}${l.link2.split('\n').filter(Boolean).map((u, i) => ` <a class="small" href="${esc(u)}" target="_blank" rel="noopener">(ссылка ${i + 2})</a>`).join('')}</span><b>${l.sp} SP</b></div>`).join('')}
+      `<div class="r-line"><span>${link(bandLabel(l.subject), l.link)}${l.link2.split('\n').filter(Boolean).map((u, i) => ` <a class="small" href="${esc(u)}" target="_blank" rel="noopener">(ссылка ${i + 2})</a>`).join('')}</span><b>${l.sp} SP</b></div>`).join('')}
       <div class="r-line sum"><span>Итого по тикету</span><b>${g.ticketTotal} SP</b></div></div>`).join('') +
     `<div class="r-total">Итого по ${esc(d.manager)}${d.monthLabel ? ` за ${esc(d.monthLabel)}` : ''}: ${d.grandTotal} SP</div>`;
-}
-
-function renderTracker(d) {
-  if (!d.count) return '<p class="muted center">По этому тикету задач нет.</p>';
-  return `<p class="muted">Задач: ${d.count}</p><pre class="r-pre">${esc(d.text)}</pre>`;
 }
 
 function renderCustom(d) {
@@ -197,16 +187,40 @@ els.copy.addEventListener('click', async () => {
   }
 });
 
+/** «[LIT-26-2237][LogrusIT][kk][Магазинка] Новые строки» → «LIT-26-2237 · Новые строки» — без скобок, чтобы ссылка в Band не сломалась. */
+function bandLabel(subject) {
+  const id = (String(subject).match(/^\s*\[([^\]]+)\]/) || [])[1] || '';
+  const short = String(subject).replace(/^(\s*\[[^\]]*\])+\s*/, '').trim() || String(subject);
+  return id ? `${id} · ${short}` : short;
+}
+
+/**
+ * Отчёт для Band: по тикетам, ссылка спрятана в названии задачи, в конце — SP.
+ * text — разметка Band ([название](ссылка)), html — то же со ссылками для почты и документов.
+ */
+function bandReport(d) {
+  const text = [], html = [];
+  d.groups.forEach((g) => {
+    text.push(`**${g.ticket || 'Без тикета'}**`);
+    html.push(`<p><b>${esc(g.ticket || 'Без тикета')}</b></p><ol>`);
+    g.lines.forEach((l, i) => {
+      const label = bandLabel(l.subject);
+      const extra = l.link2.split('\n').filter(Boolean);
+      text.push(`${i + 1}. ${l.link ? `[${label}](${l.link})` : label}${extra.map((u, k) => ` ([ссылка ${k + 2}](${u}))`).join('')} — ${l.sp} SP`);
+      html.push(`<li>${l.link ? `<a href="${esc(l.link)}">${esc(label)}</a>` : esc(label)}${extra.map((u, k) => ` (<a href="${esc(u)}">ссылка ${k + 2}</a>)`).join('')} — ${l.sp} SP</li>`);
+    });
+    text.push(`Итого по тикету: ${g.ticketTotal} SP`, '');
+    html.push(`</ol><p>Итого по тикету: ${g.ticketTotal} SP</p>`);
+  });
+  const total = `Итого${d.monthLabel ? ` за ${d.monthLabel}` : ''}: ${d.grandTotal} SP`;
+  text.push(`**${total}**`);
+  html.push(`<p><b>${esc(total)}</b></p>`);
+  return { text: text.join('\n'), html: html.join('') };
+}
+
 async function copyResult() {
-  if (current === REPORTS.tracker) {
-    // В Band ссылки вида [текст](адрес) становятся кликабельными
-    await navigator.clipboard.writeText(result.text);
-  } else {
-    const lines = result.groups.flatMap((g) => g.lines);
-    const html = lines.map((l) => `<div>${l.link ? `<a href="${esc(l.link)}">${esc(l.subject)}</a>` : esc(l.subject)} — ${l.sp} SP</div>`).join('') +
-      `<div><b>Итого по ${esc(result.manager)}: ${result.grandTotal} SP</b></div>`;
-    await copyRich(html, result.copyText);
-  }
+  const r = bandReport(result);
+  await copyRich(r.html, r.text);
 }
 
 els.excel.addEventListener('click', async () => {
