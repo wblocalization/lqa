@@ -60,7 +60,7 @@
 
     <form id="taskForm" class="task-form" hidden>
       <div class="preview-box">
-        <div class="preview-txt"><span class="eyebrow">Тема письма</span><p id="tPreview" class="preview"></p></div>
+        <div class="preview-txt"><span class="eyebrow">Тема письма <span class="eyebrow-note" title="Точный номер таблица выдаст при добавлении — тема скопируется сама">· номер предварительный</span></span><p id="tPreview" class="preview"></p></div>
         <button id="tCopyPreview" class="btn ghost small" type="button">Скопировать</button>
       </div>
       <div class="tpl">
@@ -156,6 +156,7 @@
       </span>
       <h2>Добавлено: <span id="taskDoneId"></span></h2>
       <p id="taskDoneSubject" class="done-subject"></p>
+      <p id="taskDoneCopied" class="done-copied" hidden>✓ Тема с точным номером уже скопирована — можно вставлять в письмо</p>
       <button id="taskCopyDone" class="btn ghost" type="button">Скопировать тему</button>
       <a id="taskOpenRow" class="btn ghost" href="#" target="_blank" rel="noopener" hidden>Открыть в таблице ↗</a>
       <button id="taskSimilar" class="btn ghost" type="button">Ещё одну такую же</button>

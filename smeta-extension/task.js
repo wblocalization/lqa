@@ -5,7 +5,7 @@ import { makeLinkList } from './links.js';
 const $ = (s) => document.querySelector(s);
 const els = {
   form: $('#taskForm'), loading: $('#taskLoading'), done: $('#taskDone'), doneId: $('#taskDoneId'),
-  doneSubject: $('#taskDoneSubject'), copyDone: $('#taskCopyDone'), again: $('#taskAgain'),
+  doneSubject: $('#taskDoneSubject'), doneCopied: $('#taskDoneCopied'), copyDone: $('#taskCopyDone'), again: $('#taskAgain'),
   contractor: $('#tContractor'), ticketNum: $('#tTicketNum'),
   template: $('#tTemplate'), saveTpl: $('#tSaveTpl'), delTpl: $('#tDelTpl'), updTpl: $('#tUpdTpl'), renTpl: $('#tRenTpl'), exportTpl: $('#tExportTpl'),
   importTpl: $('#tImportTpl'), importFile: $('#tImportFile'),
@@ -490,8 +490,10 @@ async function copyText(text, okMsg) {
     setMsg('Не получилось скопировать', 'err');
   }
 }
+// До добавления номер — догадка: если коллега добавит задачу в ту же секунду, номер сдвинется
 els.copyPreview.addEventListener('click', async () => {
   await copyText(els.preview.textContent, 'Тема скопирована');
+  toast('Номер пока предварительный — точная тема скопируется сама после «Добавить задачу»', 'warn');
   els.copyPreview.textContent = 'Скопировано ✓';
   setTimeout(() => { els.copyPreview.textContent = 'Скопировать'; }, 1500);
 });
@@ -545,6 +547,10 @@ els.form.addEventListener('submit', async (e) => {
     lastSubject = buildSubject(r.id);
     els.doneId.textContent = r.id;
     els.doneSubject.textContent = lastSubject;
+    // Номер теперь точный — сразу кладём тему в буфер
+    document.getElementById('toast').hidden = true; // предупреждение о предварительном номере больше не нужно
+    els.doneCopied.hidden = true;
+    navigator.clipboard.writeText(lastSubject).then(() => { els.doneCopied.hidden = false; }).catch(() => {});
     setLink(els.openRow, r.url);
     els.form.hidden = true;
     els.done.hidden = false;
