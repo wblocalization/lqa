@@ -719,7 +719,7 @@ test('Выгрузка для сверки: все колонки как в та
   assert.ok(x.filter, 'фильтр включён');
   assert.ok(x.colW[4] >= 90 && x.colW[9] >= 90, 'даты влезают');
   // Итоги и проверка
-  const t = book.getSheetByName('Итоги').getRange(1, 1, 12, 4).getValues();
+  const t = book.getSheetByName('Итоги').getRange(1, 1, 60, 4).getValues();
   assert.ok(t.some(row => row[0] === 'LogrusIT' && row[1] === 3 && row[3] === 1050.005), JSON.stringify(t));
   assert.ok(t.some(row => row[0] === 'ИТОГО' && row[3] === 1050.005));
   const chk = book.getSheetByName('Проверить').getRange(2, 1, 5, 6).getValues().filter(v => v[0]);
@@ -731,6 +731,10 @@ test('Выгрузка для сверки: все колонки как в та
   assert.equal(why(a), '');
   // Сам лист задач не тронут: ссылка так и осталась как была
   assert.equal(sh.getRange(rowOf(b), 11).getValue(), 'Ссылка на смету ' + b);
+  // Фильтр по языку и итоги по языкам
+  same(G.moneyExportPreview({ month: '2026-05', contractor: 'LogrusIT', manager: 'Сверка Тест', lang: 'Грузинский' }).lines, 3);
+  same(G.moneyExportPreview({ month: '2026-05', contractor: 'LogrusIT', manager: 'Сверка Тест', lang: 'Армянский' }).lines, 0);
+  assert.ok(t.some(row => row[0] === 'Казахский' && row[1] === 3 && row[3] === 1050.005), 'итоги по языкам');
   // Сводка в окне — те же числа, что в файле
   same(Object.values(G.moneyExportPreview({ month: '2026-05', by: 'date', contractor: 'LogrusIT', manager: 'Сверка Тест' })), [3, 3, 1050.005, 2]);
   // Без фильтров — все задачи

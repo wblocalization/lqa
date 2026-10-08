@@ -16,7 +16,7 @@
 </head>
 <body>
   <p class="what">В Excel — все колонки таблицы в том же порядке и с теми же названиями: № задачи, языки, ссылка на смету,
-    сумма с НДС и остальное. Фильтр в Excel уже включён. Рядом — листы «Итоги» (по подрядчикам и менеджерам) и «Проверить».</p>
+    сумма с НДС и остальное. Фильтр в Excel уже включён. Рядом — листы «Итоги» (по подрядчикам, менеджерам и языкам) и «Проверить».</p>
   <div class="stack">
     <div class="two">
       <label class="field">Месяц<select id="month"></select></label>
@@ -29,6 +29,7 @@
       <label class="field">Подрядчик<select id="contractor"></select></label>
       <label class="field">Менеджер<select id="manager"></select></label>
     </div>
+    <label class="field">Язык<select id="lang"></select></label>
   </div>
 
   <div class="sum">
@@ -54,8 +55,9 @@
     OPTS.months.map(m => `<option value="${m.value}"${m.value === OPTS.current ? ' selected' : ''}>${esc(m.label)}</option>`).join('');
   fillSelect($('#contractor'), OPTS.contractors, 'Все подрядчики');
   fillSelect($('#manager'), OPTS.managers, 'Все менеджеры');
+  fillSelect($('#lang'), OPTS.langs, 'Все языки');
 
-  const filters = () => ({ month: $('#month').value, by: $('#by').value, contractor: $('#contractor').value, manager: $('#manager').value });
+  const filters = () => ({ month: $('#month').value, by: $('#by').value, contractor: $('#contractor').value, manager: $('#manager').value, lang: $('#lang').value });
 
   // Сводка по выбранным фильтрам — обновляется сама
   let seq = 0;
@@ -77,7 +79,7 @@
       $('#pIssues').className = 'issues ' + (p.issues ? 'bad' : 'ok');
     }).catch(e => { if (my === seq) { $('#pIssues').textContent = ''; setMsg($('#msg'), 'Не получилось посчитать: ' + e.message, 'err'); } });
   }
-  ['#month', '#by', '#contractor', '#manager'].forEach(id => $(id).addEventListener('change', preview));
+  ['#month', '#by', '#contractor', '#manager', '#lang'].forEach(id => $(id).addEventListener('change', preview));
   preview();
 
   $('#go').addEventListener('click', () => {

@@ -1551,12 +1551,12 @@ function exportUrl_(ss) {
 function showMoneyExportDialog() {
   const t = template_('MoneyExportDialog');
   t.opts = JSON.stringify(getMoneyExportOptions()).replace(/</g, '\\u003c'); // «<» в названиях не сломает окно
-  SpreadsheetApp.getUi().showModalDialog(t.evaluate().setWidth(520).setHeight(520), 'Выгрузка для сверки');
+  SpreadsheetApp.getUi().showModalDialog(t.evaluate().setWidth(520).setHeight(600), 'Выгрузка для сверки');
 }
 
 function getMoneyExportOptions() {
   const lists = getListsData();
-  return { months: getMonthsList(), contractors: lists.contractors, managers: lists.managers,
+  return { months: getMonthsList(), contractors: lists.contractors, managers: lists.managers, langs: lists.langs,
     current: fmtDate_(new Date(), 'yyyy-MM') };
 }
 
@@ -1578,6 +1578,7 @@ function moneyExportRows_(opts) {
     if (p.year && !inPeriod_(periodDate_(r, opts.by), p.year, p.month)) return;
     if (opts.contractor && str_(r[COL.CONTRACTOR - 1]) !== opts.contractor) return;
     if (opts.manager && str_(r[COL.MANAGER - 1]) !== opts.manager) return;
+    if (opts.lang && rowLangs_(r).indexOf(opts.lang.toLowerCase()) === -1) return;
     if (ESTIMATE_LABEL_RE.test(str_(r[COL.ESTIMATE - 1]))) labels.push([r, i]);
     rows.push(r);
   });
@@ -1588,6 +1589,24 @@ function moneyExportRows_(opts) {
     labels.forEach(([r, i]) => { r[COL.ESTIMATE - 1] = estimateUrl_(rich[i - first][0], r[COL.ESTIMATE - 1]); });
   }
   return { head: head, rows: rows };
+}
+
+/** «Грузинский, Казахский» → ['грузинский', 'казахский'] */
+function rowLangs_(r) {
+  return String(r[COL.LANGS - 1] || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
+}
+
+/** Итоги по языкам: в скольких заказах язык и сумма этих заказов (заказ на несколько языков считается в каждом). */
+function moneyLangTotals_(rows, langs) {
+  const map = {};
+  rows.forEach(r => rowLangs_(r).forEach(l => {
+    const name = langs.filter(x => x.toLowerCase() === l)[0] || l;
+    const g = map[name] || (map[name] = { ids: {}, lines: 0, sum: 0 });
+    g.lines++;
+    if (str_(r[COL.ID - 1])) g.ids[str_(r[COL.ID - 1])] = true;
+    if (typeof r[COL.TOTAL - 1] === 'number') g.sum += r[COL.TOTAL - 1];
+  }));
+  return Object.keys(map).sort().map(k => [k, Object.keys(map[k].ids).length, map[k].lines, exactMoney_(map[k].sum)]);
 }
 
 /** Что стоит проверить в строке (пусто — всё в порядке). Строки одного заказа (один номер) смотрим вместе. */
@@ -1660,7 +1679,7 @@ function exportMoneyExcel(opts) {
   const rows = data.rows;
   const p = parseMonth_(opts.month);
   const monthName = p.year ? (getMonthsList().filter(m => m.value === opts.month).map(m => m.label.toLowerCase())[0] || opts.month) + ' ' + periodByLabel_(opts.by) : 'всё время';
-  const label = [opts.contractor || 'все подрядчики', opts.manager || 'все менеджеры', monthName].join(' · ');
+  const label = [opts.contractor || 'все подрядчики', opts.manager || 'все менеджеры'].concat(opts.lang ? [opts.lang] : []).concat([monthName]).join(' · ');
   const ss = SpreadsheetApp.create('Сверка — ' + label);
 
   // 1. Задачи — как в таблице
@@ -1678,42 +1697,93 @@ function exportMoneyExcel(opts) {
       return [isUrlText_(v) ? estimateRich_(v) : SpreadsheetApp.newRichTextValue().setText(v).build()];
     }));
   }
-  styleReportSheet_(sheet, TASK_COLS);
+  // Оформление: тёмная шапка, «зебра», цветные статусы — как в таблице
+  const nData = Math.max(rows.length, 1);
+  sheet.getRange(1, 1, nData + 1, TASK_COLS).setFontFamily('Arial').setFontSize(10).setVerticalAlignment('middle');
+  sheet.getRange(1, 1, 1, TASK_COLS).setFontWeight('bold').setBackground(HEAD_BG).setFontColor('#FFFFFF').setWrap(true);
+  sheet.setRowHeight(1, 36);
+  sheet.setFrozenRows(1);
+  sheet.setFrozenColumns(1);
+  sheet.getRange(2, COL.ID, nData, 1).setFontWeight('bold');
+  sheet.getRange(2, COL.TOTAL, nData, 1).setFontWeight('bold').setHorizontalAlignment('right');
+  sheet.getRange(2, COL.SP, nData, 1).setHorizontalAlignment('center');
+  const body = sheet.getRange(2, 1, nData, TASK_COLS);
+  const statusCol = sheet.getRange(2, COL.STATUS, nData, 1);
+  sheet.setConditionalFormatRules(Object.keys(STATUS_COLORS).map(v => textRule_(statusCol, v, STATUS_COLORS[v]))
+    .concat([SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=ISEVEN(ROW())').setBackground('#F6F7F9').setRanges([body]).build()]));
   // Ширина колонок — сразу как надо: иначе Excel показывает узкую дату как «#####»
   const widths = {};
   widths[COL.ID] = 110; widths[COL.TICKET] = 110; widths[COL.SUBJECT] = 380; widths[COL.DATE] = 95; widths[COL.PRODUCT] = 140;
   widths[COL.CUSTOMER] = 140; widths[COL.LANGS] = 260; widths[COL.DEADLINE] = 120; widths[COL.DUE] = 95; widths[COL.STATUS] = 100;
-  widths[COL.ESTIMATE] = 260; widths[COL.TOTAL] = 120; widths[COL.CONTRACTOR] = 120; widths[COL.MANAGER] = 150;
+  widths[COL.ESTIMATE] = 260; widths[COL.TOTAL] = 130; widths[COL.CONTRACTOR] = 120; widths[COL.MANAGER] = 150;
   widths[COL.DELIVERY] = 150; widths[COL.SP] = 60; widths[COL.COMMENT] = 240; widths[COL.COMPLAINTS] = 180;
   Object.keys(widths).forEach(c => sheet.setColumnWidth(Number(c), widths[c]));
-  sheet.getRange(1, 1, Math.max(rows.length, 1) + 1, TASK_COLS).createFilter();
+  sheet.getRange(1, 1, nData + 1, TASK_COLS).createFilter();
 
-  // 2. Итоги
+  // 2. Итоги — заголовок, карточки с цифрами и аккуратные таблички
   const sum = exactMoney_(rows.reduce((a, r) => a + (typeof r[COL.TOTAL - 1] === 'number' ? r[COL.TOTAL - 1] : 0), 0));
   const orders = Object.keys(rows.reduce((m, r) => { if (str_(r[COL.ID - 1])) m[str_(r[COL.ID - 1])] = 1; return m; }, {})).length;
-  const tot = ss.insertSheet('Итоги');
-  const block = [['Сверка: ' + label, '', '', ''], ['', '', '', ''],
-    ['Подрядчик', 'Заказов', 'Строк', 'Итого с НДС, ₽']].concat(moneyTotals_(rows, COL.CONTRACTOR))
-    .concat([['', '', '', ''], ['Менеджер', 'Заказов', 'Строк', 'Итого с НДС, ₽']]).concat(moneyTotals_(rows, COL.MANAGER))
-    .concat([['', '', '', ''], ['ИТОГО', orders, rows.length, sum]]);
-  tot.getRange(1, 1, block.length, 4).setValues(block);
-  tot.getRange(1, 1).setFontWeight('bold').setFontSize(13);
-  block.forEach((r, i) => {
-    if (r[0] === 'Подрядчик' || r[0] === 'Менеджер') tot.getRange(i + 1, 1, 1, 4).setFontWeight('bold').setBackground(HEAD_BG).setFontColor('#ffffff');
-    if (r[0] === 'ИТОГО') tot.getRange(i + 1, 1, 1, 4).setFontWeight('bold');
-    if (typeof r[3] === 'number') tot.getRange(i + 1, 4).setNumberFormat(moneyFormat_(r[3]));
-  });
-  tot.autoResizeColumns(1, 4);
-
-  // 3. Проверить
   const issues = moneyIssues_(rows);
+  const tot = ss.insertSheet('Итоги');
+  tot.setHiddenGridlines(true);
+  [260, 110, 110, 230].forEach((w, i) => tot.setColumnWidth(i + 1, w));
+  tot.getRange(1, 1, 200, 4).setFontFamily('Arial').setFontSize(10).setVerticalAlignment('middle');
+  tot.getRange(1, 1).setValue('Сверка с подрядчиками').setFontSize(16).setFontWeight('bold').setFontColor(HEAD_BG);
+  tot.getRange(2, 1).setValue(label).setFontColor('#5F6B7A');
+  tot.getRange(3, 1).setValue('Сформировано: ' + fmtDate_(new Date(), 'dd.MM.yyyy HH:mm')).setFontColor('#9AA3AE').setFontSize(9);
+  tot.setRowHeight(1, 30);
+  // Карточки: заказов · строк · сумма · на проверку
+  tot.getRange(5, 1, 1, 4).setValues([['Заказов', 'Строк', 'Итого с НДС, ₽', 'Проверить']])
+    .setFontColor('#5F6B7A').setFontSize(9).setBackground('#EEF1F6').setHorizontalAlignment('center');
+  tot.getRange(6, 1, 1, 4).setValues([[orders, rows.length, sum, issues.length]])
+    .setFontSize(16).setFontWeight('bold').setBackground('#EEF1F6').setHorizontalAlignment('center');
+  tot.getRange(6, 3).setNumberFormat(moneyFormat_(sum));
+  tot.getRange(6, 4).setFontColor(issues.length ? '#B45F06' : '#274E13');
+  tot.setRowHeight(6, 36);
+  tot.getRange(5, 1, 2, 4).setBorder(true, true, true, true, true, false, '#FFFFFF', SpreadsheetApp.BorderStyle.SOLID_THICK);
+
+  let at = 8;
+  function table(title, list, total) {
+    tot.getRange(at, 1, 1, 4).setValues([[title, 'Заказов', 'Строк', title === 'Язык' ? 'Сумма заказов с языком, ₽' : 'Итого с НДС, ₽']])
+      .setFontWeight('bold').setBackground(HEAD_BG).setFontColor('#FFFFFF');
+    tot.getRange(at, 2, 1, 3).setHorizontalAlignment('right');
+    at++;
+    if (list.length) {
+      tot.getRange(at, 1, list.length, 4).setValues(list);
+      tot.getRange(at, 4, list.length, 1).setNumberFormats(list.map(r => [moneyFormat_(r[3])]));
+      list.forEach((r, i) => { if (i % 2) tot.getRange(at + i, 1, 1, 4).setBackground('#F6F7F9'); });
+      at += list.length;
+    }
+    if (total) {
+      tot.getRange(at, 1, 1, 4).setValues([['ИТОГО', orders, rows.length, sum]]).setFontWeight('bold')
+        .setBorder(true, null, null, null, null, null, HEAD_BG, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+      tot.getRange(at, 4).setNumberFormat(moneyFormat_(sum));
+      at++;
+    }
+    at++;
+  }
+  table('Подрядчик', moneyTotals_(rows, COL.CONTRACTOR), true);
+  table('Менеджер', moneyTotals_(rows, COL.MANAGER), true);
+  table('Язык', moneyLangTotals_(rows, getListsData().langs), false);
+  tot.getRange(at, 1).setValue('Заказ на несколько языков считается в каждом из них — поэтому сумма по языкам больше общей.')
+    .setFontColor('#9AA3AE').setFontSize(9);
+
+  // 3. Проверить — что не сходится, подсвечено
   const chk = ss.insertSheet('Проверить');
   const chkHead = ['№ задачи', 'Тема письма', 'Подрядчик', 'Менеджер', 'Статус', 'Что не так'];
   chk.getRange(1, 1, 1, chkHead.length).setValues([chkHead]);
   ensureRows_(chk, issues.length + 1);
-  if (issues.length) chk.getRange(2, 1, issues.length, chkHead.length).setValues(issues);
-  else chk.getRange(2, 1).setValue('Всё сходится — проверять нечего 👍');
-  styleReportSheet_(chk, chkHead.length, 380);
+  if (issues.length) {
+    chk.getRange(2, 1, issues.length, chkHead.length).setValues(issues).setBackground('#FFF8E6').setVerticalAlignment('middle');
+    chk.getRange(2, 6, issues.length, 1).setFontColor('#B45F06').setFontWeight('bold');
+    chk.getRange(2, 1, issues.length, 1).setFontWeight('bold');
+  } else {
+    chk.getRange(2, 1).setValue('Всё сходится — проверять нечего 👍').setFontColor('#274E13').setFontWeight('bold');
+  }
+  styleReportSheet_(chk, chkHead.length);
+  chk.getRange(1, 1, 1, chkHead.length).setFontFamily('Arial');
+  [110, 380, 120, 150, 100, 300].forEach((w, i) => chk.setColumnWidth(i + 1, w));
+  chk.setRowHeight(1, 30);
 
   ss.setActiveSheet(sheet);
   return { url: exportUrl_(ss), sheetUrl: ss.getUrl(), name: ss.getName(), lines: rows.length, orders: orders, total: sum, issues: issues.length };
