@@ -33,38 +33,25 @@
     </div>
   </div>
   <div id="msg" class="msg" style="margin-top:6px"></div>
+  <p id="ver" class="small muted" style="margin-top:10px;text-align:right"></p>
 
 <script>
-  // Месяцы считаем прямо здесь — окно готово сразу; подрядчики и менеджеры подтянутся из таблицы
-  (function fillMonths() {
-    const names = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
-    const now = new Date();
-    let html = '<option value="">Всё время</option>';
-    for (let i = 0; i < 18; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const v = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-      html += `<option value="${v}"${i === 0 ? ' selected' : ''}>${names[d.getMonth()]} ${d.getFullYear()}</option>`;
-    }
-    $('#month').innerHTML = html;
-  })();
-  ['#contractor', '#manager'].forEach(id => { $(id).innerHTML = '<option value="">Загружаю…</option>'; });
-  setMsg($('#msg'), 'Загружаю подрядчиков и менеджеров… Выгружать можно уже сейчас — по всем.');
-  const slow = setTimeout(() => setMsg($('#msg'), 'Таблица долго отвечает — подождите ещё немного или закройте окно и откройте снова. Выгрузка по всем работает и так.'), 20000);
-
-  run('getMoneyExportOptions').then(d => {
-    fillSelect($('#contractor'), d.contractors, 'Все подрядчики');
-    fillSelect($('#manager'), d.managers, 'Все менеджеры');
-    setMsg($('#msg'), '');
-  }).catch(e => {
-    ['#contractor', '#manager'].forEach(id => { $(id).innerHTML = '<option value="">Все</option>'; });
-    setMsg($('#msg'), 'Списки не загрузились: ' + e.message + '. Выгрузка по всем подрядчикам и менеджерам работает.', 'err');
-  }).finally(() => clearTimeout(slow));
+  // Всё нужное пришло вместе с окном — ничего не догружаем
+  const OPTS = <?!= opts ?>;
+  $('#month').innerHTML = '<option value="">Всё время</option>' +
+    OPTS.months.map(m => `<option value="${m.value}"${m.value === OPTS.current ? ' selected' : ''}>${esc(m.label)}</option>`).join('');
+  fillSelect($('#contractor'), OPTS.contractors, 'Все подрядчики');
+  fillSelect($('#manager'), OPTS.managers, 'Все менеджеры');
+  $('#ver').textContent = 'версия ' + OPTS.version;
 
   $('#go').addEventListener('click', () => {
     const btn = $('#go');
     btn.disabled = true;
     $('#result').hidden = true;
     setMsg($('#msg'), 'Собираю файл… обычно 5–15 секунд');
+    // Ответ не пришёл за минуту — скорее всего, в Chrome открыто несколько Google-аккаунтов
+    const slow = setTimeout(() => setMsg($('#msg'), 'Ответа нет больше минуты. Если в Chrome вход в несколько Google-аккаунтов — окна скриптов часто зависают: ' +
+      'откройте таблицу в окне инкогнито одним аккаунтом. Или выгрузите через меню «💰 Выгрузка для сверки → Прошлый месяц…».', 'err'), 60000);
     run('exportMoneyExcel', { month: $('#month').value, by: $('#by').value, contractor: $('#contractor').value, manager: $('#manager').value })
       .then(r => {
         $('#rOrders').textContent = r.orders;
@@ -78,7 +65,7 @@
         if (r.lines) window.open(r.url, '_blank');
       })
       .catch(e => setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'))
-      .finally(() => { btn.disabled = false; });
+      .finally(() => { btn.disabled = false; clearTimeout(slow); });
   });
 </script>
 </body>

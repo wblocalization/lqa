@@ -1503,8 +1503,13 @@ function exportUrl_(ss) {
 // только строки за выбранный месяц / подрядчика / менеджера. Ссылки на сметы — адресами (кликабельны), суммы — числами.
 // Рядом — листы «Итоги» (по подрядчикам и менеджерам) и «Проверить» (сумма без сметы и т. п.). Сам лист задач не меняется.
 
+const MONEY_EXPORT_VERSION = '08.10 · v3';
+
+/** Списки (месяцы, подрядчики, менеджеры) кладём прямо в окно — ему не нужно ничего догружать. */
 function showMoneyExportDialog() {
-  showDialog_('MoneyExportDialog', 'Выгрузка для сверки', 440, 470);
+  const t = template_('MoneyExportDialog');
+  t.opts = JSON.stringify(Object.assign(getMoneyExportOptions(), { version: MONEY_EXPORT_VERSION })).replace(/</g, '\\u003c'); // «<» в названиях не сломает окно
+  SpreadsheetApp.getUi().showModalDialog(t.evaluate().setWidth(440).setHeight(500), 'Выгрузка для сверки');
 }
 
 // Пункты меню: файл собирается сразу, без окна с выбором — потом фильтр в Excel
