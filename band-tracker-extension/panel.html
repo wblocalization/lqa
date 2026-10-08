@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Band → Трекер</title>
+<link rel="stylesheet" href="panel.css">
+</head>
+<body>
+<header class="top">
+  <h1>Band <span class="arrow">→</span> Трекер</h1>
+  <button id="boardsBtn" class="icon-btn" type="button" title="Доски" aria-label="Доски">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="18" rx="1.5"/><rect x="14" y="3" width="7" height="11" rx="1.5"/></svg>
+  </button>
+</header>
+
+<main>
+  <details id="howto" class="howto">
+    <summary>Как пользоваться</summary>
+    <ol>
+      <li>В Band <b>правый клик по сообщению</b> → «📮 Создать задачу в трекере». Название, текст и ссылка на сообщение подставятся сами. Выделили часть текста — возьмётся она.</li>
+      <li>Проверьте название, выберите доску → <b>«Создать в трекере»</b>.</li>
+      <li><b>Своей доски нет в списке?</b> Создайте в ней одну задачу как обычно, прямо в tracker.wb.ru, — расширение запомнит доску.</li>
+    </ol>
+    <p class="note">Задачи создаются от вашего имени — нужен вход в tracker.wb.ru в этом браузере.</p>
+  </details>
+
+  <form id="form" class="form">
+    <p id="from" class="from" hidden></p>
+    <label>Доска
+      <select id="board"></select>
+    </label>
+    <label><span>Название <span class="req">*</span></span>
+      <input id="title" type="text" required placeholder="Коротко: что нужно сделать">
+    </label>
+    <label><span>Описание <span class="opt">**жирный**, [текст](ссылка)</span></span>
+      <textarea id="desc" rows="9" placeholder="Подробности задачи"></textarea>
+    </label>
+    <button id="submit" class="btn primary" type="submit">Создать в трекере</button>
+    <button id="clear" class="btn ghost" type="button">Очистить</button>
+  </form>
+
+  <section id="done" class="done" hidden>
+    <span class="done-check" aria-hidden="true">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+    </span>
+    <h2>Создано: <a id="doneKey" href="#" target="_blank" rel="noopener"></a></h2>
+    <p id="doneTitle" class="done-title"></p>
+    <button id="copyLink" class="btn primary" type="button">Скопировать ссылку</button>
+    <button id="copyKey" class="btn ghost" type="button">Скопировать номер</button>
+    <button id="again" class="btn ghost" type="button">Новая задача</button>
+  </section>
+
+  <section id="boards" class="boards" hidden>
+    <h2>Доски</h2>
+    <p class="note">Чтобы добавить доску, создайте в ней одну задачу как обычно, прямо в tracker.wb.ru: расширение запомнит, куда её отправлять.</p>
+    <ul id="boardList" class="board-list"></ul>
+    <button id="boardsClose" class="btn ghost" type="button">Готово</button>
+  </section>
+
+  <p id="msg" class="status" role="status"></p>
+</main>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<script type="module" src="panel.js"></script>
+</body>
+</html>
