@@ -22,8 +22,18 @@ export async function initReports() {
     if (!isConfigured()) setMsg('Заполните настройки (⚙️), чтобы смотреть отчёты.', 'err');
     return;
   }
+  // Списки — сразу из памяти, свежие — в фоне (месяцы и тикеты меняются редко)
+  const key = `reportLists:${settings.url}`;
+  try { lists = (await chrome.storage.local.get(key))[key] || null; } catch { /* нет — ждём таблицу */ }
+  const fresh = call({ action: 'reportLists' }).then((r) => {
+    lists = r;
+    chrome.storage.local.set({ [key]: r }).catch(() => {});
+    if (els.msg.textContent === 'Загружаю списки…') setMsg('');
+  });
+  if (lists) { fresh.catch(() => {}); return; }
+  setMsg('Загружаю списки…');
   try {
-    lists = await call({ action: 'reportLists' });
+    await fresh;
   } catch (e) {
     setMsg(`Не загрузилось: ${e.message}`, 'err');
   }

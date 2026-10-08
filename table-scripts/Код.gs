@@ -454,6 +454,24 @@ function subjectLinks_(sh, col) {
   return sh.getRange(2, col || COL.SUBJECT, n, 1).getRichTextValues().map(r => linksFromRich_(r[0]));
 }
 
+/**
+ * Ссылки на Band только у нужных строк (i — индекс в readRows_, с 0). Оформление темы у Google читается медленно:
+ * у отчёта за месяц нужных строк десятки, а не тысячи. Немного строк — по одной, иначе — кусок колонки от первой до последней.
+ */
+function linksForRows_(sh, idxs, col) {
+  const out = {};
+  if (!idxs.length) return out;
+  col = col || COL.SUBJECT;
+  if (idxs.length <= 15) {
+    idxs.forEach(i => { out[i] = linksFromRich_(sh.getRange(i + 2, col).getRichTextValue()); });
+    return out;
+  }
+  const from = Math.min.apply(null, idxs), to = Math.max.apply(null, idxs);
+  const rich = sh.getRange(from + 2, col, to - from + 1, 1).getRichTextValues();
+  idxs.forEach(i => { out[i] = linksFromRich_(rich[i - from][0]); });
+  return out;
+}
+
 function getSubjectLink(sh, row) {
   return linksFromRich_(sh.getRange(row, COL.SUBJECT).getRichTextValue()).link;
 }
@@ -1474,15 +1492,20 @@ function parseMonth_(monthStr) {
 function getManagerReport(manager, monthStr, by) {
   const sh = getTasksSheet();
   const data = readRows_(sh, TASK_COLS);
-  const links = subjectLinks_(sh);
   const p = parseMonth_(monthStr);
+  const match = [];
+  data.forEach((r, i) => {
+    if (str_(r[COL.MANAGER - 1]) !== manager || !r[COL.SUBJECT - 1]) return;
+    if (p.year && !inPeriod_(periodDate_(r, by), p.year, p.month)) return;
+    match.push(i);
+  });
+  const links = linksForRows_(sh, match);
 
   const groups = {}, order = [];
   let taskCount = 0, lineCount = 0, grandTotal = 0, grandMoney = 0;
-  data.forEach((r, i) => {
+  match.forEach(i => {
+    const r = data[i];
     const subject = r[COL.SUBJECT - 1];
-    if (str_(r[COL.MANAGER - 1]) !== manager || !subject) return;
-    if (p.year && !inPeriod_(periodDate_(r, by), p.year, p.month)) return;
     const ticket = str_(r[COL.TICKET - 1]);
     const key = ticket || '(без тикета)';
     const sp = Number(r[COL.SP - 1]) || 0, money = Number(r[COL.TOTAL - 1]) || 0;
@@ -1803,10 +1826,12 @@ function getTicketsForReport() {
 function getTrackerReportText(ticket) {
   const sh = getTasksSheet();
   const data = readRows_(sh, TASK_COLS);
-  const links = subjectLinks_(sh);
+  const match = [];
+  data.forEach((r, i) => { if (str_(r[COL.TICKET - 1]) === ticket && r[COL.SUBJECT - 1]) match.push(i); });
+  const links = linksForRows_(sh, match);
   const rows = [];
-  data.forEach((r, i) => {
-    if (str_(r[COL.TICKET - 1]) !== ticket || !r[COL.SUBJECT - 1]) return;
+  match.forEach(i => {
+    const r = data[i];
     const label = '[' + str_(r[COL.ID - 1]) + '] ' + shortSubject_(r[COL.SUBJECT - 1]);
     rows.push({ label: label, link: links[i].link, sp: r[COL.SP - 1] || 0 });
   });
@@ -1825,7 +1850,6 @@ function showCustomReportSidebar() {
 function getCustomReport(yearFilter, monthFilter, by) {
   const sh = getTasksSheet();
   const data = readRows_(sh, TASK_COLS);
-  const links = subjectLinks_(sh);
   const year = yearFilter ? Number(yearFilter) : null;
   const month = monthFilter ? Number(monthFilter) : null;
 
@@ -1847,9 +1871,13 @@ function getCustomReport(yearFilter, monthFilter, by) {
       byManager[manager].count++; byManager[manager].sp += sp;
     }
     if (contractor) byContractor[contractor] = (byContractor[contractor] || 0) + 1;
-    taskRows.push({ subject: stripLinkMarkers_(r[COL.SUBJECT - 1]), link: links[i].link, sp: sp, manager: manager, product: product });
+    taskRows.push({ i: i, subject: stripLinkMarkers_(r[COL.SUBJECT - 1]), sp: sp, manager: manager, product: product });
   });
 
+  // Ссылки нужны только десятке самых трудоёмких — читаем их, а не всю колонку
+  const top = taskRows.filter(t => t.sp > 0).sort((a, b) => b.sp - a.sp).slice(0, 10);
+  const links = linksForRows_(sh, top.map(t => t.i));
+  top.forEach(t => { t.link = links[t.i].link; delete t.i; });
   const sortDesc = obj => Object.keys(obj).map(k => [k, obj[k]]).sort((a, b) => b[1] - a[1]);
   const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
   return {
@@ -1860,7 +1888,7 @@ function getCustomReport(yearFilter, monthFilter, by) {
     deliveryStatus: Object.keys(byDelivery).map(k => [k, byDelivery[k], totalTasks ? Math.round(byDelivery[k] / totalTasks * 100) : 0]),
     topManagers: Object.keys(byManager).map(k => [k, byManager[k].count, byManager[k].sp]).sort((a, b) => b[2] - a[2]).slice(0, 5),
     topContractors: sortDesc(byContractor).slice(0, 5),
-    topTasksBySP: taskRows.filter(t => t.sp > 0).sort((a, b) => b.sp - a.sp).slice(0, 10)
+    topTasksBySP: top
   };
 }
 
