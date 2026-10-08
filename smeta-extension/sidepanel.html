@@ -242,7 +242,7 @@
       <div class="card amount">
         <label for="total" class="eyebrow">Итого с НДС</label>
         <div class="amount-line">
-          <input id="total" type="text" inputmode="decimal" required>
+          <input id="total" type="text" inputmode="decimal">
           <span class="cur">₽</span>
         </div>
         <p id="totalHint" class="hint"></p>
@@ -250,7 +250,7 @@
 
       <div class="card">
         <label for="task" class="eyebrow">Задача</label>
-        <input id="task" class="task-input" type="text" required placeholder="Номер из имени файла" autocomplete="off">
+        <input id="task" class="task-input" type="text" placeholder="Номер из имени файла" autocomplete="off">
         <div id="rowInfo" class="rowinfo" hidden></div>
       </div>
 
@@ -263,7 +263,11 @@
         </div>
       </div>
 
-      <p id="diskHint" class="hint"></p>
+      <div id="folderCard" class="card">
+        <label for="folder" class="eyebrow">Папка на ВБ Диске</label>
+        <input id="folder" type="text" placeholder="Название папки, например тема письма" autocomplete="off">
+        <p id="diskHint" class="hint"></p>
+      </div>
       <button id="submit" class="btn primary" type="submit">Загрузить на ВБ Диск и записать</button>
     </form>
 
@@ -271,8 +275,12 @@
       <span class="done-check" aria-hidden="true">
         <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
       </span>
-      <h2>Записано</h2>
+      <h2 id="doneTitle">Записано</h2>
       <p id="doneText"></p>
+      <div id="doneLinkBox" class="done-link" hidden>
+        <input id="doneLink" type="text" readonly aria-label="Ссылка на смету">
+        <button id="copyLink" class="btn ghost" type="button">Скопировать</button>
+      </div>
       <button id="again" class="btn primary" type="button">Ещё одна смета</button>
     </section>
 

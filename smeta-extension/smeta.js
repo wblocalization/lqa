@@ -11,25 +11,48 @@ const els = {
   reset: $('#reset'), done: $('#done'), doneText: $('#doneText'), again: $('#again'),
   task: $('#task'), rowInfo: $('#rowInfo'), total: $('#total'), totalHint: $('#totalHint'),
   link: $('#link'), pasteLink: $('#pasteLink'), submit: $('#submit'), status: $('#status'), diskHint: $('#diskHint'),
+  folder: $('#folder'), folderCard: $('#folderCard'), doneTitle: $('#doneTitle'), doneLinkBox: $('#doneLinkBox'),
+  doneLink: $('#doneLink'), copyLink: $('#copyLink'),
 };
 
-let current = null; // { file, fileName, subject, filled, oldTotal, version } — смета, которая сейчас в форме
+// { file, fileName, subject, filled, oldTotal, version, found } — смета, которая сейчас в форме.
+// found: true — строка в таблице есть; false — нет (или таблица недоступна): тогда только загрузка на диск.
+let current = null;
+let folderEdited = false; // название папки вписали руками — тему письма поверх не подставляем
 
-/** Куда ляжет PDF на ВБ Диске: папка из настроек / тема письма. */
+/** Папка по умолчанию: тема письма из таблицы, а если задачи там нет — номер. */
+function autoFolder() {
+  return folderNameFromSubject(current && current.subject) || normTask(els.task.value);
+}
+
+/** Куда ляжет PDF на ВБ Диске: папка из настроек / название из поля «Папка на ВБ Диске». */
 function diskFolders() {
   const base = String(settings.diskFolder || DEFAULT_DISK_FOLDER).split('/').map((x) => x.trim()).filter(Boolean);
-  const name = folderNameFromSubject(current && current.subject) || normTask(els.task.value);
+  const name = folderNameFromSubject(els.folder.value) || autoFolder();
   return name ? base.concat([name]) : base;
+}
+
+/** Задачи в таблице нет (или таблица не настроена) — можно только загрузить PDF на диск и скопировать ссылку. */
+function diskOnly() {
+  return Boolean(current) && (!isConfigured() || current.found === false || !normTask(els.task.value));
 }
 
 /** Ссылка вписана — просто записываем; пусто — сначала загрузим PDF на диск. */
 function updateDiskHint() {
   const manual = Boolean(els.link.value.trim());
-  els.submit.textContent = manual ? 'Записать в таблицу' : 'Загрузить на ВБ Диск и записать';
-  els.diskHint.hidden = manual || !current;
-  if (current && !manual) els.diskHint.textContent = `PDF ляжет в «${diskFolders().join(' / ')}»`;
+  if (current && !folderEdited) els.folder.value = autoFolder();
+  els.submit.textContent = manual ? 'Записать в таблицу' : diskOnly() ? 'Только загрузить на ВБ Диск' : 'Загрузить на ВБ Диск и записать';
+  els.folderCard.hidden = manual || !current;
+  if (current && !manual) {
+    els.diskHint.textContent = `PDF ляжет в «${diskFolders().join(' / ')}»` +
+      (diskOnly() ? '. В таблицу ничего не запишется — ссылку можно будет скопировать.' : '');
+  }
 }
 els.link.addEventListener('input', updateDiskHint);
+els.folder.addEventListener('input', () => {
+  folderEdited = Boolean(els.folder.value.trim());
+  updateDiskHint();
+});
 
 // ---------- Статус ----------
 function setStatus(text, kind = 'info') {
@@ -86,7 +109,9 @@ async function handleFile(file) {
     return;
   }
 
-  current = { file, fileName: file.name, subject: '', filled: false, oldTotal: '', version: parsed.version };
+  current = { file, fileName: file.name, subject: '', filled: false, oldTotal: '', version: parsed.version, found: null };
+  folderEdited = false;
+  els.folder.value = '';
   showScreen('form');
   els.fileName.textContent = file.name + (parsed.version ? ` · версия ${parsed.version}` : '');
   els.task.value = parsed.task || '';
@@ -125,9 +150,10 @@ let lookupSeq = 0;
 async function lookup() {
   const task = normTask(els.task.value);
   const seq = ++lookupSeq;
+  if (current) { current.found = null; current.subject = ''; current.filled = false; current.oldTotal = ''; updateDiskHint(); }
   if (!task) { showRow(null); return; }
   if (!isConfigured()) {
-    showRow({ kind: 'warn', html: 'Настройки не заполнены — строку в таблице не проверить.' });
+    showRow({ kind: 'warn', html: 'Настройки не заполнены — строку в таблице не проверить. PDF можно просто загрузить на ВБ Диск.' });
     return;
   }
   showRow({ kind: 'pending', html: `Ищу ${esc(task)} в таблице…` });
@@ -136,11 +162,13 @@ async function lookup() {
     if (seq !== lookupSeq) return;
     if (!r.ok) throw new Error(r.error);
     if (!r.found) {
-      showRow({ kind: 'err', html: `${esc(task)} не найдена в листе задач.` });
+      if (current) { current.found = false; updateDiskHint(); }
+      showRow({ kind: 'err', html: `${esc(task)} не найдена в листе задач.<span class="meta">PDF можно просто загрузить на ВБ Диск и скопировать ссылку.</span>` });
       return;
     }
     const filled = r.link || r.total;
     if (current) {
+      current.found = true;
       current.subject = r.subject || '';
       current.filled = Boolean(filled);
       current.oldTotal = r.total;
@@ -153,7 +181,8 @@ async function lookup() {
     });
   } catch (e) {
     if (seq !== lookupSeq) return;
-    showRow({ kind: 'err', html: esc(e.message) });
+    if (current) { current.found = false; updateDiskHint(); }
+    showRow({ kind: 'err', html: `${esc(e.message)}<span class="meta">PDF можно просто загрузить на ВБ Диск и скопировать ссылку.</span>` });
   }
 }
 
@@ -184,10 +213,12 @@ els.form.addEventListener('submit', async (e) => {
   const task = normTask(els.task.value);
   const total = Number(els.total.value.replace(/[\s  ₽]/g, '').replace(',', '.'));
   let link = els.link.value.trim();
+  if (diskOnly() && !link) return uploadOnly(task);
   if (!task) return setStatus('Укажите номер', 'err');
   if (!(total > 0)) return setStatus('Сумма не похожа на число', 'err');
   if (link && !/^https?:\/\//i.test(link)) return setStatus('Ссылка должна начинаться с https://', 'err');
   if (!link && !current) return setStatus('Перетащите PDF сметы или вставьте ссылку', 'err');
+  if (current && current.found === false) return setStatus(`${task} нет в таблице — записывать некуда. Сотрите ссылку, чтобы просто загрузить PDF на диск.`, 'err');
 
   // Смета уже есть — спрашиваем до загрузки, чтобы не грузить зря, и показываем, как меняется сумма
   let overwrite = false;
@@ -199,23 +230,12 @@ els.form.addEventListener('submit', async (e) => {
 
   els.submit.disabled = true;
   try {
-    let where = '';
+    let where = '', uploaded = false;
     if (!link) {
-      const folders = diskFolders();
-      // Подрядчик прислал новую смету — в папке уже лежит старая: заменить или оставить обе
-      setStatus('Смотрю папку на ВБ Диске…');
-      const existing = await listDiskPdfs(folders);
-      let remove = [], keepBoth = false;
-      if (existing.length) {
-        const replace = confirm(`В папке на ВБ Диске уже есть: ${existing.join(', ')}.\n\n` +
-          'ОК — заменить новой сметой (старая уйдёт в корзину ВБ Диска, её можно восстановить)\n' +
-          'Отмена — оставить и старую, и новую');
-        if (replace) remove = existing; else keepBoth = true;
-      }
-      setStatus(`Загружаю на ВБ Диск: ${folders.join(' / ')}…`);
-      const up = await uploadToDisk(current.file, folders, { remove, keepBoth });
+      const up = await uploadPdf();
+      uploaded = true;
       link = up.link;
-      where = ` · ${up.name} в «${folders.join(' / ')}»`;
+      where = ` · ${up.name} в «${up.folders.join(' / ')}»`;
       els.link.value = link;
       updateDiskHint();
     }
@@ -229,19 +249,75 @@ els.form.addEventListener('submit', async (e) => {
       }
       r = await api({ action: 'write', task, total, link, fileName, version, overwrite: true });
     }
+    if (!r.ok && uploaded) {
+      // PDF уже на диске — ссылку не теряем, даже если в таблицу записать не вышло
+      showDone('Загружено на ВБ Диск', `В таблицу не записано: ${r.error}${where}`, link);
+      return;
+    }
     if (!r.ok) throw new Error(r.error);
     const was = r.was !== '' && r.was != null && Number.isFinite(Number(r.was)) && Number(r.was) !== total
       ? ` (было ${formatMoney(Number(r.was))} ₽ — осталось в заметке к ячейке)` : '';
-    els.doneText.textContent = `${task} · ${formatMoney(total)} ₽${was} и ссылка в строке ${r.row}${where}`;
-    setStatus('');
-    current = null;
-    els.file.value = '';
-    showScreen('done');
+    showDone('Записано', `${task} · ${formatMoney(total)} ₽${was} и ссылка в строке ${r.row}${where}`, link);
   } catch (err) {
     setStatus(`Не получилось: ${err.message}`, 'err');
   } finally {
     els.submit.disabled = false;
   }
+});
+
+/** PDF на ВБ Диск в папку из поля. В папке уже есть смета — спросим: заменить или оставить обе. */
+async function uploadPdf() {
+  const folders = diskFolders();
+  setStatus('Смотрю папку на ВБ Диске…');
+  const existing = await listDiskPdfs(folders);
+  let remove = [], keepBoth = false;
+  if (existing.length) {
+    const replace = confirm(`В папке на ВБ Диске уже есть: ${existing.join(', ')}.\n\n` +
+      'ОК — заменить новой сметой (старая уйдёт в корзину ВБ Диска, её можно восстановить)\n' +
+      'Отмена — оставить и старую, и новую');
+    if (replace) remove = existing; else keepBoth = true;
+  }
+  setStatus(`Загружаю на ВБ Диск: ${folders.join(' / ')}…`);
+  const up = await uploadToDisk(current.file, folders, { remove, keepBoth });
+  return { ...up, folders };
+}
+
+/** Задачи в таблице нет — только загрузка на диск, ссылку покажем, чтобы скопировать. */
+async function uploadOnly(task) {
+  if (!current) return setStatus('Перетащите PDF сметы', 'err');
+  if (!folderNameFromSubject(els.folder.value) && !autoFolder()) return setStatus('Впишите название папки на ВБ Диске', 'err');
+  els.submit.disabled = true;
+  try {
+    const up = await uploadPdf();
+    const why = !isConfigured() ? 'настройки таблицы не заполнены' : task ? `${task} нет в таблице` : 'номер задачи не указан';
+    showDone('Загружено на ВБ Диск', `${up.name} в «${up.folders.join(' / ')}». В таблицу не записано: ${why}.`, up.link);
+  } catch (err) {
+    setStatus(`Не получилось: ${err.message}`, 'err');
+  } finally {
+    els.submit.disabled = false;
+  }
+}
+
+function showDone(title, text, link) {
+  els.doneTitle.textContent = title;
+  els.doneText.textContent = text;
+  els.doneLink.value = link || '';
+  els.doneLinkBox.hidden = !link;
+  els.copyLink.textContent = 'Скопировать';
+  setStatus('');
+  current = null;
+  els.file.value = '';
+  showScreen('done');
+}
+
+els.copyLink.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(els.doneLink.value);
+  } catch {
+    els.doneLink.select();
+    document.execCommand('copy');
+  }
+  els.copyLink.textContent = 'Скопировано ✓';
 });
 
 
