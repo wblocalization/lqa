@@ -91,9 +91,11 @@ function render() {
   renderFilter();
   saveCache();
   const n = data.tasks.length;
+  // Только что отданная карточка ещё на экране, но в счёт открытых не входит
+  const count = data.tasks.filter((t) => matches(filter, t.status)).length;
   const more = data.more ? ` (показаны последние ${n} из ${n + data.more})` : '';
-  els.summary.textContent = n
-    ? `${FILTER_TEXT[filter]} задач: ${n + (data.more || 0)}${more}${filter === 'open' && data.overdue ? ` · просрочено: ${data.overdue}` : ''}`
+  els.summary.textContent = count
+    ? `${FILTER_TEXT[filter]} задач: ${count + (data.more || 0)}${more}${filter === 'open' && data.overdue ? ` · просрочено: ${data.overdue}` : ''}`
     : (filter === 'open' ? 'Открытых задач нет 🎉' : 'Таких задач нет');
   els.list.innerHTML = data.tasks.map((t, i) => {
     const closed = CLOSED.includes(t.status);
