@@ -91,15 +91,32 @@
     $('#results').innerHTML = html;
   }
 
+  // Пока считает — видно, сколько секунд прошло; через минуту — подсказка, где смотреть ошибку
+  let timer = null;
+  function waiting() {
+    const t0 = Date.now();
+    clearInterval(timer);
+    const tick = () => {
+      const sec = Math.round((Date.now() - t0) / 1000);
+      $('#results').innerHTML = `<p class="muted">Считаю… ${sec} с</p>` + (sec >= 60
+        ? '<p class="hint">Что-то долго. Проверьте «Расширения → Apps Script → Выполнения» (слева): там видно, на чём остановилось и какая ошибка. Пришлите скрин.</p>' : '');
+    };
+    tick();
+    timer = setInterval(tick, 1000);
+  }
   $('#runBtn').addEventListener('click', () => {
-    $('#results').innerHTML = '<p class="muted">Считаю… На большой таблице это до 10–20 секунд.</p>';
+    waiting();
+    $('#runBtn').disabled = true;
     $('#excelBtn').disabled = $('#copyBtn').disabled = true;
     setMsg($('#msg'), '');
     run('getReconciliation', filters()).then(d => {
+      clearInterval(timer);
+      if (!d || !d.rows) throw new Error('таблица вернула пустой ответ — обновите страницу таблицы (F5) и попробуйте ещё раз');
       last = d;
       render(d);
       $('#excelBtn').disabled = $('#copyBtn').disabled = false;
-    }).catch(e => { $('#results').innerHTML = ''; setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'); });
+    }).catch(e => { clearInterval(timer); $('#results').innerHTML = ''; setMsg($('#msg'), 'Не получилось: ' + (e && e.message || e), 'err'); })
+      .finally(() => { $('#runBtn').disabled = false; });
   });
 
   $('#excelBtn').addEventListener('click', () => {

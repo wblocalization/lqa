@@ -1471,6 +1471,11 @@ function getReconcileOptions() {
  * Возвращает строки, итоги по подрядчикам и проверки (что стоит поправить до сверки).
  */
 function getReconciliation(f) {
+  // Только строки, числа и списки — чтобы окно точно получило ответ (Google не передаёт в окно даты и т. п.)
+  return JSON.parse(JSON.stringify(reconciliation_(f)));
+}
+
+function reconciliation_(f) {
   f = f || {};
   const started = Date.now();
   const sh = getTasksSheet();
