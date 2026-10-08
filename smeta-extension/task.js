@@ -284,22 +284,6 @@ export async function fillSimilar(ref) {
   }
 }
 
-/**
- * Задачу создали в трекере — подставить её в форму: номер тикета, ссылку на сообщение Band,
- * название — в тему, если тему ещё не вписали. Остальное (подрядчик, языки…) — как было в форме.
- */
-export async function fillFromTracker({ key, title, link }) {
-  await initTaskTab();
-  if (!lists) return;
-  if (!els.done.hidden) { els.done.hidden = true; els.form.hidden = false; resetForm(); }
-  const num = /^LOCAL-(\d+)$/i.exec(key || '');
-  if (num) els.ticketNum.value = num[1];
-  if (link && !els.link.value.trim()) els.link.value = link;
-  if (title && !els.subject.value.trim()) els.subject.value = title;
-  updatePreview();
-  setMsg(num ? `Тикет ${key} подставлен — выберите подрядчика, языки и добавьте задачу.` : `Создано в трекере: ${key}`, 'ok');
-}
-
 /** Только известные поля и только строки: файл мог прийти от кого угодно. */
 function cleanTemplate(t) {
   const str = (v) => (typeof v === 'string' ? v.trim() : '');
