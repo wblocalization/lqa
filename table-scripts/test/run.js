@@ -737,6 +737,13 @@ test('Выгрузка для сверки: все колонки как в та
   assert.equal(calls.created.length, nMenu + 1);
   G.moneyExportLastMonthDue();
   assert.match(calls.created[nMenu + 1].title, /по дате закрытия/);
+  // По шагам: месяц, подрядчик, менеджер — обычными окнами Google
+  const nStep = calls.created.length;
+  ctx.__prompt = ['5.2026', 'logrusit', 'лисовая'];
+  G.moneyExportStepByStep();
+  ctx.__prompt = '';
+  assert.match(calls.created[nStep].title, /Сверка — LogrusIT · Анастасия Лисовая · май 2026 по дате закрытия/);
+  same([G.pickName_('Лисовая', ['Анастасия Лисовая', 'Ольга Шешина']), G.pickName_('', ['A']), G.pickName_('Иван', ['Иван А', 'Иван Б'])], ['Анастасия Лисовая', '', '']);
   // Без фильтров — все задачи
   assert.ok(G.exportMoneyExcel({}).lines >= 5);
 });

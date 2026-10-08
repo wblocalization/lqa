@@ -121,7 +121,8 @@ function onOpen() {
       .addItem('Прошлый месяц — по дате закрытия', 'moneyExportLastMonthDue')
       .addItem('Всё время', 'moneyExportAll')
       .addSeparator()
-      .addItem('Выбрать месяц, подрядчика, менеджера…', 'showMoneyExportDialog'))
+      .addItem('Выбрать месяц, подрядчика, менеджера — по шагам…', 'moneyExportStepByStep')
+      .addItem('Выбрать в одном окне…', 'showMoneyExportDialog'))
     .addToUi();
 
   ui.createMenu('⚙️ Настройки')
@@ -1503,7 +1504,7 @@ function exportUrl_(ss) {
 // только строки за выбранный месяц / подрядчика / менеджера. Ссылки на сметы — адресами (кликабельны), суммы — числами.
 // Рядом — листы «Итоги» (по подрядчикам и менеджерам) и «Проверить» (сумма без сметы и т. п.). Сам лист задач не меняется.
 
-const MONEY_EXPORT_VERSION = '08.10 · v3';
+const MONEY_EXPORT_VERSION = '08.10 · v4';
 
 /** Списки (месяцы, подрядчики, менеджеры) кладём прямо в окно — ему не нужно ничего догружать. */
 function showMoneyExportDialog() {
@@ -1519,12 +1520,59 @@ function moneyExportThisMonthDue() { moneyExportFromMenu_(0, 'due'); }
 function moneyExportLastMonthDue() { moneyExportFromMenu_(-1, 'due'); }
 function moneyExportAll() { moneyExportFromMenu_(null, 'date'); }
 
-/** shift: 0 — этот месяц, -1 — прошлый, null — всё время. Ссылку показываем окном без запросов к скрипту. */
+/** shift: 0 — этот месяц, -1 — прошлый, null — всё время. */
 function moneyExportFromMenu_(shift, by) {
   const now = new Date();
   const month = shift === null ? '' : fmtDate_(new Date(now.getFullYear(), now.getMonth() + shift, 1), 'yyyy-MM');
+  moneyExportShow_({ month: month, by: by });
+}
+
+/**
+ * «Выбрать… — по шагам»: месяц, подрядчик, менеджер — стандартными окнами Google (ui.prompt).
+ * Им не нужны скрипты в окне, поэтому работают, даже когда браузер их не запускает.
+ */
+function moneyExportStepByStep() {
+  const ui = SpreadsheetApp.getUi();
+  const o = getMoneyExportOptions();
+  const ask = (title, text) => {
+    const r = ui.prompt(title, text, ui.ButtonSet.OK_CANCEL);
+    return r.getSelectedButton() === ui.Button.OK ? r.getResponseText().trim() : null;
+  };
+  const m = ask('Выгрузка для сверки · 1 из 3 — месяц', 'Месяц и год, например 09.2026.\nПусто — за всё время.');
+  if (m === null) return;
+  let month = '';
+  if (m) {
+    const x = m.match(/^(\d{1,2})\s*[.\/\-\s]\s*(\d{4})$/);
+    if (!x || Number(x[1]) < 1 || Number(x[1]) > 12) { ui.alert('Не поняла месяц «' + m + '». Впишите так: 09.2026'); return; }
+    month = x[2] + '-' + ('0' + Number(x[1])).slice(-2);
+  }
+  const by = month && ui.alert('Как считать месяц?', 'Да — по дате закрытия (срок сдачи).\nНет — по дате поступления.',
+    ui.ButtonSet.YES_NO) === ui.Button.YES ? 'due' : 'date';
+  const c = ask('Выгрузка для сверки · 2 из 3 — подрядчик', 'Пусто — все подрядчики. Или впишите одного:\n\n' + o.contractors.join(', '));
+  if (c === null) return;
+  const contractor = pickName_(c, o.contractors);
+  if (c && !contractor) { ui.alert('Нет подрядчика «' + c + '» в «Списках». Есть: ' + o.contractors.join(', ')); return; }
+  const g = ask('Выгрузка для сверки · 3 из 3 — менеджер', 'Пусто — все менеджеры. Или впишите одного (можно имя или фамилию):\n\n' + o.managers.join(', '));
+  if (g === null) return;
+  const manager = pickName_(g, o.managers);
+  if (g && !manager) { ui.alert('Не нашла менеджера «' + g + '» (или подходят несколько). Есть: ' + o.managers.join(', ')); return; }
+  moneyExportShow_({ month: month, by: by, contractor: contractor, manager: manager });
+}
+
+/** «logrus it», «Лисовая» → как в списке. Пусто или не нашлось (или подходят несколько) — ''. */
+function pickName_(text, list) {
+  const t = str_(text).toLowerCase().replace(/\s+/g, ' ');
+  if (!t) return '';
+  const exact = list.filter(v => v.toLowerCase() === t || v.toLowerCase().replace(/\s+/g, '') === t.replace(/\s/g, ''));
+  if (exact.length) return exact[0];
+  const part = list.filter(v => v.toLowerCase().split(' ').some(w => w === t) || v.toLowerCase().indexOf(t) === 0);
+  return part.length === 1 ? part[0] : '';
+}
+
+/** Собрать файл и показать ссылку. Окно — простая страница со ссылками, без скриптов. */
+function moneyExportShow_(opts) {
   SpreadsheetApp.getActive().toast('Собираю файл… обычно 5–15 секунд', 'Выгрузка для сверки', 30);
-  const r = exportMoneyExcel({ month: month, by: by });
+  const r = exportMoneyExcel(opts);
   const issues = r.issues ? '⚠️ Проверить: ' + r.issues + ' — лист «Проверить».' : '✓ Всё сходится.';
   const html = HtmlService.createHtmlOutput(
     '<div style="font:14px Arial;line-height:1.5">' +

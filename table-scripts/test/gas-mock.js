@@ -278,7 +278,7 @@ function makeContext(fixture, opts = {}) {
   const ui = {
     createMenu: name => { const m = { name, items: [], addItem(l, f) { this.items.push([l, f]); return this; }, addSeparator() { return this; }, addSubMenu(s) { this.items.push(['sub:' + s.name, s.items]); return this; }, addToUi() { calls.menus.push(this); } }; return m; },
     alert: (...a) => { calls.alerts.push(a.length > 1 ? a[1] : a[0]); return 'YES'; },
-    prompt: () => ({ getSelectedButton: () => 'OK', getResponseText: () => ctx.__prompt || opts.prompt || '' }),
+    prompt: () => { const v = Array.isArray(ctx.__prompt) ? ctx.__prompt.shift() : ctx.__prompt; return { getSelectedButton: () => 'OK', getResponseText: () => v || opts.prompt || '' }; },
     Button: { OK: 'OK', YES: 'YES' }, ButtonSet: { OK_CANCEL: 1, YES_NO: 2 },
     showModalDialog: () => {}, showSidebar: () => {}
   };
