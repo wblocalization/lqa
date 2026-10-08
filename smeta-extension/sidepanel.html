@@ -246,6 +246,7 @@
           <span class="cur">₽</span>
         </div>
         <p id="totalHint" class="hint"></p>
+        <button id="copyTotal" class="link-btn" type="button">Скопировать сумму</button>
       </div>
 
       <div class="card">
@@ -277,9 +278,13 @@
       </span>
       <h2 id="doneTitle">Записано</h2>
       <p id="doneText"></p>
+      <div id="doneTotalBox" class="done-link" hidden>
+        <input id="doneTotal" type="text" readonly aria-label="Сумма с НДС">
+        <button id="copyDoneTotal" class="btn ghost" type="button">Скопировать сумму</button>
+      </div>
       <div id="doneLinkBox" class="done-link" hidden>
         <input id="doneLink" type="text" readonly aria-label="Ссылка на смету">
-        <button id="copyLink" class="btn ghost" type="button">Скопировать</button>
+        <button id="copyLink" class="btn ghost" type="button">Скопировать ссылку</button>
       </div>
       <button id="again" class="btn primary" type="button">Ещё одна смета</button>
     </section>

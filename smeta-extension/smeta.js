@@ -12,7 +12,8 @@ const els = {
   task: $('#task'), rowInfo: $('#rowInfo'), total: $('#total'), totalHint: $('#totalHint'),
   link: $('#link'), pasteLink: $('#pasteLink'), submit: $('#submit'), status: $('#status'), diskHint: $('#diskHint'),
   folder: $('#folder'), folderCard: $('#folderCard'), doneTitle: $('#doneTitle'), doneLinkBox: $('#doneLinkBox'),
-  doneLink: $('#doneLink'), copyLink: $('#copyLink'),
+  doneLink: $('#doneLink'), copyLink: $('#copyLink'), copyTotal: $('#copyTotal'),
+  doneTotalBox: $('#doneTotalBox'), doneTotal: $('#doneTotal'), copyDoneTotal: $('#copyDoneTotal'),
 };
 
 // { file, fileName, subject, filled, oldTotal, version, found } — смета, которая сейчас в форме.
@@ -211,7 +212,7 @@ els.pasteLink.addEventListener('click', async () => {
 els.form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const task = normTask(els.task.value);
-  const total = Number(els.total.value.replace(/[\s  ₽]/g, '').replace(',', '.'));
+  const total = parseTotal(els.total.value);
   let link = els.link.value.trim();
   if (diskOnly() && !link) return uploadOnly(task);
   if (!task) return setStatus('Укажите номер', 'err');
@@ -299,25 +300,51 @@ async function uploadOnly(task) {
 }
 
 function showDone(title, text, link) {
+  const total = parseTotal(els.total.value);
   els.doneTitle.textContent = title;
   els.doneText.textContent = text;
   els.doneLink.value = link || '';
   els.doneLinkBox.hidden = !link;
-  els.copyLink.textContent = 'Скопировать';
+  els.doneTotal.value = total > 0 ? formatMoney(total) : '';
+  els.doneTotalBox.hidden = !(total > 0);
+  els.copyLink.textContent = 'Скопировать ссылку';
+  els.copyDoneTotal.textContent = 'Скопировать сумму';
   setStatus('');
   current = null;
   els.file.value = '';
   showScreen('done');
 }
 
-els.copyLink.addEventListener('click', async () => {
+/** «102 641,64» → 102641.64 */
+function parseTotal(s) {
+  return Number(String(s).replace(/[\s  ₽]/g, '').replace(',', '.'));
+}
+
+/** Сумма для вставки в Excel / Google Таблицы: «102641,64» — без пробелов и ₽, запятая перед копейками. */
+function totalForPaste(x) {
+  return formatMoney(x).replace(/[\s  ]/g, '');
+}
+
+async function copy(text, btn, field) {
   try {
-    await navigator.clipboard.writeText(els.doneLink.value);
+    await navigator.clipboard.writeText(text);
   } catch {
-    els.doneLink.select();
+    if (!field) return;
+    field.select();
     document.execCommand('copy');
   }
-  els.copyLink.textContent = 'Скопировано ✓';
+  btn.dataset.label = btn.dataset.label || btn.textContent;
+  btn.textContent = 'Скопировано ✓';
+  clearTimeout(btn.copyTimer);
+  btn.copyTimer = setTimeout(() => { btn.textContent = btn.dataset.label; }, 1500);
+}
+
+els.copyLink.addEventListener('click', () => copy(els.doneLink.value, els.copyLink, els.doneLink));
+els.copyDoneTotal.addEventListener('click', () => copy(totalForPaste(parseTotal(els.doneTotal.value)), els.copyDoneTotal));
+els.copyTotal.addEventListener('click', () => {
+  const total = parseTotal(els.total.value);
+  if (!(total > 0)) return setStatus('Суммы нет — впишите её в поле', 'err');
+  copy(totalForPaste(total), els.copyTotal);
 });
 
 
