@@ -31,6 +31,43 @@
     return '';
   }
 
+  // Текст сообщения → Markdown (трекер хранит описание так): ссылки под словами («тык»), жирный, списки, код.
+  function toMarkdown(root) {
+    let out = '';
+    const kids = (el) => el.childNodes.forEach(walk);
+    const block = (el, before = '', after = '\n') => { if (out && !out.endsWith('\n')) out += '\n'; out += before; kids(el); out += after; };
+    function walk(node) {
+      if (node.nodeType === 3) { out += node.nodeValue.replace(/\s+/g, ' '); return; }
+      if (node.nodeType !== 1) return;
+      const el = node;
+      switch (el.tagName) {
+        case 'BR': out += '\n'; return;
+        case 'IMG': out += el.getAttribute('alt') || ''; return;
+        case 'A': {
+          const href = el.getAttribute('href') || '';
+          const text = el.textContent.trim();
+          // ссылка спрятана под словом — сохраняем адрес; голые адреса и @упоминания — как есть
+          if (/^https?:/i.test(href) && text && text !== href && !el.classList.contains('mention-link')) out += `[${text}](${href})`;
+          else out += text;
+          return;
+        }
+        case 'STRONG': case 'B': out += '**'; kids(el); out += '**'; return;
+        case 'EM': case 'I': out += '_'; kids(el); out += '_'; return;
+        case 'DEL': case 'S': out += '~~'; kids(el); out += '~~'; return;
+        case 'CODE': if (el.parentElement && el.parentElement.tagName === 'PRE') break; out += '`' + el.textContent + '`'; return;
+        case 'PRE': block(el, '```\n', '\n```\n'); return;
+        case 'LI': block(el, el.parentElement && el.parentElement.tagName === 'OL' ? `${[...el.parentElement.children].indexOf(el) + 1}. ` : '- '); return;
+        case 'H1': case 'H2': case 'H3': case 'H4': case 'H5': case 'H6': block(el, '**', '**\n'); return;
+        case 'BLOCKQUOTE': block(el, '> '); return;
+        case 'P': case 'DIV': case 'UL': case 'OL': case 'TABLE': case 'TR': block(el); return;
+        default: break;
+      }
+      kids(el);
+    }
+    walk(root);
+    return out.split('\n').map((l) => l.replace(/[ \t]+$/, '').replace(/^ +/, '')).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
   document.addEventListener('contextmenu', (e) => {
     const selection = String(window.getSelection() || '').trim();
     const post = e.target instanceof Element ? findPost(e.target) : null;
@@ -43,7 +80,7 @@
       post.el.querySelector('.post-message__text') || (post.el.classList.contains('post-message__text') ? post.el : null);
     window.__lqaBandPost = {
       selection,
-      text: textEl ? textEl.innerText.trim() : '',
+      text: textEl ? toMarkdown(textEl) : '',
       author: authorOf(post.el),
       link: team ? `${location.origin}/${team}/pl/${post.id}` : '',
     };

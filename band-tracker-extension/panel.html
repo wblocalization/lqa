@@ -14,7 +14,7 @@
     <h1>band <em>→</em> трекер</h1>
   </div>
   <button id="helpBtn" class="icon-btn" type="button" title="Как это работает" aria-label="Как это работает">?</button>
-  <button id="boardsBtn" class="icon-btn" type="button" title="Доски" aria-label="Доски">
+  <button id="boardsBtn" class="icon-btn" type="button" title="Типы задач" aria-label="Типы задач">
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="18" rx="1.5"/><rect x="14" y="3" width="7" height="11" rx="1.5"/></svg>
   </button>
 </header>
@@ -36,7 +36,7 @@
       </li>
       <li>
         <span class="n">2</span>
-        <div><b>Здесь всё уже заполнено</b><span class="hint">название, текст и ссылка на сообщение. Поправьте, если нужно.</span></div>
+        <div><b>Здесь всё уже заполнено</b><span class="hint">название, текст со ссылками и ссылка на сообщение. Выберите тип задачи, поправьте, если нужно.</span></div>
       </li>
       <li>
         <span class="n">3</span>
@@ -48,7 +48,7 @@
 
   <form id="form" class="form">
     <p id="from" class="from" hidden></p>
-    <label class="field"><span class="lbl">Доска</span>
+    <label class="field"><span class="lbl">Тип задачи</span>
       <select id="board"></select>
     </label>
     <label class="field"><span class="lbl">Название <span class="req">*</span></span>
@@ -73,8 +73,8 @@
   </section>
 
   <section id="boards" class="boards" hidden>
-    <h2>доски</h2>
-    <div class="tip"><b>Как добавить свою доску:</b> создайте в ней одну задачу как обычно, прямо в tracker.wb.ru (только название). Расширение запомнит доску само — она появится здесь.</div>
+    <h2>типы задач</h2>
+    <div class="tip"><b>Нужен другой тип или проект</b> (например, «Редактура»)? Создайте одну задачу этого типа как обычно, прямо в tracker.wb.ru, — только название. Расширение запомнит его само, и он появится здесь и в списке «Тип задачи».</div>
     <ul id="boardList" class="board-list"></ul>
     <button id="boardsClose" class="btn ghost" type="button">Готово</button>
   </section>

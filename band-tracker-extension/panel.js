@@ -3,10 +3,10 @@
 // во вкладке tracker.wb.ru — от имени того, кто в ней вошёл. Нет открытой вкладки — откроем в фоне.
 
 const TRACKER = 'https://tracker.wb.ru';
-// Доска, которая есть у всех сразу. Остальные расширение запоминает само (tracker-hook.js).
+// Тип задачи, который есть у всех сразу (Редакция / Локализация / Локализация). Остальные расширение запоминает само (tracker-hook.js).
 const PRESETS = [{
   path: '/api/gateway/catalog/redaktsiya/lokalizatsiya/lokalizatsiya',
-  name: 'Редакция → Локализация (LOCAL)', ws: 'EDITORS', project: 'LOCAL', preset: true,
+  name: 'Локализация · Локализация', space: 'Редакция', ws: 'EDITORS', project: 'LOCAL', preset: true,
   fields: {
     '63f946ab-d7d0-4b5f-a0d6-a1f5982c3448': [],
     '1ee7026d-8aae-4bb1-bf9c-3ebc9ea3a7bc': [{ id: 'DgqUHf16il6y12Jms6LPN', label: 'Normal' }],
@@ -26,7 +26,7 @@ const els = {
   msg: $('#msg'), toast: $('#toast'),
 };
 
-let boards = [];     // доски: запомненные + встроенные
+let boards = [];     // типы задач (адрес «пространство/проект/тип»): запомненные + встроенные
 let source = null;   // { link, author } — сообщение Band, из которого пришли
 let created = null;  // { key, url }
 
@@ -46,8 +46,25 @@ const issueUrl = (board, key) => `${TRACKER}/i/${encodeURIComponent((board && bo
 
 /** Название — первая строка сообщения, не длиннее 120 знаков. */
 export function titleFromText(text) {
-  const line = String(text || '').split('\n').map((s) => s.trim()).find(Boolean) || '';
+  const plain = (l) => l.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/\*\*|__|~~|`/g, '').replace(/^([-*>]|\d+\.)\s+/, '').trim();
+  // строки только из @упоминаний, #тегов и ссылок — не название (у ботов так часто начинается)
+  const junk = (l) => !l.replace(/@[\wА-Яа-яЁё.-]+(\s+[А-ЯЁA-Z][а-яёa-z-]+)?|#[\wА-Яа-яЁё.-]+|https?:\S+|[\s,;:🔗]/gu, '');
+  const lines = String(text || '').split('\n').map(plain).filter(Boolean);
+  // Сообщение бота («Раздел: …», «Задача: <ссылка на MP-9119>») — название «Маркетплейс (FBS) · MP-9119»
+  const field = (name) => { const l = lines.find((x) => x.toLowerCase().startsWith(`${name}:`)); return l ? l.slice(name.length + 1).trim() : ''; };
+  const section = field('раздел') || field('команда');
+  const issue = (/\/issues?\/([A-Z][A-Z0-9]*-\d+)/.exec(field('задача')) || /\/browse\/([A-Z][A-Z0-9]*-\d+)/.exec(field('задача')) || [])[1];
+  if (section && issue) return `${section} · ${issue}`.slice(0, 120);
+  const line = lines.find((l) => !junk(l)) || lines[0] || '';
   return line.length > 120 ? `${line.slice(0, 117).replace(/\s+\S*$/, '')}…` : line;
+}
+
+/**
+ * Переносы строк как в Band: в Markdown одиночный перенос склеивает строки, поэтому ставим «жёсткий» (два пробела).
+ * Внутри блоков кода ``` не трогаем.
+ */
+export function hardBreaks(md) {
+  return String(md || '').split(/(```[\s\S]*?```)/).map((part, i) => (i % 2 ? part : part.replace(/([^\n])[ \t]*\n(?=[^\n])/g, '$1  \n'))).join('');
 }
 
 /** Описание в Markdown (трекер хранит его так): текст сообщения и ссылка на него в Band. */
@@ -57,13 +74,13 @@ export function buildDescription(text, src) {
   return parts.filter(Boolean).join('\n\n');
 }
 
-// ---------- Доски ----------
+// ---------- Типы задач ----------
 async function loadBoards() {
   const { boards: saved = [], hiddenPresets = [], boardPath = '' } = await chrome.storage.local.get(['boards', 'hiddenPresets', 'boardPath']);
   boards = [...saved, ...PRESETS.filter((p) => !hiddenPresets.includes(p.path) && !saved.some((b) => b.path === p.path))];
   els.board.innerHTML = '';
   boards.forEach((b) => els.board.add(new Option(b.name, b.path)));
-  if (!boards.length) els.board.add(new Option('Нет досок — см. «Доски» вверху', ''));
+  if (!boards.length) els.board.add(new Option('Нет типов — см. «Типы задач» вверху', ''));
   els.board.value = boards.some((b) => b.path === boardPath) ? boardPath : (boards[0] ? boards[0].path : '');
   renderBoardList();
 }
@@ -76,12 +93,13 @@ function renderBoardList() {
     const name = document.createElement('span');
     name.className = 'bname';
     const t = document.createElement('b'); t.textContent = b.name;
-    const s = document.createElement('small'); s.textContent = b.preset ? 'встроенная' : `запомнена ${new Date(b.at || 0).toLocaleDateString('ru-RU')}`;
+    const s = document.createElement('small');
+    s.textContent = [b.space, b.project, b.preset ? 'встроенный' : `запомнен ${new Date(b.at || 0).toLocaleDateString('ru-RU')}`].filter(Boolean).join(' · ');
     name.append(t, s);
     const ren = document.createElement('button');
-    ren.className = 'btn small'; ren.type = 'button'; ren.textContent = 'Переименовать'; ren.dataset.ren = b.path;
+    ren.className = 'btn small'; ren.type = 'button'; ren.textContent = '✏️'; ren.title = 'Переименовать'; ren.dataset.ren = b.path;
     const del = document.createElement('button');
-    del.className = 'btn small'; del.type = 'button'; del.textContent = '✕'; del.title = 'Убрать доску'; del.dataset.del = b.path;
+    del.className = 'btn small'; del.type = 'button'; del.textContent = '✕'; del.title = 'Убрать'; del.dataset.del = b.path;
     li.append(name, ren, del);
     els.boardList.append(li);
   });
@@ -93,13 +111,13 @@ els.boardList.addEventListener('click', async (e) => {
   const { boards: saved = [], hiddenPresets = [] } = await chrome.storage.local.get(['boards', 'hiddenPresets']);
   if (btn.dataset.ren) {
     const b = boards.find((x) => x.path === btn.dataset.ren);
-    const name = (prompt('Как назвать доску?', b.name) || '').trim();
+    const name = (prompt('Как назвать этот тип задачи?', b.name) || '').trim();
     if (!name) return;
     const rest = saved.filter((x) => x.path !== b.path);
     await chrome.storage.local.set({ boards: [...rest, { ...b, name, preset: false, at: b.at || Date.now() }] });
   } else if (btn.dataset.del) {
     const b = boards.find((x) => x.path === btn.dataset.del);
-    if (!confirm(`Убрать доску «${b.name}»? Вернуть: создать в ней задачу в tracker.wb.ru.`)) return;
+    if (!confirm(`Убрать «${b.name}»? Вернуть: создать задачу этого типа в tracker.wb.ru.`)) return;
     const patch = { boards: saved.filter((x) => x.path !== b.path) };
     if (PRESETS.some((p) => p.path === b.path)) patch.hiddenPresets = [...new Set([...hiddenPresets, b.path])];
     await chrome.storage.local.set(patch);
@@ -183,7 +201,7 @@ async function trackerTab() {
   return fresh;
 }
 
-/** Создать задачу в доске. Возвращает номер, например «LOCAL-1817». */
+/** Создать задачу этого типа. Возвращает номер, например «LOCAL-1817». */
 async function createIssue(board, title, description) {
   const body = {
     executorId: null,
@@ -216,7 +234,7 @@ async function createInPage(path, body) {
       credentials: 'include',
       headers: { 'content-type': 'application/json', accept: 'application/json', 'x-csrf-token': decodeURIComponent(m[1]) },
       body: JSON.stringify(body),
-      bandTrackerOwn: true, // метка для tracker-hook.js: эту задачу создали мы, доску не перезаписывать
+      bandTrackerOwn: true, // метка для tracker-hook.js: эту задачу создали мы, тип не перезаписывать
     });
     let j = {};
     try { j = await r.json(); } catch { /* не JSON — ниже скажем код */ }
@@ -236,13 +254,13 @@ els.form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const board = currentBoard();
   const title = els.title.value.trim();
-  if (!board) return setMsg('Нет доски: создайте в своей доске одну задачу в tracker.wb.ru — она появится в списке', 'err');
+  if (!board) return setMsg('Нет типа задачи: создайте одну задачу нужного типа в tracker.wb.ru — он появится в списке', 'err');
   if (!title) return setMsg('Впишите название задачи', 'err');
   els.submit.disabled = true;
   els.submit.textContent = 'Создаю…';
   setMsg('');
   try {
-    const key = await createIssue(board, title, els.desc.value.trim());
+    const key = await createIssue(board, title, hardBreaks(els.desc.value.trim()));
     created = { key, url: issueUrl(board, key) };
     els.doneKey.textContent = key;
     els.doneKey.href = created.url;
@@ -276,7 +294,7 @@ chrome.storage.onChanged.addListener(async (changes) => {
   if (changes.boardsAdded && changes.boardsAdded.newValue) {
     await loadBoards();
     const b = boards.find((x) => x.path === changes.boardsAdded.newValue.path);
-    if (b) { els.board.value = b.path; chrome.storage.local.set({ boardPath: b.path }); toast(`📌 Доска запомнена: ${b.name}`); }
+    if (b) { els.board.value = b.path; chrome.storage.local.set({ boardPath: b.path }); toast(`📌 Запомнила тип: ${b.name}`); }
   }
 });
 
