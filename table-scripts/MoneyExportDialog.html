@@ -35,12 +35,30 @@
   <div id="msg" class="msg" style="margin-top:6px"></div>
 
 <script>
+  // Месяцы считаем прямо здесь — окно готово сразу; подрядчики и менеджеры подтянутся из таблицы
+  (function fillMonths() {
+    const names = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+    const now = new Date();
+    let html = '<option value="">Всё время</option>';
+    for (let i = 0; i < 18; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const v = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+      html += `<option value="${v}"${i === 0 ? ' selected' : ''}>${names[d.getMonth()]} ${d.getFullYear()}</option>`;
+    }
+    $('#month').innerHTML = html;
+  })();
+  ['#contractor', '#manager'].forEach(id => { $(id).innerHTML = '<option value="">Загружаю…</option>'; });
+  setMsg($('#msg'), 'Загружаю подрядчиков и менеджеров… Выгружать можно уже сейчас — по всем.');
+  const slow = setTimeout(() => setMsg($('#msg'), 'Таблица долго отвечает — подождите ещё немного или закройте окно и откройте снова. Выгрузка по всем работает и так.'), 20000);
+
   run('getMoneyExportOptions').then(d => {
-    $('#month').innerHTML = '<option value="">Всё время</option>' +
-      d.months.map(m => `<option value="${m.value}"${m.value === d.current ? ' selected' : ''}>${esc(m.label)}</option>`).join('');
     fillSelect($('#contractor'), d.contractors, 'Все подрядчики');
     fillSelect($('#manager'), d.managers, 'Все менеджеры');
-  }).catch(e => setMsg($('#msg'), 'Не получилось загрузить списки: ' + e.message, 'err'));
+    setMsg($('#msg'), '');
+  }).catch(e => {
+    ['#contractor', '#manager'].forEach(id => { $(id).innerHTML = '<option value="">Все</option>'; });
+    setMsg($('#msg'), 'Списки не загрузились: ' + e.message + '. Выгрузка по всем подрядчикам и менеджерам работает.', 'err');
+  }).finally(() => clearTimeout(slow));
 
   $('#go').addEventListener('click', () => {
     const btn = $('#go');
