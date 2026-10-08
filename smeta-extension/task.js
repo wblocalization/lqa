@@ -1,5 +1,5 @@
 // Вкладка «Новая задача»: то же, что окно «➕ Добавить задачу» в таблице, только без захода в таблицу.
-import { settings, isConfigured, api, esc, readClipboard, getLists, autoDeadline, setLink } from './core.js';
+import { settings, isConfigured, api, esc, readClipboard, getLists, autoDeadline, setLink, toast } from './core.js';
 import { makeLinkList } from './links.js';
 
 const $ = (s) => document.querySelector(s);
@@ -318,7 +318,8 @@ els.saveTpl.addEventListener('click', async () => {
   const tpl = templateFromForm(name);
   if (existing !== -1) templates[existing] = tpl; else templates.push(tpl);
   await storeTemplates(name);
-  setMsg(`Шаблон «${name}» сохранён`, 'ok');
+  setMsg('');
+  toast(`✓ Шаблон «${name}» сохранён`);
 });
 
 /** Шаблон из того, что сейчас в форме. */
@@ -338,7 +339,8 @@ els.updTpl.addEventListener('click', async () => {
   if (!els.contractor.value && !els.subject.value.trim()) return setMsg('Заполните хотя бы подрядчика или тему', 'err');
   templates[i] = templateFromForm(t.name);
   await storeTemplates(t.name);
-  setMsg(`Шаблон «${t.name}» обновлён: ${describe(templates[els.template.value])}`, 'ok');
+  setMsg('');
+  toast(`✓ Шаблон «${t.name}» обновлён`);
 });
 
 els.renTpl.addEventListener('click', async () => {
@@ -349,7 +351,8 @@ els.renTpl.addEventListener('click', async () => {
   if (templates.some((x) => x.name === name)) return setMsg(`Шаблон «${name}» уже есть — выберите другое название`, 'err');
   t.name = name;
   await storeTemplates(name);
-  setMsg(`Шаблон переименован в «${name}»`, 'ok');
+  setMsg('');
+  toast(`✓ Шаблон переименован в «${name}»`);
 });
 
 els.delTpl.addEventListener('click', async () => {
@@ -357,7 +360,8 @@ els.delTpl.addEventListener('click', async () => {
   if (!t || !confirm(`Удалить шаблон «${t.name}»?`)) return;
   templates.splice(Number(els.template.value), 1);
   await storeTemplates();
-  setMsg(`Шаблон «${t.name}» удалён`);
+  setMsg('');
+  toast(`Шаблон «${t.name}» удалён`);
 });
 
 els.exportTpl.addEventListener('click', () => {

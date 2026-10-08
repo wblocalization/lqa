@@ -125,3 +125,18 @@ export function setLink(a, url) {
   a.href = url || '#';
   a.hidden = !url;
 }
+
+/** Плашка сверху на пару секунд: «Шаблон обновлён» и т. п. */
+let toastTimer = 0;
+export function toast(text, kind = 'ok') {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  clearTimeout(toastTimer);
+  el.textContent = text;
+  el.className = `toast ${kind}`;
+  el.hidden = false;
+  toastTimer = setTimeout(() => {
+    el.classList.add('out');
+    toastTimer = setTimeout(() => { el.hidden = true; }, 300);
+  }, 2600);
+}

@@ -379,3 +379,16 @@ input[type=text], input[type=url], input[type=search], input[type=password], inp
 .rowinfo, .file-chip, .settings { border-radius: 12px; }
 .drop { border-radius: 16px; }
 .tab-badge { background: var(--accent-2); }
+
+/* Плашка «Шаблон обновлён» — сверху под шапкой, видна при любой прокрутке, сама исчезает */
+.toast {
+  position: fixed; z-index: 5; left: 50%; top: calc(var(--head-h, 56px) + 10px); transform: translateX(-50%);
+  width: max-content; max-width: calc(100% - 24px); padding: 9px 16px; border-radius: 14px;
+  background: var(--ok); color: #fff; font-weight: 600; font-size: 13.5px; text-align: center;
+  box-shadow: 0 8px 22px rgb(0 0 0 / .18); animation: toast-in .2s ease-out;
+}
+.toast.err { background: var(--err); }
+.toast.out { opacity: 0; transform: translate(-50%, -6px); transition: opacity .3s, transform .3s; }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, -8px); } }
+:root[data-theme="dark"] .toast { color: #10261A; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .toast { color: #10261A; } }
