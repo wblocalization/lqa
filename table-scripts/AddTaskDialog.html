@@ -27,6 +27,8 @@
         <button class="btn" id="saveTpl" type="button" title="Запомнить подрядчика, тикет, продукт, языки и т. д.">Сохранить</button>
       </div>
       <div class="tpl-actions">
+        <button class="link-btn" id="updTpl" type="button" hidden style="font-weight:700">💾 Сохранить изменения в шаблон</button>
+        <button class="link-btn" id="renTpl" type="button" hidden>Переименовать</button>
         <button class="link-btn" id="delTpl" type="button" hidden>Удалить шаблон</button>
         <button class="link-btn" id="exportTpl" type="button">Скачать шаблоны</button>
         <button class="link-btn" id="importTpl" type="button">Загрузить из файла</button>
@@ -167,7 +169,7 @@
       TEMPLATES.map((t, i) => `<option value="${i}">${esc(t.name)}</option>`).join('');
     const i = TEMPLATES.findIndex(t => t.name === selectName);
     $('#template').value = i === -1 ? '' : String(i);
-    $('#delTpl').hidden = !$('#template').value;
+    syncTplButtons();
   }
 
   function storeTemplates(selectName, okText) {
@@ -178,8 +180,14 @@
     }).catch(e => setMsg($('#msg'), 'Шаблоны не сохранились: ' + e.message, 'err'));
   }
 
+  /** Выбран шаблон — его можно поправить, переименовать или удалить. */
+  function syncTplButtons() {
+    const on = !!TEMPLATES[$('#template').value];
+    ['#delTpl', '#updTpl', '#renTpl'].forEach(id => { $(id).hidden = !on; });
+  }
+
   $('#template').addEventListener('change', () => {
-    $('#delTpl').hidden = !$('#template').value;
+    syncTplButtons();
     const t = TEMPLATES[$('#template').value];
     if (!t || !LISTS) return;
     $('#contractor').value = t.contractor; refreshId();
@@ -203,14 +211,35 @@
     if (!name) return;
     const existing = TEMPLATES.findIndex(t => t.name === name);
     if (existing !== -1 && !confirm('Шаблон «' + name + '» уже есть. Заменить?')) return;
+    const tpl = templateFromForm(name);
+    if (existing !== -1) TEMPLATES[existing] = tpl; else TEMPLATES.push(tpl);
+    storeTemplates(name, 'Шаблон «' + name + '» сохранён');
+  });
+
+  function templateFromForm(name) {
     const num = $('#ticketNum').value.trim().replace(/^local-?\s*/i, '');
-    const tpl = {
+    return {
       name: name, contractor: $('#contractor').value, ticket: num ? 'LOCAL-' + num : '', subject: $('#subject').value.trim(),
       product: $('#product').value, customer: $('#customer').value.trim(), deadline: $('#deadline').value,
       comment: $('#comment').value.trim(), languages: checkedLangs()
     };
-    if (existing !== -1) TEMPLATES[existing] = tpl; else TEMPLATES.push(tpl);
-    storeTemplates(name, 'Шаблон «' + name + '» сохранён');
+  }
+
+  $('#updTpl').addEventListener('click', () => {
+    const i = Number($('#template').value), t = TEMPLATES[i];
+    if (!t) return;
+    TEMPLATES[i] = templateFromForm(t.name);
+    storeTemplates(t.name, 'Шаблон «' + t.name + '» обновлён');
+  });
+
+  $('#renTpl').addEventListener('click', () => {
+    const t = TEMPLATES[$('#template').value];
+    if (!t) return;
+    const name = (prompt('Новое название шаблона:', t.name) || '').trim();
+    if (!name || name === t.name) return;
+    if (TEMPLATES.some(x => x.name === name)) return setMsg($('#msg'), 'Шаблон «' + name + '» уже есть — выберите другое название', 'err');
+    t.name = name;
+    storeTemplates(name, 'Шаблон переименован в «' + name + '»');
   });
 
   $('#delTpl').addEventListener('click', () => {

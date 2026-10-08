@@ -7,7 +7,7 @@ const els = {
   form: $('#taskForm'), loading: $('#taskLoading'), done: $('#taskDone'), doneId: $('#taskDoneId'),
   doneSubject: $('#taskDoneSubject'), copyDone: $('#taskCopyDone'), again: $('#taskAgain'),
   contractor: $('#tContractor'), ticketNum: $('#tTicketNum'),
-  template: $('#tTemplate'), saveTpl: $('#tSaveTpl'), delTpl: $('#tDelTpl'), exportTpl: $('#tExportTpl'),
+  template: $('#tTemplate'), saveTpl: $('#tSaveTpl'), delTpl: $('#tDelTpl'), updTpl: $('#tUpdTpl'), renTpl: $('#tRenTpl'), exportTpl: $('#tExportTpl'),
   importTpl: $('#tImportTpl'), importFile: $('#tImportFile'),
   subject: $('#tSubject'), link: $('#tLink'), pasteLink: $('#tPasteLink'),
   product: $('#tProduct'), date: $('#tDate'), deadline: $('#tDeadline'), exactDeadline: $('#tExactDeadline'),
@@ -159,6 +159,11 @@ function renderChips() {
   els.tplChips.innerHTML = chips.length ? chips.join('')
     : '<span class="tpl-empty">Шаблонов пока нет — заполните форму и нажмите «Сохранить как шаблон»</span>';
   els.delTpl.textContent = templates[sel] ? `Удалить шаблон «${templates[sel].name}»` : 'Удалить шаблон';
+  // Выбран шаблон — его можно поправить: поменяли в форме тикет, языки… → «Сохранить изменения»
+  const on = Boolean(templates[sel]);
+  els.delTpl.hidden = els.updTpl.hidden = els.renTpl.hidden = !on;
+  els.updTpl.textContent = on ? `💾 Сохранить изменения в «${templates[sel].name}»` : '💾 Сохранить изменения';
+  els.saveTpl.textContent = on ? '＋ Сохранить как новый' : '＋ Сохранить как шаблон';
 }
 
 els.tplChips.addEventListener('click', (e) => {
@@ -310,15 +315,41 @@ els.saveTpl.addEventListener('click', async () => {
   if (!name) return;
   const existing = templates.findIndex((t) => t.name === name);
   if (existing !== -1 && !confirm(`Шаблон «${name}» уже есть. Заменить?`)) return;
+  const tpl = templateFromForm(name);
+  if (existing !== -1) templates[existing] = tpl; else templates.push(tpl);
+  await storeTemplates(name);
+  setMsg(`Шаблон «${name}» сохранён`, 'ok');
+});
+
+/** Шаблон из того, что сейчас в форме. */
+function templateFromForm(name) {
   const ticketNum = els.ticketNum.value.trim();
-  const tpl = cleanTemplate({
+  return cleanTemplate({
     name, contractor: els.contractor.value, ticket: ticketNum ? `LOCAL-${ticketNum}` : '', subject: els.subject.value,
     product: els.product.value, customer: els.customer.value, deadline: els.deadline.value, comment: els.comment.value,
     languages: checkedLangInputs().map((cb) => cb.value),
   });
-  if (existing !== -1) templates[existing] = tpl; else templates.push(tpl);
+}
+
+// Поправить выбранный шаблон: без вопросов, имя то же
+els.updTpl.addEventListener('click', async () => {
+  const i = Number(els.template.value), t = templates[i];
+  if (!t) return;
+  if (!els.contractor.value && !els.subject.value.trim()) return setMsg('Заполните хотя бы подрядчика или тему', 'err');
+  templates[i] = templateFromForm(t.name);
+  await storeTemplates(t.name);
+  setMsg(`Шаблон «${t.name}» обновлён: ${describe(templates[els.template.value])}`, 'ok');
+});
+
+els.renTpl.addEventListener('click', async () => {
+  const t = templates[els.template.value];
+  if (!t) return;
+  const name = (prompt('Новое название шаблона:', t.name) || '').trim();
+  if (!name || name === t.name) return;
+  if (templates.some((x) => x.name === name)) return setMsg(`Шаблон «${name}» уже есть — выберите другое название`, 'err');
+  t.name = name;
   await storeTemplates(name);
-  setMsg(`Шаблон «${name}» сохранён`, 'ok');
+  setMsg(`Шаблон переименован в «${name}»`, 'ok');
 });
 
 els.delTpl.addEventListener('click', async () => {
