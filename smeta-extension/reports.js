@@ -100,7 +100,7 @@ function open(name) {
   els.out.innerHTML = '';
   els.actions.hidden = true;
   els.copy.hidden = !r.copy;
-  els.copy.textContent = '📋 Скопировать для Band';
+  els.copy.textContent = '📋 Скопировать всё для Band';
   els.excel.hidden = !r.excel;
   els.run.hidden = !!r.live;
   setMsg('');
@@ -144,9 +144,10 @@ const link = (text, url) => (url ? `<a href="${esc(url)}" target="_blank" rel="n
 function renderManager(d) {
   if (!d.groups.length) return '<p class="muted center">За этот период задач нет.</p>';
   return tiles([[d.taskCount, 'тикетов'], [d.lineCount, 'задач'], [d.grandTotal, 'SP'], [money(d.grandMoney), '₽ с НДС']]) +
-    d.groups.map((g) => `<div class="r-group"><h3>${esc(g.ticket || '(без тикета)')}</h3>${g.lines.map((l) =>
+    d.groups.map((g, gi) => `<div class="r-group"><h3>${esc(g.ticket || '(без тикета)')}</h3>${g.lines.map((l) =>
       `<div class="r-line"><span>${link(bandLabel(l.subject), l.link)}${l.link2.split('\n').filter(Boolean).map((u, i) => ` <a class="small" href="${esc(u)}" target="_blank" rel="noopener">(ссылка ${i + 2})</a>`).join('')}</span><b>${l.sp} SP</b></div>`).join('')}
-      <div class="r-line sum"><span>Итого по тикету</span><b>${g.ticketTotal} SP</b></div></div>`).join('') +
+      <div class="r-line sum"><span>Итого по тикету</span><b>${g.ticketTotal} SP</b></div>
+      <button class="btn ghost small r-copy-one" type="button" data-group="${gi}">📋 Скопировать задачи ${esc(g.ticket || 'без тикета')}</button></div>`).join('') +
     `<div class="r-total">Итого по ${esc(d.manager)}${d.monthLabel ? ` за ${esc(d.monthLabel)}` : ''}: ${d.grandTotal} SP</div>`;
 }
 
@@ -175,6 +176,23 @@ els.menu.addEventListener('click', (e) => {
   if (b) open(b.dataset.report);
 });
 els.back.addEventListener('click', showMenu);
+
+// «Скопировать» под тикетом — только его задачи: вставляются каждый в свой тикет трекера
+els.out.addEventListener('click', async (e) => {
+  const b = e.target.closest('button[data-group]');
+  if (!b || !result) return;
+  const g = result.groups[Number(b.dataset.group)];
+  const label = b.textContent;
+  try {
+    const one = bandTicket(g);
+    await copyRich(one.html, one.text);
+    toast(`✓ ${g.ticket || 'Задачи без тикета'} — скопировано`);
+    b.textContent = '✓ Скопировано';
+    setTimeout(() => { b.textContent = label; }, 1500);
+  } catch {
+    setMsg('Не получилось скопировать — разрешите доступ к буферу обмена', 'err');
+  }
+});
 els.run.addEventListener('click', run);
 
 els.copy.addEventListener('click', async () => {
@@ -198,19 +216,30 @@ function bandLabel(subject) {
  * Отчёт для Band: по тикетам, ссылка спрятана в названии задачи, в конце — SP.
  * text — разметка Band ([название](ссылка)), html — то же со ссылками для почты и документов.
  */
+/** Задачи одного тикета для Band: ссылка внутри названия, в конце — SP, внизу — итог по тикету. */
+function bandTicket(g) {
+  const text = [], html = ['<ol>'];
+  g.lines.forEach((l, i) => {
+    const label = bandLabel(l.subject);
+    const extra = l.link2.split('\n').filter(Boolean);
+    text.push(`${i + 1}. ${l.link ? `[${label}](${l.link})` : label}${extra.map((u, k) => ` ([ссылка ${k + 2}](${u}))`).join('')} — ${l.sp} SP`);
+    html.push(`<li>${l.link ? `<a href="${esc(l.link)}">${esc(label)}</a>` : esc(label)}${extra.map((u, k) => ` (<a href="${esc(u)}">ссылка ${k + 2}</a>)`).join('')} — ${l.sp} SP</li>`);
+  });
+  text.push(`Итого: ${g.ticketTotal} SP`);
+  html.push(`</ol><p>Итого: ${g.ticketTotal} SP</p>`);
+  return { text: text.join('\n'), html: html.join('') };
+}
+
+/**
+ * Весь отчёт для Band: по тикетам с заголовками.
+ * text — разметка Band ([название](ссылка)), html — то же со ссылками для почты, документов и трекеров с оформлением.
+ */
 function bandReport(d) {
   const text = [], html = [];
   d.groups.forEach((g) => {
-    text.push(`**${g.ticket || 'Без тикета'}**`);
-    html.push(`<p><b>${esc(g.ticket || 'Без тикета')}</b></p><ol>`);
-    g.lines.forEach((l, i) => {
-      const label = bandLabel(l.subject);
-      const extra = l.link2.split('\n').filter(Boolean);
-      text.push(`${i + 1}. ${l.link ? `[${label}](${l.link})` : label}${extra.map((u, k) => ` ([ссылка ${k + 2}](${u}))`).join('')} — ${l.sp} SP`);
-      html.push(`<li>${l.link ? `<a href="${esc(l.link)}">${esc(label)}</a>` : esc(label)}${extra.map((u, k) => ` (<a href="${esc(u)}">ссылка ${k + 2}</a>)`).join('')} — ${l.sp} SP</li>`);
-    });
-    text.push(`Итого по тикету: ${g.ticketTotal} SP`, '');
-    html.push(`</ol><p>Итого по тикету: ${g.ticketTotal} SP</p>`);
+    const one = bandTicket(g);
+    text.push(`**${g.ticket || 'Без тикета'}**`, one.text, '');
+    html.push(`<p><b>${esc(g.ticket || 'Без тикета')}</b></p>${one.html}`);
   });
   const total = `Итого${d.monthLabel ? ` за ${d.monthLabel}` : ''}: ${d.grandTotal} SP`;
   text.push(`**${total}**`);

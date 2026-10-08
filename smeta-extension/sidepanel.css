@@ -479,3 +479,5 @@ main { padding-bottom: 84px; } /* место под нижней панелью 
 .eyebrow-note { font-weight: 500; color: var(--ink-soft); cursor: help; }
 .done-copied { margin: 0; padding: 7px 12px; border-radius: 12px; background: var(--ok-soft); color: var(--ok); font-size: 12.5px; font-weight: 600; }
 .toast.warn { background: var(--warn); }
+
+.r-copy-one { width: 100%; margin-top: 8px; }
