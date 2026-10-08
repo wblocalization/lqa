@@ -42,7 +42,7 @@
     </div>
 
     <label class="field"><span>Тема <span class="req">*</span></span><input type="text" id="subject" placeholder="Только суть — номер и коды добавятся сами"><span class="small muted" style="font-weight:400">Напишите в конце «от» — подставится дата из поля «Дата получения»: «Новые строки от» → «Новые строки от ДД.ММ»</span></label>
-    <label class="field">Ссылка на Band<input type="url" id="link" placeholder="https://band.wb.ru/…"></label>
+    <label class="field">Ссылка на Band <span class="muted" style="font-weight:400">если есть</span><input type="url" id="link" placeholder="https://band.wb.ru/…"></label>
     <div class="field">Ещё ссылки на Band <span class="muted" style="font-weight:400">если переписок несколько</span>
       <div id="link2"></div></div>
 
@@ -192,7 +192,7 @@
     $('#link').value = '';
     $('#link2').value = '';
     $$('#langs input').forEach(cb => { cb.checked = t.languages.includes(cb.value); });
-    setMsg($('#msg'), 'Заполнено по шаблону «' + t.name + '». Вставьте ссылку на Band и проверьте тему.');
+    setMsg($('#msg'), 'Заполнено по шаблону «' + t.name + '». Проверьте тему и, если есть, вставьте ссылку на Band.');
     updatePreview();
   });
 

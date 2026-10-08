@@ -32,7 +32,7 @@ function setMsg(text, kind = 'info') {
 
 // ---------- Загрузка справочников ----------
 export async function initTaskTab() {
-  if (lists) return;
+  if (lists) { refreshAutoDate(); return; }
   if (!isConfigured()) {
     els.loading.hidden = false;
     els.loading.textContent = 'Заполните настройки (⚙️), чтобы добавлять задачи.';
@@ -95,12 +95,25 @@ function resetForm() {
   els.delTpl.hidden = true;
   renderChips();
   hideSuggest();
-  els.date.value = today();
+  els.date.value = autoDate = today();
   updateOtHint();
   if (settings.manager && lists.managers.includes(settings.manager)) els.manager.value = settings.manager;
+  if (lists.statuses.includes('Принято')) els.status.value = 'Принято'; // новая задача — сразу «Принято»
   nextId = '';
   updatePreview();
 }
+
+// Дата получения — сегодня. Панель могла быть открыта со вчера: если дату не меняли руками, обновим её.
+let autoDate = '';
+function refreshAutoDate() {
+  if (els.date.value && els.date.value !== autoDate) return; // поставили свою — не трогаем
+  if (els.date.value === today()) return;
+  els.date.value = autoDate = today();
+  els.subject.value = withToday(els.subject.value);
+  updateOtHint();
+}
+
+document.addEventListener('visibilitychange', () => { if (!document.hidden && lists) refreshAutoDate(); });
 
 function today() {
   const d = new Date();
@@ -156,7 +169,7 @@ els.tplChips.addEventListener('click', (e) => {
     els.delTpl.hidden = true;
     applyFields(lastTask);
     renderChips();
-    setMsg('Заполнено как прошлая задача. Вставьте ссылку на Band и проверьте тему.');
+    setMsg('Заполнено как прошлая задача. Проверьте тему и, если есть, вставьте ссылку на Band.');
     return;
   }
   els.template.value = b.dataset.tpl;
@@ -183,6 +196,8 @@ function applyFields(t, { keepSubject = false } = {}) {
   els.comment.value = t.comment || '';
   if (!(keepSubject && els.subject.value.trim())) els.subject.value = withDate(withToday(t.subject || ''));
   els.link.value = '';
+  els.link2.value = ''; // ссылки на Band — у каждой задачи свои, из прошлой не тащим
+  refreshAutoDate();
   const langs = t.languages || [];
   checkedLangInputs(false).forEach((cb) => { cb.checked = langs.includes(cb.value); });
   hideSuggest();
@@ -223,7 +238,7 @@ els.suggestApply.addEventListener('click', () => {
   els.delTpl.hidden = s.tplIndex == null;
   applyFields(s.fields, { keepSubject: true });
   renderChips();
-  setMsg('Заполнено. Вставьте ссылку на Band и проверьте тему.');
+  setMsg('Заполнено. Проверьте тему и, если есть, вставьте ссылку на Band.');
 });
 els.suggestClose.addEventListener('click', hideSuggest);
 els.contractor.addEventListener('change', () => suggestFor(els.contractor.value));
@@ -257,7 +272,7 @@ export async function fillSimilar(ref) {
       customer: t.customer, deadline: t.deadline, comment: '',
       languages: String(t.languages || '').split(',').map((x) => x.trim()).filter(Boolean),
     });
-    setMsg(`Заполнено как ${t.id || 'выбранная задача'}. Вставьте ссылку на Band и проверьте тему.`, 'ok');
+    setMsg(`Заполнено как ${t.id || 'выбранная задача'}. Проверьте тему и, если есть, вставьте ссылку на Band.`, 'ok');
   } catch (e) {
     setMsg(`Не получилось взять задачу: ${e.message}`, 'err');
   }
@@ -285,7 +300,7 @@ els.template.addEventListener('change', () => {
   const t = templates[els.template.value];
   if (!t) return;
   applyFields(t);
-  setMsg(`Заполнено по шаблону «${t.name}». Вставьте ссылку на Band и проверьте тему.`);
+  setMsg(`Заполнено по шаблону «${t.name}». Проверьте тему и, если есть, вставьте ссылку на Band.`);
 });
 
 els.saveTpl.addEventListener('click', async () => {
@@ -512,7 +527,7 @@ els.similar.addEventListener('click', () => {
   els.form.hidden = false;
   resetForm();
   applyFields(lastTask);
-  setMsg('Заполнено как предыдущая задача. Вставьте ссылку на Band и проверьте тему.');
+  setMsg('Заполнено как предыдущая задача. Проверьте тему и, если есть, вставьте ссылку на Band.');
 });
 els.again.addEventListener('click', () => {
   els.done.hidden = true;
