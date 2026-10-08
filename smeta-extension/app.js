@@ -101,6 +101,11 @@ els.saveSettings.addEventListener('click', async () => {
   mine.loadMine();
 });
 
+// Статус — цветом: выбрали другой — цвет сменился сразу
+document.addEventListener('change', (e) => {
+  if (e.target.matches && e.target.matches('select.status-sel')) e.target.dataset.status = e.target.value;
+});
+
 // ---------- Тема: светлая / тёмная ----------
 // Пока не нажимали — как в системе. theme.js ставит выбранную ещё до отрисовки.
 const dark = () => document.documentElement.dataset.theme === 'dark' ||

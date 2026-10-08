@@ -108,6 +108,7 @@ function fill(t) {
   fillSelect(els.product, lists.products, t.product);
   fillSelect(els.deadline, lists.deadlines, t.deadline);
   fillSelect(els.status, lists.statuses, t.status);
+  els.status.dataset.status = els.status.value;
   fillSelect(els.deliveryStatus, lists.deliveryStatuses, t.deliveryStatus);
   fillSelect(els.contractor, lists.contractors, t.contractor);
   fillSelect(els.manager, lists.managers, t.manager);

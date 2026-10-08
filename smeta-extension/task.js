@@ -99,6 +99,7 @@ function resetForm() {
   updateOtHint();
   if (settings.manager && lists.managers.includes(settings.manager)) els.manager.value = settings.manager;
   if (lists.statuses.includes('Принято')) els.status.value = 'Принято'; // новая задача — сразу «Принято»
+  els.status.dataset.status = els.status.value;
   nextId = '';
   updatePreview();
 }

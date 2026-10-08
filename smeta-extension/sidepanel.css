@@ -481,3 +481,24 @@ main { padding-bottom: 84px; } /* место под нижней панелью 
 .toast.warn { background: var(--warn); }
 
 .r-copy-one { width: 100%; margin-top: 8px; }
+
+/* ---------- Статусы цветом: Принято — жёлтый, В работе — синий, Отдано — зелёный, Холд — фиолетовый, Отменено — красный ---------- */
+select.status-sel { font-weight: 600; transition: background-color .15s, color .15s; }
+select.status-sel[data-status="Принято"] { background-color: #FFF4CC; color: #8A6100; border-color: #F2D27A; }
+select.status-sel[data-status="В работе"] { background-color: #DCEBFF; color: #1D4ED8; border-color: #A9C8F5; }
+select.status-sel[data-status="Отдано"] { background-color: #DCF5E3; color: #15803D; border-color: #9BD8AE; }
+select.status-sel[data-status="Холд"] { background-color: #EDE4FF; color: #6D28D9; border-color: #C9B5F7; }
+select.status-sel[data-status="Отменено"] { background-color: #FFE1E6; color: #C0263D; border-color: #F4A9B6; }
+select.status-sel option { background: var(--card); color: var(--ink); font-weight: 400; }
+:root[data-theme="dark"] select.status-sel[data-status="Принято"] { background-color: #3A3115; color: #FCD34D; border-color: #6B5A1E; }
+:root[data-theme="dark"] select.status-sel[data-status="В работе"] { background-color: #172B4D; color: #93C5FD; border-color: #2B4C80; }
+:root[data-theme="dark"] select.status-sel[data-status="Отдано"] { background-color: #14321F; color: #86EFAC; border-color: #245C38; }
+:root[data-theme="dark"] select.status-sel[data-status="Холд"] { background-color: #2E2150; color: #C4B5FD; border-color: #4E3A85; }
+:root[data-theme="dark"] select.status-sel[data-status="Отменено"] { background-color: #3D1A24; color: #FDA4AF; border-color: #6E2C3C; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) select.status-sel[data-status="Принято"] { background-color: #3A3115; color: #FCD34D; border-color: #6B5A1E; }
+  :root:not([data-theme="light"]) select.status-sel[data-status="В работе"] { background-color: #172B4D; color: #93C5FD; border-color: #2B4C80; }
+  :root:not([data-theme="light"]) select.status-sel[data-status="Отдано"] { background-color: #14321F; color: #86EFAC; border-color: #245C38; }
+  :root:not([data-theme="light"]) select.status-sel[data-status="Холд"] { background-color: #2E2150; color: #C4B5FD; border-color: #4E3A85; }
+  :root:not([data-theme="light"]) select.status-sel[data-status="Отменено"] { background-color: #3D1A24; color: #FDA4AF; border-color: #6E2C3C; }
+}

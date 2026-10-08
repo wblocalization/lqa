@@ -106,7 +106,7 @@ function render() {
       <div class="title">${title}</div>
       <div class="meta">${esc(t.id || '—')}${t.ticket ? ' · ' + esc(t.ticket) : ''} · ${due}</div>
       <div class="row-actions">
-        <select data-i="${i}" aria-label="Статус">
+        <select data-i="${i}" class="status-sel" data-status="${esc(t.status)}" aria-label="Статус">
           <option value="">— статус —</option>
           ${data.statuses.map((s) => `<option value="${esc(s)}"${s === t.status ? ' selected' : ''}>${esc(s)}</option>`).join('')}
         </select>
