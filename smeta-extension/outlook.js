@@ -57,34 +57,44 @@ async function owaSearch(query) {
   const visible = (el) => el && el.offsetParent !== null;
   const findInput = () => document.querySelector(
     'input[aria-label^="Поиск в почте"], input[aria-label^="Search Mail"], input._is_s[role="combobox"]');
-  // Outlook грузится не сразу — ждём поле до 10 секунд
-  for (let i = 0; i < 40; i++) {
-    let input = findInput();
-    if (!visible(input)) {
-      // поле прячется за кнопкой-лупой
-      const open = document.querySelector('button[aria-label^="Активировать текстовое окно поиска"], button[aria-label^="Activate Search"]');
-      if (visible(open)) { open.click(); await sleep(150); }
-      input = findInput();
-    }
-    if (visible(input)) {
-      // Поиск запустился — появляется «Отменить поиск» (title «Выход из поиска»). Нет — Outlook ещё не готов, жмём ещё раз
-      for (let attempt = 0; attempt < 6; attempt++) {
+  // Поиск запущен: слева «← Выйти из поиска» (или видна кнопка «Отменить поиск»)
+  const searching = () => visible(document.querySelector('button[aria-label="Отменить поиск"], button[title="Выход из поиска"], button[aria-label="Exit search"]')) ||
+    [...document.querySelectorAll('span, button, a, div[role="button"]')].some((el) => !el.children.length && /^(Выйти из поиска|Exit search)$/.test(el.textContent.trim()) && visible(el));
+  // Человек сам кликнул или нажал клавишу (например, открыл письмо) — больше ничего не трогаем
+  let userActed = false;
+  const stop = (e) => { if (e.isTrusted) userActed = true; };
+  addEventListener('mousedown', stop, true);
+  addEventListener('keydown', stop, true);
+  try {
+    // Outlook грузится не сразу — ждём поле до 10 секунд
+    for (let i = 0; i < 40 && !userActed; i++) {
+      let input = findInput();
+      if (!visible(input)) {
+        // поле прячется за кнопкой-лупой
+        const open = document.querySelector('button[aria-label^="Активировать текстовое окно поиска"], button[aria-label^="Activate Search"]');
+        if (visible(open)) { open.click(); await sleep(150); }
+        input = findInput();
+      }
+      if (!visible(input)) { await sleep(250); continue; }
+      // Enter; если Outlook ещё не готов и поиск не начался — ещё раз, но не больше трёх попыток
+      for (let attempt = 0; attempt < 3 && !userActed; attempt++) {
         input.focus();
-        input.click();
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, query);
         input.dispatchEvent(new Event('input', { bubbles: true }));
         input.dispatchEvent(new Event('change', { bubbles: true }));
         for (const type of ['keydown', 'keypress', 'keyup']) {
           input.dispatchEvent(new KeyboardEvent(type, { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
         }
-        for (let w = 0; w < 6; w++) {
+        for (let w = 0; w < 10; w++) {
           await sleep(250);
-          if (visible(document.querySelector('button[aria-label="Отменить поиск"], button[title="Выход из поиска"], button[aria-label="Exit search"]'))) return { ok: true };
+          if (userActed || searching()) return { ok: true };
         }
       }
-      return { ok: false };
+      return { ok: userActed };
     }
-    await sleep(250);
+    return { ok: userActed };
+  } finally {
+    removeEventListener('mousedown', stop, true);
+    removeEventListener('keydown', stop, true);
   }
-  return { ok: false };
 }
