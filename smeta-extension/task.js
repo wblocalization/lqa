@@ -1,6 +1,7 @@
 // Вкладка «Новая задача»: то же, что окно «➕ Добавить задачу» в таблице, только без захода в таблицу.
 import { settings, isConfigured, api, esc, readClipboard, getLists, autoDeadline, setLink, toast } from './core.js';
 import { makeLinkList } from './links.js';
+import { showLetter, lettersForExport, importLetters, loadLetters } from './letter.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
@@ -19,6 +20,7 @@ const els = {
   suggestClose: $('#tSuggestClose'), similar: $('#taskSimilar'), tplIoMsg: $('#tTplIoMsg'), openRow: $('#taskOpenRow'),
 };
 autoDeadline(els.deadline, els.exactDeadline, els.date);
+loadLetters().catch(() => {}); // для «Скачать файлом» в настройках
 
 let lists = null;       // справочники из таблицы
 let nextId = '';        // номер, который получит задача (подсказка)
@@ -366,14 +368,16 @@ els.delTpl.addEventListener('click', async () => {
 });
 
 els.exportTpl.addEventListener('click', () => {
-  if (!templates.length) return ioMsg('Шаблонов пока нет: заполните форму и нажмите «Сохранить как шаблон»', 'err');
-  const blob = new Blob([JSON.stringify({ type: TPL_FILE_TYPE, version: 1, templates }, null, 2)], { type: 'application/json' });
+  const letters = lettersForExport();
+  if (!templates.length && !Object.keys(letters).length) return ioMsg('Шаблонов пока нет: заполните форму и нажмите «Сохранить как шаблон»', 'err');
+  const blob = new Blob([JSON.stringify({ type: TPL_FILE_TYPE, version: 1, templates, letters }, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'task-templates.json';
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  ioMsg(`Скачано шаблонов: ${templates.length}. Файл можно отправить коллеге — пусть нажмёт «Загрузить из файла».`, 'ok');
+  const nl = Object.keys(letters).length;
+  ioMsg(`Скачано шаблонов: ${templates.length}${nl ? `, писем подрядчикам: ${nl}` : ''}. Файл можно отправить коллеге — пусть нажмёт «Загрузить из файла».`, 'ok');
 });
 
 /** Скачать / загрузить шаблоны — в настройках (⚙️), сообщение — там же. */
@@ -390,14 +394,15 @@ els.importFile.addEventListener('change', async () => {
   try {
     const data = JSON.parse(await file.text());
     const list = (Array.isArray(data) ? data : data.templates || []).map(cleanTemplate).filter((t) => t.name);
-    if (!list.length) throw new Error('в файле нет шаблонов');
+    const nl = Array.isArray(data) ? 0 : await importLetters(data.letters);
+    if (!list.length && !nl) throw new Error('в файле нет шаблонов');
     let replaced = 0;
     list.forEach((t) => {
       const i = templates.findIndex((x) => x.name === t.name);
       if (i !== -1) { templates[i] = t; replaced++; } else templates.push(t);
     });
     await storeTemplates();
-    ioMsg(`Загружено шаблонов: ${list.length}` + (replaced ? ` (заменено с тем же названием: ${replaced})` : ''), 'ok');
+    ioMsg(`Загружено шаблонов: ${list.length}` + (replaced ? ` (заменено с тем же названием: ${replaced})` : '') + (nl ? `, писем подрядчикам: ${nl}` : ''), 'ok');
   } catch (e) {
     ioMsg(`Не получилось загрузить: ${e.message}`, 'err');
   }
@@ -553,6 +558,11 @@ els.form.addEventListener('submit', async (e) => {
     els.doneCopied.hidden = true;
     navigator.clipboard.writeText(lastSubject).then(() => { els.doneCopied.hidden = false; }).catch(() => {});
     setLink(els.openRow, r.url);
+    showLetter({
+      contractor: task.contractor, id: r.id, subject: lastSubject, languages: task.languages,
+      codes: task.languages.map((l) => lists.langCodes[l]).filter(Boolean), exactDeadline: task.exactDeadline,
+      product: task.product, manager: task.manager, link: task.link,
+    }).catch(() => {});
     els.form.hidden = true;
     els.done.hidden = false;
     setMsg('');

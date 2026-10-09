@@ -38,7 +38,7 @@
     </label>
     <p id="setManagerMsg" class="status err" hidden></p>
     <div class="tpl-io">
-      <span>Шаблоны задач — поделиться с коллегой или перенести на другой компьютер</span>
+      <span>Шаблоны задач и писем подрядчикам — поделиться с коллегой или перенести на другой компьютер</span>
       <span class="tpl-actions">
         <button id="tExportTpl" class="link-btn" type="button">Скачать файлом</button>
         <button id="tImportTpl" class="link-btn" type="button">Загрузить из файла</button>
@@ -157,6 +157,22 @@
       <h2>Добавлено: <span id="taskDoneId"></span></h2>
       <p id="taskDoneSubject" class="done-subject"></p>
       <p id="taskDoneCopied" class="done-copied" hidden>✓ Тема с точным номером уже скопирована — можно вставлять в письмо</p>
+      <section id="letter" class="letter" hidden>
+        <div class="letter-head"><b>Письмо в <span id="lContractor"></span></b><button id="lEdit" class="link-btn strong" type="button">✏️ Настроить</button></div>
+        <p id="lEmpty" class="letter-empty">Для этого подрядчика ещё нет адресов и шаблона письма. <button class="link-btn strong" type="button">Настроить один раз →</button></p>
+        <div id="lView" hidden>
+          <div class="letter-row"><span class="letter-lbl">Кому</span><div id="lTo" class="mail-chips"></div><button id="lCopyTo" class="btn ghost small" type="button">Скопировать</button></div>
+          <div id="lCcRow" class="letter-row"><span class="letter-lbl">Копия</span><div id="lCc" class="mail-chips"></div><button id="lCopyCc" class="btn ghost small" type="button">Скопировать</button></div>
+          <div class="letter-text"><pre id="lBody"></pre><button id="lCopyBody" class="btn ghost small" type="button">Скопировать текст</button></div>
+          <button id="lCompose" class="btn primary" type="button">✉️ Новое письмо в Outlook</button>
+        </div>
+        <div id="lEditor" class="letter-editor" hidden>
+          <label>Кому <span class="opt">почты через запятую или с новой строки</span><textarea id="lETo" rows="3" placeholder="pm@logrusit.com&#10;vendor@logrusit.com"></textarea></label>
+          <label>Копия <span class="opt">если нужно</span><textarea id="lECc" rows="2"></textarea></label>
+          <label>Текст письма <span class="opt">подставится: {тема} {номер} {языки} {коды} {срок} {продукт} {менеджер} {ссылка}</span><textarea id="lEBody" rows="7"></textarea></label>
+          <div class="row-btns"><button id="lCancel" class="btn ghost" type="button">Отмена</button><button id="lSave" class="btn primary" type="button">Сохранить</button></div>
+        </div>
+      </section>
       <button id="taskCopyDone" class="btn ghost" type="button">Скопировать тему</button>
       <a id="taskOpenRow" class="btn ghost" href="#" target="_blank" rel="noopener" hidden>Открыть в таблице ↗</a>
       <button id="taskSimilar" class="btn ghost" type="button">Ещё одну такую же</button>
