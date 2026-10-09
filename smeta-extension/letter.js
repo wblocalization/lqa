@@ -126,6 +126,39 @@ function syncBold() {
     btn.lastChild.textContent = on ? ' Убрать жирный' : ' Выделить жирным';
   });
 }
+
+// Смайлики — кнопка 😊 рядом с «Выделить жирным»: вставляется туда, где курсор
+const EMOJI = ['😊', '🙂', '😉', '😄', '🙏', '👍', '👌', '🤝', '👋', '💪', '🎉', '✨', '🔥', '❤️', '💜', '🌸',
+  '✅', '☑️', '❗', '⚠️', '⏰', '📅', '📌', '📎', '📄', '📝', '📨', '🔗', '🌍', '🚀', '⭐', '💡'];
+const emojiPop = document.createElement('div');
+emojiPop.className = 'emoji-pop';
+emojiPop.hidden = true;
+emojiPop.innerHTML = EMOJI.map((e) => `<button type="button" data-e="${e}">${e}</button>`).join('');
+document.body.appendChild(emojiPop);
+let emojiFor = null;
+document.querySelectorAll('.emoji-btn').forEach((b) => {
+  b.addEventListener('mousedown', (e) => e.preventDefault()); // не терять место курсора
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const ed = b.dataset.ed === 'tpl' ? tplEd : bodyEd;
+    if (!emojiPop.hidden && emojiFor === ed) { emojiPop.hidden = true; return; }
+    emojiFor = ed;
+    const r = b.getBoundingClientRect();
+    emojiPop.style.top = `${r.bottom + window.scrollY + 6}px`;
+    emojiPop.style.left = `${Math.max(8, Math.min(r.left + window.scrollX, document.documentElement.clientWidth - 268))}px`;
+    emojiPop.hidden = false;
+  });
+});
+emojiPop.addEventListener('mousedown', (e) => e.preventDefault());
+emojiPop.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-e]');
+  if (!b || !emojiFor) return;
+  emojiFor.insertText(b.dataset.e);
+  emojiPop.hidden = true;
+});
+document.addEventListener('click', (e) => { if (!emojiPop.hidden && !emojiPop.contains(e.target)) emojiPop.hidden = true; });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') emojiPop.hidden = true; });
+
 boldBtns.forEach(([btn, ed]) => {
   btn.addEventListener('mousedown', (e) => e.preventDefault()); // не терять выделение
   btn.addEventListener('click', () => {

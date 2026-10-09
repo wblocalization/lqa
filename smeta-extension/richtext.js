@@ -53,7 +53,7 @@ export function richToText(root) {
 }
 
 /**
- * Сделать <div contenteditable> редактором. Возвращает { get, set, bold, isBold, insertVar, focus }.
+ * Сделать <div contenteditable> редактором. Возвращает { get, set, bold, isBold, insertVar, insertText, focus }.
  * Вставка из буфера — только текстом (без чужих шрифтов и цветов).
  */
 export function richEditor(el, { onInput, valueOf, onSelect } = {}) {
@@ -105,6 +105,13 @@ export function richEditor(el, { onInput, valueOf, onSelect } = {}) {
     insertVar: (name) => {
       restore();
       document.execCommand('insertHTML', false, chip(name, valueOf) + '&#8203;');
+      remember();
+      if (onInput) onInput();
+    },
+    /** Вставить текст (смайлик) туда, где курсор. */
+    insertText: (text) => {
+      restore();
+      document.execCommand('insertText', false, text);
       remember();
       if (onInput) onInput();
     },

@@ -657,3 +657,11 @@ b .var-pill, strong .var-pill { font-weight: 800; }
 .ml-sig textarea { font-weight: 400; }
 .ml-sig .row-btns { display: flex; gap: 8px; }
 .ml-sig .row-btns .btn { flex: 1; }
+
+/* Смайлики в письме */
+.emoji-btn { flex-shrink: 0; width: 32px; height: 28px; padding: 0; border-radius: 8px; border: 1px solid var(--line); background: var(--card); font-size: 16px; line-height: 1; cursor: pointer; }
+.emoji-btn:hover { border-color: var(--accent); }
+.emoji-pop { position: absolute; z-index: 40; width: 260px; display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; padding: 8px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); box-shadow: 0 12px 30px rgb(0 0 0 / .2); }
+.emoji-pop[hidden] { display: none; }
+.emoji-pop button { border: none; background: none; font-size: 19px; line-height: 1; padding: 5px 0; border-radius: 8px; cursor: pointer; }
+.emoji-pop button:hover { background: var(--soft); }
