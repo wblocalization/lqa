@@ -551,3 +551,4 @@ select.delivery-sel option { background: var(--card); color: var(--ink); font-we
 .done .done-actions .btn { width: auto; min-width: 0; padding: 8px 6px; font-size: 12.5px; white-space: normal; line-height: 1.2; border-radius: 12px; }
 .done-actions a.btn[hidden] + .btn { grid-column: span 2; }
 #taskDone .done-copied { margin: 0; padding: 6px 10px; font-size: 12px; }
+.submit-note { margin: 0; text-align: center; }

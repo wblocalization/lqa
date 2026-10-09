@@ -264,32 +264,6 @@ async function rememberTask(task) {
   renderChips();
 }
 
-/** «[LIT-26-2198][LogrusIT][kk][Магазинка] Новые строки от 22.09» → «Новые строки от 22.09». */
-const plainSubject = (s) => String(s || '').replace(/^(\s*\[[^\]]*\])+\s*/, '');
-
-/** «Создать похожую» из «Мои задачи»: форма заполняется как у той задачи, кроме ссылок и дат. */
-export async function fillSimilar(ref) {
-  await initTaskTab();
-  if (!lists) return;
-  els.done.hidden = true;
-  els.form.hidden = false;
-  resetForm();
-  setMsg('Загружаю задачу…');
-  try {
-    const r = await api({ action: 'getTask', row: ref.row, id: ref.id || '', origSubject: ref.origSubject });
-    if (!r.ok) throw new Error(r.error);
-    const t = r.task;
-    applyFields({
-      contractor: t.contractor, ticket: t.ticket, subject: plainSubject(t.subject), product: t.product,
-      customer: t.customer, deadline: t.deadline, comment: '',
-      languages: String(t.languages || '').split(',').map((x) => x.trim()).filter(Boolean),
-    });
-    setMsg(`Заполнено как ${t.id || 'выбранная задача'}. Проверьте тему и, если есть, вставьте ссылку на Band.`, 'ok');
-  } catch (e) {
-    setMsg(`Не получилось взять задачу: ${e.message}`, 'err');
-  }
-}
-
 /** Только известные поля и только строки: файл мог прийти от кого угодно. */
 function cleanTemplate(t) {
   const str = (v) => (typeof v === 'string' ? v.trim() : '');
