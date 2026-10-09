@@ -181,7 +181,7 @@
           <div id="lBody" class="c-body rich" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Текст письма"></div>
           <div id="lSig" class="c-sig"></div>
           <div id="lSigEdit" class="c-sig-edit" hidden>
-            <label>Подпись <span class="opt">одна на все письма; можно вставить прямо из Outlook</span><textarea id="lSigText" rows="4"></textarea></label>
+            <div class="sig-field"><span class="field-label">Подпись <span class="opt">одна на все письма; можно вставить прямо из Outlook</span></span><div class="c-tools ed sig-tools"><button id="lSigBold" type="button" class="bold-btn" title="Выделите слово мышкой и нажмите"><b>Ж</b> Выделить жирным</button><span class="bold-hint">из Outlook вставляется с жирным</span></div><div id="lSigText" class="rich sig-rich" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Подпись"></div></div>
             <div class="row-btns"><button id="lSigFetch" class="btn ghost small" type="button">Взять из Outlook</button><button id="lSigSave" class="btn primary small" type="button">Сохранить подпись</button></div>
           </div>
           <div class="letter-files">
@@ -418,7 +418,7 @@
     <div id="mlLetters" class="ml-list"></div>
     <div class="r-sec">Подпись</div>
     <div class="ml-card ml-sig">
-      <label>Подпись в письмах подрядчикам <span class="opt">одна на все письма; можно вставить прямо из Outlook</span><textarea id="mlSigText" rows="4" placeholder="Анастасия Лисовая&#10;Менеджер локализации"></textarea></label>
+      <div class="sig-field"><span class="field-label">Подпись в письмах подрядчикам <span class="opt">одна на все письма; можно вставить прямо из Outlook</span></span><div class="c-tools ed sig-tools"><button id="mlSigBold" type="button" class="bold-btn" title="Выделите слово мышкой и нажмите"><b>Ж</b> Выделить жирным</button><span class="bold-hint">из Outlook вставляется с жирным</span></div><div id="mlSigText" class="rich sig-rich" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Подпись"></div></div>
       <div class="row-btns"><button id="mlSigFetch" class="btn ghost small" type="button">Взять из Outlook</button><button id="mlSigSave" class="btn primary small" type="button">Сохранить подпись</button></div>
     </div>
   </section>

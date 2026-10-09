@@ -5,7 +5,7 @@
 import { toast, ask } from './core.js';
 import { OWA_ORIGIN } from './outlook.js';
 import { sendMail } from './owa-send.js';
-import { richEditor } from './richtext.js';
+import { richEditor, htmlToRichText } from './richtext.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
@@ -118,7 +118,10 @@ let bodyEdited = false; // текст поправили руками — шаб
 const bodyEd = richEditor(els.body, { onInput: () => { bodyEdited = true; }, onSelect: () => syncBold() });
 let editing = null; // { contractor, host, onDone, ctx } — чей шаблон открыт и где (под задачей или во вкладке «Письма»)
 const tplEd = richEditor(els.eBody, { valueOf: (name) => (editing && editing.ctx ? varValues(editing.ctx)[name] || '' : ''), onSelect: () => syncBold() });
-const boldBtns = [[$('#lBold'), bodyEd], [$('#lEBold'), tplEd]];
+// Подпись — тоже с жирным; скопированная из Outlook вставляется с жирным
+const sigEd = richEditor(els.sigText, { pasteBold: true, onSelect: () => syncBold() });
+const cardEd = richEditor($('#mlSigText'), { pasteBold: true, onSelect: () => syncBold() });
+const boldBtns = [[$('#lBold'), bodyEd], [$('#lEBold'), tplEd], [$('#lSigBold'), sigEd], [$('#mlSigBold'), cardEd]];
 function syncBold() {
   boldBtns.forEach(([btn, ed]) => {
     const on = ed.isBold();
@@ -200,12 +203,10 @@ async function loadSignature() {
   const r = await chrome.storage.local.get('signature');
   signature = r.signature && (r.signature.html || r.signature.text) ? r.signature : null;
 }
-const htmlToText = (html) => {
-  const d = document.createElement('div');
-  d.innerHTML = String(html).replace(/<br\s*\/?>/gi, '\n').replace(/<\/?(p|div)\b[^>]*>/gi, '\n');
-  return d.textContent.replace(/\u00a0/g, ' ').split('\n').map((l) => l.trim()).filter((l, i, a) => l || (a[i - 1] && i < a.length - 1)).join('\n').replace(/\n{3,}/g, '\n\n').trim();
-};
-const textToSigHtml = (text) => String(text).split('\n').map((l) => l.replace(/&/g, '&amp;').replace(/</g, '&lt;') || '<br>').join('<br>');
+// Подпись храним как текст с **жирным** (или как HTML из Outlook, пока её не правили)
+const sigToText = (s) => (s ? s.text || htmlToRichText(s.html) : '');
+const textToSigHtml = (text) => String(text).split('\n')
+  .map((l) => l.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>') || '<br>').join('<br>');
 
 function renderSignature() {
   els.sigEdit.hidden = true;
@@ -214,7 +215,7 @@ function renderSignature() {
   if (signature) {
     const pre = document.createElement('div');
     pre.className = 'c-sig-text';
-    pre.textContent = signature.text || htmlToText(signature.html);
+    pre.innerHTML = textToSigHtml(sigToText(signature));
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'link-btn'; b.textContent = 'изменить подпись';
     b.addEventListener('click', openSigEdit);
@@ -228,42 +229,42 @@ function renderSignature() {
   }
 }
 function openSigEdit() {
-  els.sigText.value = signature ? (signature.text || htmlToText(signature.html)) : '';
+  sigEd.set(sigToText(signature));
   els.sig.hidden = true;
   els.sigEdit.hidden = false;
-  els.sigText.focus();
+  sigEd.focus();
 }
 async function saveSignature(text) {
   text = text.trim();
   // текст поменяли — своя подпись, без оформления Outlook
-  signature = text ? (signature && signature.html && htmlToText(signature.html) === text ? signature : { text }) : null;
+  signature = text ? (signature && signature.html && sigToText({ html: signature.html }) === text ? signature : { text }) : null;
   await chrome.storage.local.set({ signature });
   if (ctx) renderSignature();
   toast(text ? '✓ Подпись сохранена — будет в каждом письме' : 'Подпись убрана');
 }
-async function fetchInto(btn, textarea) {
+async function fetchInto(btn, ed) {
   btn.disabled = true;
   try {
     const s = await fetchOutlookSignature();
     if (!s) return toast('Не нашла подпись в Outlook — вставьте её сюда текстом', 'warn');
     signature = s;
-    textarea.value = s.text || htmlToText(s.html);
+    ed.set(sigToText(s));
     toast('✓ Подпись взята из Outlook — нажмите «Сохранить подпись»');
   } finally {
     btn.disabled = false;
   }
 }
-els.sigSave.addEventListener('click', () => saveSignature(els.sigText.value));
-els.sigFetch.addEventListener('click', () => fetchInto(els.sigFetch, els.sigText));
+els.sigSave.addEventListener('click', () => saveSignature(sigEd.get()));
+els.sigFetch.addEventListener('click', () => fetchInto(els.sigFetch, sigEd));
 
 // Подпись во вкладке «Письма» — то же самое, что «изменить подпись» в письме
-const card = { text: $('#mlSigText'), save: $('#mlSigSave'), fetch: $('#mlSigFetch') };
+const card = { save: $('#mlSigSave'), fetch: $('#mlSigFetch') };
 export async function renderSignatureCard() {
   await loadSignature();
-  card.text.value = signature ? (signature.text || htmlToText(signature.html)) : '';
+  cardEd.set(sigToText(signature));
 }
-card.save.addEventListener('click', () => saveSignature(card.text.value));
-card.fetch.addEventListener('click', () => fetchInto(card.fetch, card.text));
+card.save.addEventListener('click', () => saveSignature(cardEd.get()));
+card.fetch.addEventListener('click', () => fetchInto(card.fetch, cardEd));
 
 /** Подпись из Outlook (нужна открытая вкладка с почтой). */
 async function fetchOutlookSignature() {
@@ -390,7 +391,7 @@ els.send.addEventListener('click', async () => {
   if (!to.length) return toast('Впишите, кому отправить', 'err');
   const text = bodyEd.get().trim();
   if (!text) return toast('Письмо пустое', 'err');
-  const sigText = signature ? (signature.text || htmlToText(signature.html)) : '';
+  const sigText = plain(sigToText(signature));
   const ok = await ask({ title: 'Отправить письмо?', ok: 'Отправить', icon: '📨', text: `Кому: ${to.join(', ')}` + (cc.length ? `\nКопия: ${cc.join(', ')}` : '') +
     `\nТема: ${ctx.subject}` + (files.length ? `\nВложения: ${files.map((f) => f.name).join(', ')}` : '') +
     `\n\n${plain(text.length > 400 ? `${text.slice(0, 400)}…` : text)}` + (sigText ? `\n\n${sigText}` : '\n\n(без подписи)') });

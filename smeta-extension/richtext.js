@@ -52,15 +52,34 @@ export function richToText(root) {
   return out.replace(/\*\*\*\*/g, '').replace(/\*\*(\s*)\*\*/g, '$1').replace(/\n+$/, '');
 }
 
+/** HTML (например, подпись, скопированная из Outlook) → наш текст: жирный остаётся **жирным**, остальное оформление — нет. */
+export function htmlToRichText(html) {
+  const d = document.createElement('div');
+  d.innerHTML = String(html || '');
+  d.querySelectorAll('style, script, head, meta, title, o\\:p').forEach((n) => n.remove());
+  // переносы строк внутри HTML-кода — не переносы в тексте
+  const w = document.createTreeWalker(d, NodeFilter.SHOW_TEXT);
+  const block = (x) => x && x.nodeType === 1 && /^(P|DIV|BR|TABLE|TR|TD|UL|OL|LI|H\d)$/.test(x.tagName);
+  for (let n = w.nextNode(); n; n = w.nextNode()) {
+    // пробелы-отступы между абзацами кода — не текст
+    if (!n.nodeValue.trim() && (block(n.previousSibling) || block(n.nextSibling) || !n.previousSibling || !n.nextSibling)) n.nodeValue = '';
+    else n.nodeValue = n.nodeValue.replace(/[\s\u00a0]+/g, ' ');
+  }
+  return richToText(d).split('\n').map((l) => l.trim()).join('\n').replace(/\n{3,}/g, '\n\n').replace(/\*\*\s*\*\*/g, '').trim();
+}
+
 /**
  * Сделать <div contenteditable> редактором. Возвращает { get, set, bold, isBold, insertVar, insertText, focus }.
  * Вставка из буфера — только текстом (без чужих шрифтов и цветов).
  */
-export function richEditor(el, { onInput, valueOf, onSelect } = {}) {
+export function richEditor(el, { onInput, valueOf, onSelect, pasteBold = false } = {}) {
   el.addEventListener('paste', (e) => {
     e.preventDefault();
-    const text = (e.clipboardData && e.clipboardData.getData('text/plain')) || '';
-    document.execCommand('insertText', false, text);
+    const cd = e.clipboardData;
+    const html = pasteBold && cd && cd.getData('text/html');
+    // подпись: из Outlook вставляется с жирным; остальное — только текстом (без чужих шрифтов и цветов)
+    if (html) document.execCommand('insertHTML', false, textToRich(htmlToRichText(html), valueOf));
+    else document.execCommand('insertText', false, (cd && cd.getData('text/plain')) || '');
   });
   el.addEventListener('input', () => { if (onInput) onInput(); });
   // курсор внутри поля — запоминаем, чтобы кнопки вставляли туда, где он был

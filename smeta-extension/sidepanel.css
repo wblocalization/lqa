@@ -665,3 +665,11 @@ b .var-pill, strong .var-pill { font-weight: 800; }
 .emoji-pop[hidden] { display: none; }
 .emoji-pop button { border: none; background: none; font-size: 19px; line-height: 1; padding: 5px 0; border-radius: 8px; cursor: pointer; }
 .emoji-pop button:hover { background: var(--soft); }
+
+/* Подпись — с жирным */
+.sig-field { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+.sig-field .field-label { font-weight: 600; color: var(--ink-soft); display: flex; flex-direction: column; gap: 2px; }
+.sig-field .opt { font-weight: 400; }
+.sig-rich { min-height: 84px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--ink); font-size: 13.5px; font-weight: 400; }
+.sig-rich:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.c-sig-text b { font-weight: 800; }
