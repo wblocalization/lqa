@@ -10,6 +10,7 @@ const els = {
   box: $('#letter'), contractor: $('#lContractor'), edit: $('#lEdit'), view: $('#lView'), empty: $('#lEmpty'),
   subject: $('#lSubject'), copySubject: $('#lCopySubject'), to: $('#lTo'), copyTo: $('#lCopyTo'), ccRow: $('#lCcRow'), cc: $('#lCc'), copyCc: $('#lCopyCc'),
   body: $('#lBody'), copyBody: $('#lCopyBody'), compose: $('#lCompose'), links: $('#lLinks'),
+  drop: $('#lDrop'), fileInput: $('#lFileInput'), fileList: $('#lFileList'), attachOpen: $('#lAttachOpen'),
   editor: $('#lEditor'), eTo: $('#lETo'), eCc: $('#lECc'), eBody: $('#lEBody'), save: $('#lSave'), cancel: $('#lCancel'), remove: $('#lRemove'),
 };
 
@@ -82,7 +83,9 @@ const ddmm = (iso) => { const [y, m, d] = String(iso || '').split('-'); return d
 export async function showLetter(c) {
   await loadLetters();
   ctx = { ...c, due: ddmm(c.exactDeadline) };
-  els.links.value = ''; // ссылки — у каждой задачи свои
+  els.links.value = ''; // ссылки и вложения — у каждой задачи свои
+  files = [];
+  renderFiles();
   els.contractor.textContent = c.contractor || 'подрядчику';
   els.box.hidden = !c.contractor;
   closeEditor();
@@ -114,6 +117,82 @@ els.copyTo.addEventListener('click', () => copy(parseEmails(letters[ctx.contract
 els.copyCc.addEventListener('click', () => copy(parseEmails(letters[ctx.contractor].cc).join('; '), '✓ Копия скопирована — вставьте в «Копия»'));
 els.copyBody.addEventListener('click', () => copy(els.body.textContent, '✓ Текст письма скопирован'));
 
+// ---------- Вложения ----------
+// Файлы лежат только в панели, пока не вложены в письмо; кладём их через кнопку Outlook «Вложить».
+const MAX_TOTAL = 30 * 1024 * 1024; // почта больше всё равно не пропустит
+let files = [];
+
+const sizeText = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} МБ` : `${Math.max(1, Math.round(n / 1024))} КБ`);
+function renderFiles() {
+  els.fileList.innerHTML = files.map((f, i) => `<li><span class="f-name">📄 ${f.name.replace(/</g, '&lt;')}</span><span class="f-size">${sizeText(f.size)}</span><button type="button" class="icon-btn small" data-rm="${i}" title="Убрать">✕</button></li>`).join('');
+  els.fileList.hidden = !files.length;
+  els.attachOpen.hidden = !files.length;
+}
+function addFiles(list) {
+  for (const f of list) {
+    if (files.some((x) => x.name === f.name && x.size === f.size)) continue;
+    files.push(f);
+  }
+  const total = files.reduce((n, f) => n + f.size, 0);
+  if (total > MAX_TOTAL) toast(`Вложений на ${sizeText(total)} — почта может не пропустить. Большие архивы лучше ссылкой`, 'warn');
+  renderFiles();
+}
+els.drop.addEventListener('click', () => els.fileInput.click());
+els.fileInput.addEventListener('change', () => { addFiles(els.fileInput.files); els.fileInput.value = ''; });
+els.drop.addEventListener('dragover', (e) => { e.preventDefault(); els.drop.classList.add('over'); });
+els.drop.addEventListener('dragleave', () => els.drop.classList.remove('over'));
+els.drop.addEventListener('drop', (e) => { e.preventDefault(); els.drop.classList.remove('over'); addFiles(e.dataTransfer.files); });
+els.fileList.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-rm]');
+  if (!b) return;
+  files.splice(Number(b.dataset.rm), 1);
+  renderFiles();
+});
+
+function toBase64(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+function waitComplete(tabId, timeoutMs = 30000) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(done, timeoutMs);
+    function done() { clearTimeout(timer); chrome.tabs.onUpdated.removeListener(on); resolve(); }
+    function on(id, info) { if (id === tabId && info.status === 'complete') done(); }
+    chrome.tabs.onUpdated.addListener(on);
+    chrome.tabs.get(tabId).then((t) => { if (t.status === 'complete') done(); }).catch(done);
+  });
+}
+
+/** Вложить файлы из панели в письмо во вкладке Outlook. */
+async function attachTo(tabId) {
+  if (!files.length) return;
+  toast(`📎 Вкладываю файлы: ${files.length}…`);
+  const payload = await Promise.all(files.map(async (f) => ({ name: f.name, type: f.type, b64: toBase64(new Uint8Array(await f.arrayBuffer())) })));
+  let r = null;
+  try {
+    [{ result: r }] = await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', func: owaAttach, args: [payload] });
+  } catch { /* нет доступа к вкладке */ }
+  if (r && r.ok) {
+    toast(r.unconfirmed ? '📎 Файлы отправлены в письмо — проверьте, что они появились во вложениях' : `📎 Вложено файлов: ${files.length}`, r.unconfirmed ? 'warn' : 'ok');
+    files = [];
+    renderFiles();
+  } else {
+    toast('Не нашла в письме кнопку «Вложить» — перетащите файлы в письмо вручную', 'err');
+  }
+}
+
+els.attachOpen.addEventListener('click', async () => {
+  // письмо, открытое в Outlook последним
+  const tabs = await chrome.tabs.query({ url: `${OWA_ORIGIN}/owa/*` });
+  const tab = tabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0))[0];
+  if (!tab) return toast('Outlook не открыт — сначала откройте письмо', 'err');
+  await chrome.tabs.update(tab.id, { active: true });
+  await chrome.windows.update(tab.windowId, { focused: true });
+  attachTo(tab.id);
+});
+
 /** Новое письмо в Outlook Web App — сразу с адресами, темой и текстом. */
 els.compose.addEventListener('click', async () => {
   const l = letters[ctx.contractor] || {};
@@ -124,8 +203,80 @@ els.compose.addEventListener('click', async () => {
   if (cc) q.set('cc', cc);
   q.set('subject', ctx.subject);
   q.set('body', els.body.textContent || fillTemplate(DEFAULT_BODY, ctx));
-  await chrome.tabs.create({ url: `${OWA_ORIGIN}/owa/?${q.toString().replace(/\+/g, '%20')}` });
+  const tab = await chrome.tabs.create({ url: `${OWA_ORIGIN}/owa/?${q.toString().replace(/\+/g, '%20')}` });
+  if (files.length) {
+    await waitComplete(tab.id);
+    attachTo(tab.id);
+  }
 });
+
+/**
+ * Выполняется на странице Outlook Web App: вложить файлы в открытое письмо.
+ * Жмём «Вложить» — Outlook сам создаёт поле выбора файла и «кликает» по нему; этот клик перехватываем
+ * и отдаём файлы вместо окна выбора. Нет кнопки — «перетаскиваем» файлы на текст письма.
+ */
+async function owaAttach(list) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const visible = (el) => el && el.offsetParent !== null;
+  const make = () => list.map((f) => {
+    const bin = atob(f.b64);
+    const u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    return new File([u8], f.name, { type: f.type || 'application/octet-stream' });
+  });
+  const put = (input) => {
+    const dt = new DataTransfer();
+    make().forEach((f) => dt.items.add(f));
+    input.files = dt.files;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  // имена файлов появились в письме — значит, вложились (длинные Outlook обрезает — сверяем начало)
+  const attached = () => list.every((f) => document.body.innerText.includes(f.name.slice(0, 20)));
+  const findBtn = () => [...document.querySelectorAll('button[title="Вложить"], button[aria-label="Вложить"], button[title="Attach"], button[aria-label="Attach"]')].find(visible);
+  // письмо открывается не сразу — ждём кнопку до 15 секунд
+  for (let i = 0; i < 60; i++) {
+    const btn = findBtn();
+    if (btn) {
+      let done = false;
+      const orig = HTMLInputElement.prototype.click;
+      HTMLInputElement.prototype.click = function () {
+        if (this.type === 'file' && !done) { done = true; put(this); return undefined; }
+        return orig.apply(this, arguments);
+      };
+      try {
+        btn.click();
+        await sleep(400);
+        if (!done) {
+          // вместо окна — меню «Компьютер / OneDrive…»
+          const item = [...document.querySelectorAll('[role="menuitem"], button, span, div')].find((el) => !el.children.length && visible(el) &&
+            /^(Компьютер|Этот компьютер|Обзор компьютера|Обзор этого компьютера|Computer|Browse this computer)$/i.test(el.textContent.trim()));
+          if (item) { item.click(); await sleep(400); }
+        }
+        if (!done) {
+          const input = [...document.querySelectorAll('input[type="file"]')].pop();
+          if (input) { put(input); done = true; }
+        }
+      } finally {
+        HTMLInputElement.prototype.click = orig;
+      }
+      if (done) {
+        for (let w = 0; w < 20; w++) { await sleep(300); if (attached()) return { ok: true }; }
+        return { ok: true, unconfirmed: true };
+      }
+    }
+    await sleep(250);
+  }
+  // запасной путь — «перетащить» файлы на текст письма
+  const body = [...document.querySelectorAll('[contenteditable="true"]')].find(visible);
+  if (body) {
+    const dt = new DataTransfer();
+    make().forEach((f) => dt.items.add(f));
+    for (const type of ['dragenter', 'dragover', 'drop']) body.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }));
+    return { ok: true, unconfirmed: true };
+  }
+  return { ok: false };
+}
 
 // ---------- Настройка для подрядчика ----------
 function openEditor() {

@@ -173,8 +173,14 @@
           <div id="lCcRow" class="letter-row"><span class="letter-lbl">Копия</span><div id="lCc" class="mail-chips"></div><button id="lCopyCc" class="btn ghost small" type="button">Скопировать</button></div>
           <label class="letter-links">Ссылки на материалы <span class="opt">документы, Figma, архивы на диске — каждая с новой строки; встанут в текст письма</span>
             <textarea id="lLinks" rows="2" placeholder="https://…"></textarea></label>
+          <div class="letter-files">
+            <div id="lDrop" class="letter-drop" role="button" tabindex="0">📎 Вложения — перетащите файлы или нажмите</div>
+            <input id="lFileInput" type="file" multiple hidden>
+            <ul id="lFileList" class="file-list" hidden></ul>
+          </div>
           <div class="letter-text"><pre id="lBody"></pre><button id="lCopyBody" class="btn ghost small" type="button">Скопировать текст</button></div>
           <button id="lCompose" class="btn primary" type="button">✉️ Новое письмо в Outlook</button>
+          <button id="lAttachOpen" class="btn ghost" type="button" hidden title="Например, если отвечаете в уже существующей переписке">📎 Вложить в открытое письмо</button>
         </div>
         <div id="lEditor" class="letter-editor" hidden>
           <label>Кому <span class="opt">почты через запятую или с новой строки</span><textarea id="lETo" rows="3" placeholder="pm@logrusit.com&#10;vendor@logrusit.com"></textarea></label>

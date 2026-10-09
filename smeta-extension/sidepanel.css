@@ -555,3 +555,10 @@ select.delivery-sel option { background: var(--card); color: var(--ink); font-we
 .letter-links { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); }
 .letter-links .opt { font-weight: 400; }
 .letter-links textarea { min-height: 44px; }
+
+.letter-drop { padding: 10px; border: 1.5px dashed var(--line); border-radius: 12px; text-align: center; font-size: 12.5px; color: var(--ink-soft); cursor: pointer; }
+.letter-drop:hover, .letter-drop.over { border-color: var(--accent); color: var(--accent); background: var(--soft); }
+.file-list { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.file-list li { display: flex; align-items: center; gap: 6px; padding: 4px 4px 4px 10px; border-radius: 10px; background: var(--soft); font-size: 12.5px; }
+.file-list .f-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-list .f-size { color: var(--ink-soft); flex: none; }
