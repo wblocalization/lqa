@@ -6,9 +6,6 @@ import { FilesetResolver, GestureRecognizer } from './vendor/mediapipe/vision_bu
 const HOLD_MS = 700;      // сколько держать жест
 const COOLDOWN_MS = 1500; // после срабатывания — пауза
 const MIN_SCORE = 0.6;
-// Смахивание: ладонь (3+ пальца) быстро прошла в сторону ≥ четверти кадра за полсекунды
-const SWIPE_DX = 0.22, SWIPE_MAX_DY = 0.18, SWIPE_WINDOW_MS = 550, SWIPE_PAUSE_MS = 900;
-const STILL = 0.07; // для «подержать жест» рука должна стоять почти на месте
 
 let recognizer = null;
 let stream = null;
@@ -17,8 +14,6 @@ let timer = null;
 let held = { name: '', since: 0 };
 let lastFire = 0;
 let fired = '';
-let track = [];     // где была ладонь последние полсекунды: { t, x, y }
-let lastSwipe = 0;
 
 /** Загрузить модель (один раз, ~2–3 сек). */
 async function loadRecognizer() {
@@ -26,24 +21,32 @@ async function loadRecognizer() {
   const files = await FilesetResolver.forVisionTasks(chrome.runtime.getURL('vendor/mediapipe'));
   recognizer = await GestureRecognizer.createFromOptions(files, {
     baseOptions: { modelAssetPath: chrome.runtime.getURL('vendor/mediapipe/gesture_recognizer.task'), delegate: 'CPU' },
-    runningMode: 'VIDEO', numHands: 1,
+    runningMode: 'VIDEO', numHands: 2,
   });
   return recognizer;
 }
 
 // Жесты с большим пальцем и кулак — как их понимает модель; остальное — по числу поднятых пальцев (F1…F5).
 const MODEL_GESTURES = ['Thumb_Up', 'Thumb_Down', 'Closed_Fist', 'ILoveYou'];
-function gestureName(r) {
-  const g = r.gestures && r.gestures[0] && r.gestures[0][0];
+function handName(r, i) {
+  const g = r.gestures && r.gestures[i] && r.gestures[i][0];
   const cat = g && g.score >= MIN_SCORE ? g.categoryName : '';
   if (MODEL_GESTURES.includes(cat)) return cat;
-  const lm = r.landmarks && r.landmarks[0];
+  const lm = r.landmarks && r.landmarks[i];
   if (!lm) return '';
   const n = countFingers(lm);
   return n >= 1 ? `F${n}` : '';
 }
-/** Середина ладони (основание среднего пальца) — по ней следим за движением. */
-const palmAt = (r) => { const lm = r.landmarks && r.landmarks[0]; return lm ? { x: lm[9].x, y: lm[9].y } : null; };
+// Двумя руками сразу — праздничные жесты: ✌️✌️, 👍👍, 🙌
+const DUO = { F2: 'Duo_Victory', Thumb_Up: 'Duo_Thumbs', F5: 'Duo_Palms' };
+function gestureName(r) {
+  const a = handName(r, 0);
+  if (r.landmarks && r.landmarks.length > 1) {
+    const b = handName(r, 1);
+    if (a && a === b && DUO[a]) return DUO[a];
+  }
+  return a;
+}
 
 /** Сколько пальцев поднято — по 21 точке руки (не зависит от того, как повёрнута рука). */
 export function countFingers(lm) {
@@ -56,7 +59,8 @@ export function countFingers(lm) {
 }
 
 /**
- * Включить. onGesture(name) — жест подержали: 'Thumb_Up' | 'Thumb_Down' | 'Closed_Fist' | 'ILoveYou' | 'F1'…'F5' (сколько пальцев).
+ * Включить. onGesture(name) — жест подержали: 'Thumb_Up' | 'Thumb_Down' | 'Closed_Fist' | 'ILoveYou' | 'F1'…'F5' (сколько пальцев)
+ * или двумя руками: 'Duo_Victory' (✌️✌️) | 'Duo_Thumbs' (👍👍) | 'Duo_Palms' (🙌).
  * onSeen(name) — что видно прямо сейчас (для подсказки на экране). Бросает ошибку 'NotAllowedError', если нет доступа к камере.
  */
 export async function startGestures(videoEl, { onGesture, onSeen }) {
@@ -72,38 +76,18 @@ export async function startGestures(videoEl, { onGesture, onSeen }) {
     const t = performance.now();
     if (t <= lastT) return;
     lastT = t;
-    let name = '', palm = null;
+    let name = '';
     try {
       const r = recognizer.recognizeForVideo(video, t);
       name = gestureName(r);
-      palm = palmAt(r);
     } catch { return; }
     if (onSeen) onSeen(name);
-
-    // Смахивание открытой ладонью. В кадре камеры x зеркален: рука влево (от себя) — x растёт → «дальше»
-    if (palm && /^F[345]$/.test(name)) {
-      track.push({ t, ...palm });
-      track = track.filter((p) => t - p.t <= SWIPE_WINDOW_MS);
-      const first = track[0];
-      const dx = palm.x - first.x, dy = palm.y - first.y;
-      if (Math.abs(dx) >= SWIPE_DX && Math.abs(dy) <= SWIPE_MAX_DY && t - lastSwipe > SWIPE_PAUSE_MS) {
-        lastSwipe = t;
-        track = [];
-        held = { name, since: t, at: palm }; // после смахивания не считаем, что ладонь «держат»
-        fired = name;
-        onGesture(dx > 0 ? 'Swipe_Next' : 'Swipe_Prev');
-        return;
-      }
-    } else track = [];
-
-    if (name !== held.name) { held = { name, since: t, at: palm }; if (name !== fired) fired = ''; return; }
-    // «Подержать» — только если рука стоит на месте (иначе это смахивание, а не жест)
-    if (palm && held.at && Math.hypot(palm.x - held.at.x, palm.y - held.at.y) > STILL) { held = { name, since: t, at: palm }; return; }
-    if (!name || fired === name || t - held.since < HOLD_MS || t - lastFire < COOLDOWN_MS || t - lastSwipe < SWIPE_PAUSE_MS) return;
+    if (name !== held.name) { held = { name, since: t }; if (name !== fired) fired = ''; return; }
+    if (!name || fired === name || t - held.since < HOLD_MS || t - lastFire < COOLDOWN_MS) return;
     fired = name; // тот же жест повторно — только если опустить руку и показать снова
     lastFire = t;
     onGesture(name);
-  }, 70);
+  }, 100);
 }
 
 export function stopGestures() {
@@ -114,7 +98,6 @@ export function stopGestures() {
   if (video) video.srcObject = null;
   held = { name: '', since: 0 };
   fired = '';
-  track = [];
 }
 
 export const gesturesRunning = () => Boolean(stream);
