@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Задачи и сметы",
-  "version": "1.19.3",
+  "version": "1.20.0",
   "description": "Добавляет задачи менеджеров в таблицу, показывает ваши открытые задачи и записывает сметы — без захода в таблицу.",
   "action": {
     "default_title": "Задачи и сметы",
@@ -39,5 +39,8 @@
     "32": "icons/icon32.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   }
 }

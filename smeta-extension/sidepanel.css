@@ -714,3 +714,15 @@ dialog.whatsnew li + li { margin-top: 4px; }
 .le-addr[hidden] { display: none; }
 .lt-new { align-self: flex-start; margin-top: 8px; }
 .lt-newbox { border-style: dashed; }
+
+/* Жесты: кружок с камерой в углу, конфетти */
+.beta { font-size: 10px; padding: 1px 6px; border-radius: 999px; background: linear-gradient(100deg, var(--accent), var(--accent-2, #EC4899)); color: #fff; vertical-align: 1px; }
+.gest-bubble { position: fixed; right: 12px; bottom: 84px; z-index: 30; width: 64px; height: 64px; border-radius: 50%; overflow: hidden; border: 3px solid var(--accent); box-shadow: 0 8px 20px rgb(0 0 0 / .25); background: #000; }
+.gest-bubble[hidden] { display: none; }
+.gest-bubble video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+.gest-bubble span { position: absolute; right: -2px; bottom: -2px; font-size: 22px; line-height: 1; filter: drop-shadow(0 1px 2px rgb(0 0 0 / .5)); }
+.gest-bubble.pop { animation: gest-pop .4s ease-out; }
+@keyframes gest-pop { 40% { transform: scale(1.18); } }
+.confetti { position: fixed; inset: 0; pointer-events: none; z-index: 60; overflow: hidden; }
+.confetti span { position: absolute; top: -30px; animation: confetti-fall 2.2s ease-in forwards; }
+@keyframes confetti-fall { to { transform: translateY(110vh) rotate(540deg); opacity: .6; } }

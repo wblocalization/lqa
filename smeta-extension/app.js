@@ -6,6 +6,7 @@ import * as mine from './mine.js';
 import * as reports from './reports.js';
 import { loadMail } from './mail.js';
 import { showWhatsNew, whatsNewOnStart } from './whatsnew.js';
+import './gesture-ui.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {

@@ -424,6 +424,9 @@
       <button id="mlRemindTest" class="link-btn" type="button">Показать сейчас</button></div>
     <div class="ml-item"><div class="ml-head"><b>«Фьюх» при отправке письма</b><label class="switch"><input id="mlSendSound" type="checkbox" checked><span></span></label></div>
       <span class="ml-when">письмо подрядчику ушло — короткий звук</span></div>
+    <div class="r-sec">Жесты 🖐 <span class="beta">бета</span></div>
+    <div class="ml-item"><div class="ml-head"><b>Управление руками</b><label class="switch"><input id="mlGestures" type="checkbox"><span></span></label></div>
+      <span class="ml-when">камера ноутбука видит руку. Подержите жест секунду: 👍 — «Да» в окне «Вы уверены?», ✋ — «Отмена», ✌️ — сюрприз. Видео никуда не уходит; камера работает, только пока панель открыта.</span></div>
     <div class="r-sec">Рассылки — куда присылать вам</div>
     <div class="ml-card">
       <label>Куда присылать письма — <span id="mlWho"></span> <span class="opt">колонка M в «Списках»; пусто — писем не будет</span>
@@ -451,6 +454,7 @@
   <button class="tab" role="tab" data-tab="mail" data-title="Настройки" aria-controls="tabMail" aria-selected="false" type="button"><span class="pill"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.09a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>Настройки</button>
 </nav>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<div id="gestBubble" class="gest-bubble" hidden title="Жесты включены — выключить в «Настройках»"><video id="gestVideo" muted playsinline></video><span id="gestSeen"></span></div>
 <script type="module" src="app.js"></script>
 </body>
 </html>
