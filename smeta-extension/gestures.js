@@ -1,5 +1,5 @@
 // 🖐 Жесты (бета, для веселья): камера ноутбука + модель Google MediaPipe прямо в браузере — видео никуда не уходит.
-// 👍 — «Да» в окне подтверждения, ✋ — «Отмена», ✌️ — сюрприз. Жест надо подержать ~0.7 сек, чтобы случайно не сработало.
+// Что делает каждый жест — в gesture-ui.js. Жест надо подержать ~0.7 сек, чтобы случайно не сработало.
 // Включается в «Настройки» → «Жесты»; камера работает, только пока панель открыта и переключатель включён.
 import { FilesetResolver, GestureRecognizer } from './vendor/mediapipe/vision_bundle.mjs';
 
@@ -26,8 +26,30 @@ async function loadRecognizer() {
   return recognizer;
 }
 
+// Жесты с большим пальцем и кулак — как их понимает модель; остальное — по числу поднятых пальцев (F1…F5).
+const MODEL_GESTURES = ['Thumb_Up', 'Thumb_Down', 'Closed_Fist', 'ILoveYou'];
+function gestureName(r) {
+  const g = r.gestures && r.gestures[0] && r.gestures[0][0];
+  const cat = g && g.score >= MIN_SCORE ? g.categoryName : '';
+  if (MODEL_GESTURES.includes(cat)) return cat;
+  const lm = r.landmarks && r.landmarks[0];
+  if (!lm) return '';
+  const n = countFingers(lm);
+  return n >= 1 ? `F${n}` : '';
+}
+
+/** Сколько пальцев поднято — по 21 точке руки (не зависит от того, как повёрнута рука). */
+export function countFingers(lm) {
+  const d = (a, b) => Math.hypot(lm[a].x - lm[b].x, lm[a].y - lm[b].y);
+  let n = 0;
+  [[8, 6], [12, 10], [16, 14], [20, 18]].forEach(([tip, pip]) => { if (d(0, tip) > d(0, pip) * 1.12) n++; });
+  // большой палец отставлен: кончик дальше от основания мизинца, чем его собственный сустав (подобрано по фото рук)
+  if (d(4, 17) > d(2, 17) * 1.02) n++;
+  return n;
+}
+
 /**
- * Включить. onGesture(name) — жест подержали: 'Thumb_Up' | 'Open_Palm' | 'Victory' | 'Pointing_Up' | 'Closed_Fist' | 'ILoveYou' | 'Thumb_Down'.
+ * Включить. onGesture(name) — жест подержали: 'Thumb_Up' | 'Thumb_Down' | 'Closed_Fist' | 'ILoveYou' | 'F1'…'F5' (сколько пальцев).
  * onSeen(name) — что видно прямо сейчас (для подсказки на экране). Бросает ошибку 'NotAllowedError', если нет доступа к камере.
  */
 export async function startGestures(videoEl, { onGesture, onSeen }) {
@@ -46,8 +68,7 @@ export async function startGestures(videoEl, { onGesture, onSeen }) {
     let name = '';
     try {
       const r = recognizer.recognizeForVideo(video, t);
-      const g = r.gestures && r.gestures[0] && r.gestures[0][0];
-      if (g && g.score >= MIN_SCORE && g.categoryName !== 'None') name = g.categoryName;
+      name = gestureName(r);
     } catch { return; }
     if (onSeen) onSeen(name);
     if (name !== held.name) { held = { name, since: t }; if (name !== fired) fired = ''; return; }

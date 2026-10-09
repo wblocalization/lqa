@@ -426,7 +426,25 @@
       <span class="ml-when">письмо подрядчику ушло — короткий звук</span></div>
     <div class="r-sec">Жесты 🖐 <span class="beta">бета</span></div>
     <div class="ml-item"><div class="ml-head"><b>Управление руками</b><label class="switch"><input id="mlGestures" type="checkbox"><span></span></label></div>
-      <span class="ml-when">камера ноутбука видит руку. Подержите жест секунду: 👍 — «Да» в окне «Вы уверены?», ✋ — «Отмена», ✌️ — сюрприз. Видео никуда не уходит; камера работает, только пока панель открыта.</span></div>
+      <span class="ml-when">камера ноутбука видит руку — подержите жест секунду. Видео никуда не уходит; камера работает, только пока панель открыта.</span>
+      <details class="gest-help"><summary>Как включить и какой жест за что</summary>
+        <ol class="gest-steps">
+          <li>Включите переключатель выше. В первый раз откроется вкладка — нажмите «Разрешить» для камеры.</li>
+          <li>В углу появится кружок с камерой — в нём видно, какой жест распознан.</li>
+          <li>Покажите жест в камеру и подержите секунду. Тот же жест ещё раз — опустите руку и покажите снова.</li>
+          <li>Забыли жесты — нажмите на кружок, появится эта шпаргалка.</li>
+        </ol>
+        <table class="gest-map">
+          <tr><td>☝️</td><td>вкладка «Задача»</td></tr>
+          <tr><td>✌️</td><td>вкладка «Мои»</td></tr>
+          <tr><td>3 пальца</td><td>вкладка «Смета»</td></tr>
+          <tr><td>4 пальца</td><td>вкладка «Отчёты»</td></tr>
+          <tr><td>🖐</td><td>вкладка «Настройки»; в окне «Вы уверены?» — «Отмена»</td></tr>
+          <tr><td>✊</td><td>скопировать тему задачи (на экране «Добавлено»)</td></tr>
+          <tr><td>👍</td><td>под письмом — «📨 Отправить»; в окне «Вы уверены?» — «Да»</td></tr>
+          <tr><td>🤟 · 👎</td><td>сюрпризы 😉</td></tr>
+        </table>
+      </details></div>
     <div class="r-sec">Рассылки — куда присылать вам</div>
     <div class="ml-card">
       <label>Куда присылать письма — <span id="mlWho"></span> <span class="opt">колонка M в «Списках»; пусто — писем не будет</span>
@@ -454,7 +472,19 @@
   <button class="tab" role="tab" data-tab="mail" data-title="Настройки" aria-controls="tabMail" aria-selected="false" type="button"><span class="pill"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.09a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>Настройки</button>
 </nav>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-<div id="gestBubble" class="gest-bubble" hidden title="Жесты включены — выключить в «Настройках»"><video id="gestVideo" muted playsinline></video><span id="gestSeen"></span></div>
+<div id="gestBubble" class="gest-bubble" hidden title="Жесты включены — нажмите, чтобы увидеть шпаргалку"><video id="gestVideo" muted playsinline></video><span id="gestSeen"></span></div>
+<div id="gestCheat" class="gest-cheat" hidden><b>🖐 Жесты</b> — подержите секунду
+  <table class="gest-map">
+          <tr><td>☝️</td><td>вкладка «Задача»</td></tr>
+          <tr><td>✌️</td><td>вкладка «Мои»</td></tr>
+          <tr><td>3 пальца</td><td>вкладка «Смета»</td></tr>
+          <tr><td>4 пальца</td><td>вкладка «Отчёты»</td></tr>
+          <tr><td>🖐</td><td>вкладка «Настройки»; в окне «Вы уверены?» — «Отмена»</td></tr>
+          <tr><td>✊</td><td>скопировать тему задачи (на экране «Добавлено»)</td></tr>
+          <tr><td>👍</td><td>под письмом — «📨 Отправить»; в окне «Вы уверены?» — «Да»</td></tr>
+          <tr><td>🤟 · 👎</td><td>сюрпризы 😉</td></tr>
+        </table>
+  <button id="gestCheatOff" class="link-btn" type="button">Выключить жесты</button></div>
 <script type="module" src="app.js"></script>
 </body>
 </html>

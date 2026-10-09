@@ -726,3 +726,16 @@ dialog.whatsnew li + li { margin-top: 4px; }
 .confetti { position: fixed; inset: 0; pointer-events: none; z-index: 60; overflow: hidden; }
 .confetti span { position: absolute; top: -30px; animation: confetti-fall 2.2s ease-in forwards; }
 @keyframes confetti-fall { to { transform: translateY(110vh) rotate(540deg); opacity: .6; } }
+
+.gest-map { margin-top: 8px; border-collapse: collapse; font-size: 12.5px; width: 100%; }
+.gest-map td { padding: 4px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+.gest-map td:first-child { white-space: nowrap; font-size: 15px; width: 1%; }
+
+.gest-bubble { cursor: pointer; }
+.gest-help { margin-top: 8px; font-size: 12.5px; }
+.gest-help summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+.gest-steps { margin: 8px 0 4px; padding-left: 18px; color: var(--ink-soft); }
+.gest-steps li + li { margin-top: 3px; }
+.gest-cheat { position: fixed; right: 12px; bottom: 156px; z-index: 31; width: min(300px, calc(100% - 24px)); padding: 12px 12px 8px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); box-shadow: 0 12px 30px rgb(0 0 0 / .22); font-size: 13px; }
+.gest-cheat[hidden] { display: none; }
+.gest-cheat .link-btn { margin-top: 6px; color: var(--ink-soft); }
