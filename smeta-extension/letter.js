@@ -3,7 +3,7 @@
 // Почты и шаблоны — свои у каждого подрядчика, хранятся в расширении (chrome.storage, ключ «letters»),
 // делятся с коллегами вместе с шаблонами задач (⚙️ → «Скачать файлом»).
 import { toast, ask } from './core.js';
-import { OWA_ORIGIN } from './outlook.js';
+import { OWA_ORIGIN, openSent } from './outlook.js';
 import { sendMail } from './owa-send.js';
 import { richEditor, htmlToRichText } from './richtext.js';
 import { playSound } from './sounds.js';
@@ -439,7 +439,7 @@ els.send.addEventListener('click', async () => {
 });
 
 // Проверить, что письмо ушло: папка «Отправленные» в Outlook — новое письмо в ней первым
-els.sentOpen.addEventListener('click', () => chrome.tabs.create({ url: `${OWA_ORIGIN}/owa/#path=/mail/sentitems` }));
+els.sentOpen.addEventListener('click', () => openSent());
 
 /** Новое письмо в Outlook Web App — сразу с адресами, темой и текстом. */
 els.compose.addEventListener('click', async () => {

@@ -98,3 +98,36 @@ async function owaSearch(query) {
     removeEventListener('keydown', stop, true);
   }
 }
+
+/**
+ * «Проверить в «Отправленных»»: открыть Outlook и перейти в папку «Отправленные».
+ * Адрес …#path=/mail/sentitems при первой загрузке Outlook теряет (после входа открываются «Входящие»),
+ * поэтому, когда страница загрузилась, нажимаем на папку слева сами.
+ */
+export async function openSent() {
+  try {
+    const tab = await owaTab();
+    const [res] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: owaOpenSentInPage });
+    if (!(res && res.result)) toast('Откройте папку «Отправленные» слева — письмо будет в ней первым', 'warn');
+  } catch {
+    chrome.tabs.create({ url: `${OWA_URL}#path=/mail/sentitems` });
+  }
+}
+
+/** Выполняется на странице Outlook: дождаться списка папок и нажать «Отправленные». */
+async function owaOpenSentInPage() {
+  const NAMES = /^(Отправленные|Sent Items)$/i;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  for (let i = 0; i < 40; i++) { // до 20 секунд — пока Outlook догрузится
+    const el = [...document.querySelectorAll('[title], [role="treeitem"] span')]
+      .find((e) => NAMES.test((e.getAttribute('title') || e.textContent || '').trim()) && e.offsetParent !== null);
+    if (el) {
+      const target = el.closest('[role="treeitem"]') || el;
+      ['mousedown', 'mouseup', 'click'].forEach((type) => target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window })));
+      return true;
+    }
+    await sleep(500);
+  }
+  location.hash = '#path=/mail/sentitems';
+  return false;
+}
