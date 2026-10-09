@@ -108,7 +108,7 @@ function render() {
     return `<div class="mine-item${t.overdue ? ' overdue' : ''}">
       <div class="title">${title}</div>
       <div class="meta-row"><div class="meta">${esc(t.id || '—')}${t.ticket ? ' · ' + esc(t.ticket) : ''} · ${due}</div>
-        ${t.id ? `<button class="link-btn mail-btn" type="button" data-mail="${i}" title="Найти переписку в Outlook по номеру задачи">✉️ Переписка</button>` : ''}</div>
+        ${t.id ? `<button class="link-btn mail-btn" type="button" data-mail="${i}" title="Найти письма по этой задаче в Outlook">✉️ Почта</button>` : ''}</div>
       <div class="row-actions">
         <select data-i="${i}" class="status-sel" data-status="${esc(t.status)}" aria-label="Статус">
           <option value="">— статус —</option>
@@ -212,7 +212,7 @@ function renderFound() {
   els.found.innerHTML = found.length
     ? found.map((t, i) => `<div class="mine-item">
         <div class="title">${esc(t.title)}</div>
-        ${t.id ? `<div class="meta-row"><span></span><button class="link-btn mail-btn" type="button" data-mail-found="${i}" title="Найти переписку в Outlook по номеру задачи">✉️ Переписка</button></div>` : ''}
+        ${t.id ? `<div class="meta-row"><span></span><button class="link-btn mail-btn" type="button" data-mail-found="${i}" title="Найти письма по этой задаче в Outlook">✉️ Почта</button></div>` : ''}
         <div class="row-actions"><span class="meta" style="flex:1">${esc(t.id || '—')}${t.ticket ? ' · ' + esc(t.ticket) : ''} · ${esc(t.date)}${t.status ? ' · ' + esc(t.status) : ''}</span>
         <button class="btn ghost small" type="button" data-similar-found="${i}" title="Новая задача по образцу этой: тот же подрядчик, тикет, языки">＋ Ещё такую</button>
         <button class="btn ghost small" type="button" data-found="${i}">Изменить</button></div>
