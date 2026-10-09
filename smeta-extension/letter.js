@@ -75,7 +75,7 @@ export function withMaterials(text, links) {
 function varValues(c) {
   return {
     тема: c.subject, номер: c.id, языки: (c.languages || []).map((l) => l.toLowerCase()).join(', '), коды: (c.codes || []).join(', '),
-    срок: c.due || c.deadline, продукт: c.product, менеджер: c.manager, ссылка: c.link,
+    срок: c.due, // только «Срок сдачи» из формы, без года продукт: c.product, менеджер: c.manager, ссылка: c.link,
   };
 }
 export function fillTemplate(tpl, c) {
@@ -142,6 +142,7 @@ function render() {
   els.cc.value = parseEmails(l.cc).join(', ');
   bodyEdited = false;
   fillBody();
+  if (!ctx.due && /\{срок\}/i.test(l.body || DEFAULT_BODY)) toast('В задаче нет «Срока сдачи» — впишите дату в письмо сами', 'warn');
   renderSignature();
 }
 function fillBody() {
