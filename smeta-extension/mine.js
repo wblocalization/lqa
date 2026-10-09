@@ -1,5 +1,5 @@
 // Вкладка «Мои задачи»: открытые задачи менеджера, статус меняется прямо здесь.
-import { settings, saveSettings, isConfigured, api, esc } from './core.js';
+import { settings, saveSettings, isConfigured, api, esc, toast } from './core.js';
 import { openEditor } from './edit.js';
 import { openMail } from './outlook.js';
 
@@ -159,11 +159,13 @@ async function deleteTask(ref) {
       throw new Error('веб-приложение ещё старое. В Apps Script: «Развернуть → Управление развёртываниями → ✏️ → Версия: новая → Развернуть»');
     }
     if (!r.ok) throw new Error(r.error);
-    setMsg(`${label}: удалена`, 'ok');
+    setMsg('');
+    toast(`🗑 Задача ${ref.id || ''} удалена`.replace('  ', ' '));
   } catch (err) {
     deleted.delete(`${ref.id}|*`);
     deleted.delete(refKey(ref));
     setMsg(`${label}: не удалилась — ${err.message}`, 'err');
+    toast(`${label} не удалилась — ${err.message}`, 'err');
   }
   // Строки в таблице сдвинулись — берём свежий список (сообщение не трогаем)
   await loadMine({ keepMsg: true });

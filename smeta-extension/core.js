@@ -141,13 +141,41 @@ export function toast(text, kind = 'ok') {
   const el = document.getElementById('toast');
   if (!el) return;
   clearTimeout(toastTimer);
-  el.textContent = text;
+  const icon = { ok: '✓', err: '!', warn: '!', info: 'i' }[kind] || '✓';
+  el.innerHTML = `<span class="t-ic">${icon}</span><span class="t-txt">${esc(String(text).replace(/^✓\s*/, ''))}</span><button class="t-x" type="button" aria-label="Закрыть">×</button>`;
   el.className = `toast ${kind}`;
   el.hidden = false;
-  toastTimer = setTimeout(() => {
+  const hide = () => {
+    clearTimeout(toastTimer);
     el.classList.add('out');
     toastTimer = setTimeout(() => { el.hidden = true; }, 300);
-  }, 2600);
+  };
+  el.querySelector('.t-x').onclick = hide;
+  toastTimer = setTimeout(hide, kind === 'err' ? 6000 : kind === 'warn' ? 4500 : 3200);
+}
+
+/**
+ * Окно «Вы уверены?» вместо стандартного confirm. Возвращает true/false.
+ * ask({ title, text, ok: 'Удалить', danger: true })
+ */
+export function ask({ title, text = '', ok = 'Да', cancel = 'Отмена', danger = false, icon }) {
+  return new Promise((resolve) => {
+    const d = document.createElement('dialog');
+    d.className = `ask${danger ? ' danger' : ''}`;
+    d.innerHTML = `<div class="ask-ic">${icon || (danger ? '🗑' : '?')}</div><h3>${esc(title)}</h3>` +
+      (text ? `<p>${esc(text)}</p>` : '') +
+      `<div class="ask-btns"><button class="btn ghost" type="button" data-a="0">${esc(cancel)}</button>` +
+      `<button class="btn ${danger ? 'danger' : 'primary'}" type="button" data-a="1" id="askOk">${esc(ok)}</button></div>`;
+    document.body.appendChild(d);
+    let answer = false;
+    d.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-a]');
+      if (b) { answer = b.dataset.a === '1'; d.close(); } else if (e.target === d) d.close(); // клик мимо — отмена
+    });
+    d.addEventListener('close', () => { d.remove(); resolve(answer); });
+    d.showModal();
+    d.querySelector('[data-a="1"]').focus();
+  });
 }
 
 /** Запрос к таблице: ошибка — исключением, а «старый» скрипт — понятным текстом, что сделать. */

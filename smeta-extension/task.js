@@ -1,5 +1,5 @@
 // Вкладка «Новая задача»: то же, что окно «➕ Добавить задачу» в таблице, только без захода в таблицу.
-import { settings, isConfigured, api, esc, readClipboard, getLists, autoDeadline, setLink, toast } from './core.js';
+import { settings, isConfigured, api, esc, readClipboard, getLists, autoDeadline, setLink, toast, ask } from './core.js';
 import { makeLinkList } from './links.js';
 import { showLetter, lettersForExport, importLetters, loadLetters } from './letter.js';
 
@@ -299,7 +299,7 @@ els.saveTpl.addEventListener('click', async () => {
   const name = (prompt('Название шаблона:', current ? current.name : els.subject.value.trim()) || '').trim();
   if (!name) return;
   const existing = templates.findIndex((t) => t.name === name);
-  if (existing !== -1 && !confirm(`Шаблон «${name}» уже есть. Заменить?`)) return;
+  if (existing !== -1 && !await ask({ title: `Шаблон «${name}» уже есть`, text: 'Заменить его тем, что сейчас в форме?', ok: 'Заменить' })) return;
   const tpl = templateFromForm(name);
   if (existing !== -1) templates[existing] = tpl; else templates.push(tpl);
   await storeTemplates(name);
@@ -342,7 +342,7 @@ els.renTpl.addEventListener('click', async () => {
 
 els.delTpl.addEventListener('click', async () => {
   const t = templates[els.template.value];
-  if (!t || !confirm(`Удалить шаблон «${t.name}»?`)) return;
+  if (!t || !await ask({ title: `Удалить шаблон «${t.name}»?`, ok: 'Удалить', danger: true })) return;
   templates.splice(Number(els.template.value), 1);
   await storeTemplates();
   setMsg('');
@@ -522,9 +522,9 @@ els.form.addEventListener('submit', async (e) => {
   setMsg('Проверяю, нет ли такой задачи…');
   try {
     const d = await api({ action: 'checkDuplicates', task });
-    if (d.ok && d.duplicates && d.duplicates.length && !confirm('Похожая задача уже есть:\n\n' +
-        d.duplicates.map((x) => `${x.id || '—'} · ${x.title} · ${x.date} · ${x.manager} (${x.why})`).join('\n') +
-        '\n\nВсё равно добавить?')) {
+    if (d.ok && d.duplicates && d.duplicates.length && !await ask({ title: 'Похожая задача уже есть',
+        text: d.duplicates.map((x) => `${x.id || '—'} · ${x.title} · ${x.date} · ${x.manager} (${x.why})`).join('\n\n'),
+        ok: 'Всё равно добавить' })) {
       setMsg('Не добавлено — похожая задача уже есть.', 'err');
       return;
     }
@@ -539,7 +539,7 @@ els.form.addEventListener('submit', async (e) => {
     els.doneId.textContent = r.id;
     els.doneSubject.textContent = lastSubject;
     // Номер теперь точный — сразу кладём тему в буфер
-    document.getElementById('toast').hidden = true; // предупреждение о предварительном номере больше не нужно
+    toast(`Задача ${r.id} добавлена`); // заодно убирает предупреждение о предварительном номере
     els.doneCopied.hidden = true;
     navigator.clipboard.writeText(lastSubject).then(() => { els.doneCopied.hidden = false; }).catch(() => {});
     setLink(els.openRow, r.url);
@@ -549,6 +549,7 @@ els.form.addEventListener('submit', async (e) => {
     setMsg('');
   } catch (err) {
     setMsg(`Не добавилось: ${err.message}`, 'err');
+    toast('Задача не добавилась — причина под кнопкой', 'err');
   } finally {
     els.submit.disabled = false;
   }
@@ -609,6 +610,7 @@ async function addOrderRow(task) {
     els.doneSubject.textContent = lastSubject;
     els.doneCopied.hidden = true;
     setLink(els.openRow, r.url);
+    toast(`Строка добавлена в ${r.id}`);
     letterFor(task, r.id);
     exitRowMode();
     els.form.hidden = true;

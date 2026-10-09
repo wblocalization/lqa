@@ -1,5 +1,5 @@
 // Правка задачи из расширения: то же, что «Поиск и правка» в таблице.
-import { api, esc, getLists, autoDeadline } from './core.js';
+import { api, esc, getLists, autoDeadline, ask } from './core.js';
 import { makeLinkList } from './links.js';
 
 const $ = (s) => document.querySelector(s);
@@ -155,10 +155,10 @@ els.form.addEventListener('submit', async (e) => {
 
 // Удаление — как в «Поиске и правке» таблицы: с подтверждением, отменить нельзя.
 // После «ОК» окно сразу закрывается, задача пропадает из списка, а таблица удаляет строку в фоне (см. mine.js).
-els.del.addEventListener('click', () => {
+els.del.addEventListener('click', async () => {
   if (!current) return;
   const name = current.id ? `№ ${current.id}` : `«${current.subject}»`;
-  if (!confirm(`Точно удалить задачу ${name}?\n\nСтрока пропадёт из таблицы, отменить нельзя.`)) return;
+  if (!await ask({ title: `Удалить задачу ${name}?`, text: 'Строка пропадёт из таблицы, отменить нельзя.', ok: 'Удалить', danger: true })) return;
   const ref = { row: current.row, id: current.id || '', origSubject: current.origSubject };
   close();
   onDelete(ref);

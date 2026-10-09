@@ -1,5 +1,6 @@
 // Вкладка «Письма»: своя почта для писем и включение рассылок (то же, что «⚙️ Настройки» в таблице).
-import { settings, isConfigured, call, toast } from './core.js';
+import { settings, isConfigured, call, toast, ask, getLists } from './core.js';
+import { renderLetterList } from './letter.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
@@ -23,7 +24,15 @@ function render(st) {
   }
 }
 
+/** Письма подрядчикам — список и редактор; подрядчики из справочника таблицы (не загрузился — только настроенные). */
+async function loadLetterList() {
+  let contractors = [];
+  try { if (isConfigured()) contractors = ((await getLists()) || {}).contractors || []; } catch { /* только настроенные */ }
+  await renderLetterList($('#mlLetters'), contractors);
+}
+
 export async function loadMail() {
+  loadLetterList();
   if (!isConfigured() || !settings.manager) {
     els.who.textContent = '';
     return setMsg('Выберите себя в настройках (⚙️ → «Кто вы»)', 'err');
@@ -56,7 +65,7 @@ els.list.addEventListener('change', async (e) => {
   const cb = e.target.closest('input[data-kind]');
   if (!cb) return;
   const on = cb.checked;
-  if (!confirm(on ? 'Включить это письмо для всей команды? Его получат все, у кого вписана почта.' : 'Выключить это письмо для всей команды?')) {
+  if (!await ask(on ? { title: 'Включить для всей команды?', text: 'Письмо получат все, у кого вписана почта.', ok: 'Включить' } : { title: 'Выключить для всей команды?', ok: 'Выключить', danger: true, icon: '!' })) {
     cb.checked = !on;
     return;
   }

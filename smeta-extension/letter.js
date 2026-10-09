@@ -2,7 +2,7 @@
 // Скопировать по частям (панель открыта рядом с Outlook) или открыть новое письмо в Outlook уже заполненным.
 // Почты и шаблоны — свои у каждого подрядчика, хранятся в расширении (chrome.storage, ключ «letters»),
 // делятся с коллегами вместе с шаблонами задач (⚙️ → «Скачать файлом»).
-import { toast } from './core.js';
+import { toast, ask } from './core.js';
 import { OWA_ORIGIN } from './outlook.js';
 import { sendMail } from './owa-send.js';
 import { richEditor } from './richtext.js';
@@ -115,7 +115,8 @@ let bodyEdited = false; // текст поправили руками — шаб
 // Текст письма и шаблона — как в почте: жирный виден жирным; в шаблоне вместо {языки}, {срок}… сразу
 // видно, что подставится из этой задачи (цветным).
 const bodyEd = richEditor(els.body, { onInput: () => { bodyEdited = true; }, onSelect: () => syncBold() });
-const tplEd = richEditor(els.eBody, { valueOf: (name) => (ctx ? varValues(ctx)[name] || '' : ''), onSelect: () => syncBold() });
+let editing = null; // { contractor, host, onDone, ctx } — чей шаблон открыт и где (под задачей или во вкладке «Письма»)
+const tplEd = richEditor(els.eBody, { valueOf: (name) => (editing && editing.ctx ? varValues(editing.ctx)[name] || '' : ''), onSelect: () => syncBold() });
 const boldBtns = [[$('#lBold'), bodyEd], [$('#lEBold'), tplEd]];
 function syncBold() {
   boldBtns.forEach(([btn, ed]) => {
@@ -345,9 +346,9 @@ els.send.addEventListener('click', async () => {
   const text = bodyEd.get().trim();
   if (!text) return toast('Письмо пустое', 'err');
   const sigText = signature ? (signature.text || htmlToText(signature.html)) : '';
-  const ok = confirm(`Отправить письмо?\n\nКому: ${to.join(', ')}` + (cc.length ? `\nКопия: ${cc.join(', ')}` : '') +
+  const ok = await ask({ title: 'Отправить письмо?', ok: 'Отправить', icon: '📨', text: `Кому: ${to.join(', ')}` + (cc.length ? `\nКопия: ${cc.join(', ')}` : '') +
     `\nТема: ${ctx.subject}` + (files.length ? `\nВложения: ${files.map((f) => f.name).join(', ')}` : '') +
-    `\n\n${plain(text.length > 400 ? `${text.slice(0, 400)}…` : text)}` + (sigText ? `\n\n${sigText}` : '\n\n(без подписи)'));
+    `\n\n${plain(text.length > 400 ? `${text.slice(0, 400)}…` : text)}` + (sigText ? `\n\n${sigText}` : '\n\n(без подписи)') });
   if (!ok) return;
   els.send.disabled = true;
   els.send.textContent = files.length ? 'Отправляю с вложениями…' : 'Отправляю…';
@@ -450,47 +451,97 @@ async function owaAttach(list) {
 }
 
 // ---------- Настройка для подрядчика ----------
-function openEditor() {
-  const l = letters[ctx.contractor] || {};
+// Открывается под добавленной задачей («✏️ Настроить») или во вкладке «Письма» (host — куда поставить редактор).
+function openEditor(contractor = ctx && ctx.contractor, { host = null, onDone = null } = {}) {
+  if (editing && editing.host && editing.host !== host) closeEditor();
+  editing = { contractor, host, onDone, ctx: host ? null : ctx };
+  const l = letters[contractor] || {};
+  (host || els.box).appendChild(els.editor);
   els.eTo.value = parseEmails(l.to).join('\n');
   els.eCc.value = parseEmails(l.cc).join('\n');
   tplEd.set(l.body || DEFAULT_BODY);
-  els.remove.hidden = !letters[ctx.contractor];
+  els.remove.hidden = !letters[contractor];
   els.editor.hidden = false;
-  els.view.hidden = true;
-  els.empty.hidden = true;
-  els.edit.hidden = true;
+  if (!host) {
+    els.view.hidden = true;
+    els.empty.hidden = true;
+    els.edit.hidden = true;
+  }
   els.eTo.focus();
 }
 function closeEditor() {
   els.editor.hidden = true;
   els.edit.hidden = false;
+  const was = editing;
+  editing = null;
+  if (was && was.host) {
+    els.box.appendChild(els.editor);
+    if (was.onDone) was.onDone();
+  } else if (was && ctx) render();
 }
 
-els.edit.addEventListener('click', openEditor);
+els.edit.addEventListener('click', () => openEditor());
 els.empty.addEventListener('click', (e) => { if (e.target.closest('button')) openEditor(); });
-els.cancel.addEventListener('click', () => { closeEditor(); render(); });
+els.cancel.addEventListener('click', () => closeEditor());
 els.save.addEventListener('click', async () => {
+  const who = editing.contractor;
   const to = parseEmails(els.eTo.value);
   const cc = parseEmails(els.eCc.value);
   await loadLetters();
-  letters[ctx.contractor] = { to: to.join('; '), cc: cc.join('; '), body: tplEd.get().trim() || DEFAULT_BODY };
+  letters[who] = { to: to.join('; '), cc: cc.join('; '), body: tplEd.get().trim() || DEFAULT_BODY };
   await chrome.storage.local.set({ letters });
   closeEditor();
-  render();
-  toast(`✓ Письмо для ${ctx.contractor} сохранено`);
+  if (ctx && ctx.contractor === who && !els.box.hidden) render();
+  toast(`Письмо для ${who} сохранено`);
 });
 
 // Стереть почты и шаблон подрядчика целиком
 els.remove.addEventListener('click', async () => {
-  if (!confirm(`Удалить почты и шаблон письма для ${ctx.contractor}?`)) return;
+  const who = editing.contractor;
+  if (!await ask({ title: `Удалить письмо для ${who}?`, text: 'Почты и текст письма этого подрядчика сотрутся.', ok: 'Удалить', danger: true })) return;
   await loadLetters();
-  delete letters[ctx.contractor];
+  delete letters[who];
   await chrome.storage.local.set({ letters });
   closeEditor();
-  render();
-  toast(`Почты и шаблон для ${ctx.contractor} удалены`);
+  if (ctx && ctx.contractor === who && !els.box.hidden) render();
+  toast(`🗑 Письмо для ${who} удалено`);
 });
+
+/**
+ * Вкладка «Письма»: все подрядчики — у кого письмо уже настроено и у кого ещё нет. Нажали — редактор прямо там.
+ * contractors — из справочника таблицы (может быть пустым — тогда только уже настроенные).
+ */
+export async function renderLetterList(box, contractors = []) {
+  await loadLetters();
+  const names = [...new Set([...Object.keys(letters), ...contractors])].filter(Boolean);
+  names.sort((a, b) => (Boolean(letters[b]) - Boolean(letters[a])) || a.localeCompare(b, 'ru'));
+  if (editing && editing.host && box.contains(editing.host)) closeEditor();
+  box.innerHTML = '';
+  if (!names.length) { box.innerHTML = '<p class="field-note">Подрядчиков пока нет — они берутся из «Списков» таблицы.</p>'; return; }
+  names.forEach((name) => {
+    const l = letters[name];
+    const item = document.createElement('div');
+    item.className = `ml-item lt-item${l ? '' : ' unset'}`;
+    const head = document.createElement('div');
+    head.className = 'ml-head';
+    const info = document.createElement('div');
+    info.className = 'lt-info';
+    const b = document.createElement('b'); b.textContent = name;
+    const sub = document.createElement('span'); sub.className = 'ml-when';
+    sub.textContent = l ? (parseEmails(l.to).join(', ') || 'без адреса') : 'ещё не настроено';
+    info.append(b, sub);
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'btn ghost small';
+    btn.textContent = l ? '✏️ Изменить' : 'Настроить';
+    btn.addEventListener('click', () => {
+      if (editing && editing.host === item) return closeEditor();
+      openEditor(name, { host: item, onDone: () => renderLetterList(box, contractors) });
+    });
+    head.append(info, btn);
+    item.append(head);
+    box.append(item);
+  });
+}
 
 // Вставили ссылки — текст письма обновляется сразу
 els.links.addEventListener('input', () => { if (ctx && letters[ctx.contractor]) fillBody(); });
