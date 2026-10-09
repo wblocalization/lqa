@@ -200,26 +200,37 @@ function openSigEdit() {
   els.sigEdit.hidden = false;
   els.sigText.focus();
 }
-els.sigSave.addEventListener('click', async () => {
-  const text = els.sigText.value.trim();
+async function saveSignature(text) {
+  text = text.trim();
   // текст поменяли — своя подпись, без оформления Outlook
   signature = text ? (signature && signature.html && htmlToText(signature.html) === text ? signature : { text }) : null;
   await chrome.storage.local.set({ signature });
-  renderSignature();
+  if (ctx) renderSignature();
   toast(text ? '✓ Подпись сохранена — будет в каждом письме' : 'Подпись убрана');
-});
-els.sigFetch.addEventListener('click', async () => {
-  els.sigFetch.disabled = true;
+}
+async function fetchInto(btn, textarea) {
+  btn.disabled = true;
   try {
     const s = await fetchOutlookSignature();
     if (!s) return toast('Не нашла подпись в Outlook — вставьте её сюда текстом', 'warn');
     signature = s;
-    els.sigText.value = s.text || htmlToText(s.html);
+    textarea.value = s.text || htmlToText(s.html);
     toast('✓ Подпись взята из Outlook — нажмите «Сохранить подпись»');
   } finally {
-    els.sigFetch.disabled = false;
+    btn.disabled = false;
   }
-});
+}
+els.sigSave.addEventListener('click', () => saveSignature(els.sigText.value));
+els.sigFetch.addEventListener('click', () => fetchInto(els.sigFetch, els.sigText));
+
+// Подпись во вкладке «Письма» — то же самое, что «изменить подпись» в письме
+const card = { text: $('#mlSigText'), save: $('#mlSigSave'), fetch: $('#mlSigFetch') };
+export async function renderSignatureCard() {
+  await loadSignature();
+  card.text.value = signature ? (signature.text || htmlToText(signature.html)) : '';
+}
+card.save.addEventListener('click', () => saveSignature(card.text.value));
+card.fetch.addEventListener('click', () => fetchInto(card.fetch, card.text));
 
 /** Подпись из Outlook (нужна открытая вкладка с почтой). */
 async function fetchOutlookSignature() {
@@ -360,7 +371,7 @@ els.send.addEventListener('click', async () => {
     renderFiles();
     els.send.textContent = '✓ Отправлено';
     const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-    els.sentText.textContent = `Ушло в ${time} → ${to.join(', ')}`;
+    els.sentText.textContent = `✓ Отправлено в ${time} → ${to.join(', ')}`;
     els.sent.hidden = false;
     toast('📨 Письмо отправлено — оно в «Отправленных»');
   } catch (e) {

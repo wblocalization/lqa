@@ -653,3 +653,7 @@ b .var-pill, strong .var-pill { font-weight: 800; }
 .c-sent { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 8px; padding: 10px; border-radius: 12px; background: color-mix(in srgb, var(--ok) 10%, var(--card)); font-size: 12.5px; color: var(--ink); text-align: center; }
 .c-sent[hidden] { display: none; }
 .composer > .c-sent { margin: -2px 12px 10px; }
+.ml-sig { display: flex; flex-direction: column; gap: 8px; }
+.ml-sig textarea { font-weight: 400; }
+.ml-sig .row-btns { display: flex; gap: 8px; }
+.ml-sig .row-btns .btn { flex: 1; }
