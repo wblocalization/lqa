@@ -1,0 +1,121 @@
+/* Тема «Лаванда» — как у расширения «Задачи и сметы». Шрифт Onest (OFL) — в папке fonts. Тёмная — как в системе. */
+@font-face { font-family: 'Onest'; font-weight: 400; font-display: swap; src: url(fonts/onest-cyrillic-400-normal.woff2) format('woff2'); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
+@font-face { font-family: 'Onest'; font-weight: 400; font-display: swap; src: url(fonts/onest-latin-400-normal.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Onest'; font-weight: 600; font-display: swap; src: url(fonts/onest-cyrillic-600-normal.woff2) format('woff2'); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
+@font-face { font-family: 'Onest'; font-weight: 600; font-display: swap; src: url(fonts/onest-latin-600-normal.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Onest'; font-weight: 700; font-display: swap; src: url(fonts/onest-cyrillic-700-normal.woff2) format('woff2'); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
+@font-face { font-family: 'Onest'; font-weight: 700; font-display: swap; src: url(fonts/onest-latin-700-normal.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+
+:root {
+  --bg: #FCFBFF; --card: #FFFFFF; --soft: #F2EEFF; --ink: #2A2140; --ink-soft: #7A7194; --line: #E7E1F7;
+  --accent: #8B5CF6; --accent-2: #EC4899; --on-accent: #FFFFFF;
+  --ok: #16A34A; --ok-soft: #EEFBF2; --err: #E11D74; --err-soft: #FFEFF6;
+  --shadow: 0 4px 14px rgb(42 33 64 / .06); --glow: 0 6px 16px rgb(139 92 246 / .3);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17131F; --card: #1E1829; --soft: #251E37; --ink: #EEE9FA; --ink-soft: #A79DC0; --line: #362C4D;
+    --accent: #A78BFA; --accent-2: #F472B6;
+    --ok: #4ADE80; --ok-soft: #17271D; --err: #FB7185; --err-soft: #331A26;
+    --shadow: 0 4px 14px rgb(0 0 0 / .25); --glow: 0 6px 16px rgb(167 139 250 / .25);
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 Onest, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+b { font-weight: 700; }
+
+/* ---------- Шапка ---------- */
+.top { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 4px; padding: 12px 8px 12px 16px;
+  background: var(--bg); border-bottom: 1px solid var(--line); }
+.brand { flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.logo { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; flex: none; color: #fff;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+.logo svg { width: 16px; height: 16px; }
+.top h1 { margin: 0; font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.top h1 em { font-style: normal; color: var(--accent); }
+.icon-btn { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: none; border-radius: 8px;
+  background: transparent; color: var(--ink-soft); font: 700 15px Onest, system-ui, sans-serif; cursor: pointer; }
+.icon-btn:hover, .icon-btn[aria-pressed="true"] { background: var(--soft); color: var(--accent); }
+
+main { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+
+.kicker { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--accent); }
+
+/* ---------- Как это работает ---------- */
+.intro { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 16px;
+  background: var(--card); box-shadow: var(--shadow); }
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.steps li { display: flex; gap: 10px; align-items: flex-start; }
+.steps .n { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+  background: var(--soft); color: var(--accent); font-weight: 700; font-size: 12.5px; }
+.steps li > div { flex: 1; min-width: 0; padding-top: 1px; }
+.steps .hint { display: block; color: var(--ink-soft); font-size: 13px; }
+.fine { margin: 2px 0 0; font-size: 12px; color: var(--ink-soft); }
+
+/* мини-Band с меню правого клика */
+.demo { margin-top: 8px; display: flex; flex-direction: column; }
+.demo .msg { display: flex; gap: 8px; padding: 9px 10px; border-radius: 12px; background: var(--soft); font-size: 12.5px; line-height: 1.35; }
+.demo .ava { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 10px; font-weight: 700; }
+.demo .menu { align-self: flex-end; position: relative; margin: -6px 4px 0 0; display: flex; flex-direction: column; min-width: 190px; padding: 4px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--card); box-shadow: 0 8px 22px rgb(42 33 64 / .14); font-size: 12px; }
+.demo .menu span { padding: 3px 8px; border-radius: 6px; color: var(--ink-soft); }
+.demo .menu .hl { background: var(--accent); color: #fff; font-weight: 600; }
+
+/* ---------- Форма ---------- */
+.form { display: flex; flex-direction: column; gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 5px; }
+.lbl { font-size: 12.5px; font-weight: 600; color: var(--ink-soft); }
+.req { color: var(--err); }
+.opt { font-weight: 400; }
+input, select, textarea { width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--card); color: var(--ink); font: 400 14px/1.4 Onest, system-ui, sans-serif; }
+select { appearance: auto; }
+textarea { resize: vertical; min-height: 140px; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.from { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 12px;
+  background: linear-gradient(100deg, var(--soft), var(--err-soft)); color: var(--ink-soft); font-size: 12.5px; }
+.from a { color: var(--accent); font-weight: 600; }
+
+.btn { width: 100%; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  font: 600 14px Onest, system-ui, sans-serif; cursor: pointer; }
+.btn:hover { background: var(--soft); }
+.btn.primary { padding: 12px 16px; font-size: 15px; border: none; border-radius: 14px; color: var(--on-accent);
+  background: linear-gradient(100deg, var(--accent), var(--accent-2)); box-shadow: var(--glow); }
+.btn.primary:hover { filter: brightness(1.07); }
+.btn:disabled { opacity: .55; cursor: progress; }
+.btn.small { width: auto; padding: 5px 10px; font-size: 12.5px; border-radius: 10px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; }
+
+/* ---------- Готово ---------- */
+.done { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 18px 14px;
+  border: 1px solid var(--line); border-radius: 16px; background: var(--card); box-shadow: var(--shadow); }
+.key { display: inline-block; padding: 8px 16px; border-radius: 12px; background: var(--soft); color: var(--accent);
+  font-size: 22px; font-weight: 700; text-decoration: none; }
+.key:hover { text-decoration: underline; }
+.done-title { margin: 0 0 4px; color: var(--ink-soft); }
+
+/* ---------- Типы задач ---------- */
+.boards h2 { margin: 0 0 10px; font-size: 17px; }
+.tip { padding: 10px 12px; border-radius: 12px; background: var(--soft); font-size: 13px; }
+.board-list { list-style: none; margin: 12px 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.board-list li { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); box-shadow: var(--shadow); }
+.board-list .bname { flex: 1; min-width: 0; }
+.board-list .bname b { display: block; overflow-wrap: anywhere; }
+.board-list .bname small { color: var(--ink-soft); }
+.boards-mode main > :not(#boards):not(#msg) { display: none !important; }
+
+.status { margin: 0; padding: 10px 12px; border-radius: 12px; font-size: 13px; color: var(--ink-soft); background: var(--soft); }
+.status:empty { display: none; }
+.status.ok { color: var(--ok); background: var(--ok-soft); font-weight: 600; }
+.status.err { color: var(--err); background: var(--err-soft); font-weight: 600; }
+
+.toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 5; width: max-content; max-width: calc(100% - 24px);
+  padding: 9px 16px; border-radius: 14px; background: var(--ok); color: #fff; font-weight: 600; font-size: 13.5px;
+  box-shadow: 0 8px 22px rgb(0 0 0 / .18); }
+@media (prefers-color-scheme: dark) { .toast { color: #10261A; } }

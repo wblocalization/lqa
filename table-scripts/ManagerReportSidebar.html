@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<?!= include('Общее') ?>
+</head>
+<body>
+  <h2>Отчёт по менеджеру</h2>
+  <div class="stack">
+    <div class="two">
+      <label class="field">Менеджер<select id="manager"></select></label>
+      <label class="field">Месяц<select id="month"></select></label>
+    </div>
+    <label class="field">Считать по<select id="by"><option value="date">дате поступления</option><option value="due">дате закрытия (срок сдачи)</option></select></label>
+    <button class="btn primary" id="runBtn" type="button">Сформировать отчёт</button>
+  </div>
+  <div id="results"></div>
+  <div class="two" id="actions" hidden style="margin-top:8px">
+    <button class="btn" id="copyBtn" type="button">Скопировать текстом</button>
+    <button class="btn" id="exportBtn" type="button">📥 Скачать Excel</button>
+  </div>
+  <div id="msg" class="msg" style="margin-top:6px"></div>
+
+  <hr class="sep">
+  <h2>Отчёт для трекера</h2>
+  <div class="stack">
+    <label class="field">Тикет<select id="ticket"></select></label>
+    <button class="btn primary" id="trackerBtn" type="button">Сформировать</button>
+  </div>
+  <pre class="out" id="trackerOut" hidden></pre>
+  <button class="btn full" id="trackerCopy" type="button" hidden>Скопировать</button>
+  <div id="trackerMsg" class="msg"></div>
+
+<script>
+  let report = null, trackerText = '';
+
+  Promise.all([run('getManagersList'), run('getMonthsList'), run('getTicketsForReport'), run('getAddTaskFormLists')])
+    .then(([managers, months, tickets, lists]) => {
+      fillSelect($('#manager'), managers, 'Выберите…', lists.currentManager);
+      $('#month').innerHTML = '<option value="">Все месяцы</option>' + months.map(m => `<option value="${m.value}">${esc(m.label)}</option>`).join('');
+      fillSelect($('#ticket'), tickets, 'Выберите тикет…');
+    }).catch(e => setMsg($('#msg'), 'Не получилось загрузить списки: ' + e.message, 'err'));
+
+  $('#runBtn').addEventListener('click', () => {
+    const manager = $('#manager').value;
+    if (!manager) return setMsg($('#msg'), 'Выберите менеджера', 'err');
+    $('#results').innerHTML = '<p class="muted">Считаю…</p>';
+    $('#actions').hidden = true;
+    setMsg($('#msg'), '');
+    run('getManagerReport', manager, $('#month').value, $('#by').value).then(render)
+      .catch(e => { $('#results').innerHTML = ''; setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'); });
+  });
+
+  function render(d) {
+    report = d;
+    if (!d.groups.length) { $('#results').innerHTML = '<p class="muted">Ничего не найдено.</p>'; return; }
+    let html = `<div class="tiles">
+      <div class="tile"><div class="num">${d.taskCount}</div><div class="lbl">тикетов</div></div>
+      <div class="tile"><div class="num">${d.lineCount}</div><div class="lbl">задач</div></div>
+      <div class="tile"><div class="num">${d.grandTotal}</div><div class="lbl">SP</div></div>
+      <div class="tile"><div class="num">${money(d.grandMoney)}</div><div class="lbl">₽ с НДС</div></div></div>`;
+    d.groups.forEach(g => {
+      html += `<div class="group"><h4>${esc(g.ticket || '(без тикета)')}</h4>` +
+        g.lines.map(l => `<div class="line"><span>${l.link ? `<a href="${esc(l.link)}" target="_blank">${esc(l.subject)}</a>` : esc(l.subject)}` +
+          l.link2.split('\n').filter(Boolean).map((u, i) => ` <a href="${esc(u)}" target="_blank" class="small">(ссылка ${i + 2})</a>`).join('') + `</span><span class="v">${l.sp} SP</span></div>`).join('') +
+        `<div class="line"><span class="muted">Итого по тикету</span><span class="v">${g.ticketTotal} SP</span></div></div>`;
+    });
+    html += `<div class="total">Общий итог по ${esc(d.manager)}${d.monthLabel ? ' за ' + esc(d.monthLabel) : ''}: ${d.grandTotal} SP</div>`;
+    $('#results').innerHTML = html;
+    $('#actions').hidden = false;
+  }
+
+  $('#copyBtn').addEventListener('click', () => {
+    if (!report) return;
+    let html = '';
+    report.groups.forEach(g => g.lines.forEach(l => {
+      html += `<div>${l.link ? `<a href="${esc(l.link)}">${esc(l.subject)}</a>` : esc(l.subject)} — ${l.sp} SP</div>`;
+    }));
+    html += `<div><b>Общий итог по ${esc(report.manager)}: ${report.grandTotal} SP</b></div>`;
+    copyHtml(html);
+    setMsg($('#msg'), 'Скопировано — ссылки кликабельны при вставке в Doc, почту, Band', 'ok');
+  });
+
+  $('#exportBtn').addEventListener('click', () => {
+    setMsg($('#msg'), 'Готовлю файл…');
+    run('exportReportToDoc', $('#manager').value, $('#month').value, $('#by').value).then(url => {
+      setMsg($('#msg'), 'Готово — файл скачивается', 'ok');
+      window.open(url, '_blank');
+    }).catch(e => setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'));
+  });
+
+  $('#trackerBtn').addEventListener('click', () => {
+    const ticket = $('#ticket').value;
+    if (!ticket) return setMsg($('#trackerMsg'), 'Выберите тикет', 'err');
+    setMsg($('#trackerMsg'), 'Считаю…');
+    run('getTrackerReportText', ticket).then(r => {
+      trackerText = r.text;
+      $('#trackerOut').hidden = !r.count;
+      $('#trackerCopy').hidden = !r.count;
+      $('#trackerOut').textContent = r.text;
+      setMsg($('#trackerMsg'), r.count ? '' : 'По этому тикету задач нет');
+    }).catch(e => setMsg($('#trackerMsg'), 'Не получилось: ' + e.message, 'err'));
+  });
+  $('#trackerCopy').addEventListener('click', () => copyText(trackerText).then(() => setMsg($('#trackerMsg'), 'Скопировано', 'ok')));
+</script>
+</body>
+</html>

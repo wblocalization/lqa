@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<?!= include('Общее') ?>
+<style>
+  a.btn { display: block; text-align: center; text-decoration: none; }
+  .sum { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-top: 12px; }
+  .sum .tiles { margin: 0 0 6px; }
+  .sum .tile .num { font-size: 18px; }
+  .issues { font-size: 12.5px; }
+  .issues.bad { color: var(--warn); }
+  .issues.ok { color: var(--ok); }
+  .what { font-size: 12px; color: var(--soft); margin: 0 0 12px; }
+</style>
+</head>
+<body>
+  <p class="what">В Excel — все колонки таблицы в том же порядке и с теми же названиями: № задачи, языки, ссылка на смету,
+    сумма с НДС и остальное. Фильтр в Excel уже включён. Рядом — листы «Итоги» (по подрядчикам, менеджерам и языкам) и «Проверить».</p>
+  <div class="stack">
+    <div class="two">
+      <label class="field">Месяц<select id="month"></select></label>
+      <label class="field">Считать по<select id="by">
+        <option value="date">дате поступления</option>
+        <option value="due">дате закрытия (срок сдачи)</option>
+      </select></label>
+    </div>
+    <div class="two">
+      <label class="field">Подрядчик<select id="contractor"></select></label>
+      <label class="field">Менеджер<select id="manager"></select></label>
+    </div>
+    <label class="field">Язык<select id="lang"></select></label>
+  </div>
+
+  <div class="sum">
+    <div class="tiles">
+      <div class="tile"><div class="num" id="pOrders">…</div><div class="lbl">заказов</div></div>
+      <div class="tile"><div class="num" id="pLines">…</div><div class="lbl">строк</div></div>
+      <div class="tile"><div class="num" id="pTotal">…</div><div class="lbl">₽ с НДС</div></div>
+    </div>
+    <div id="pIssues" class="issues"></div>
+  </div>
+
+  <button class="btn primary full" id="go" type="button" style="margin-top:12px">📥 Скачать Excel</button>
+  <div id="result" class="two" hidden style="margin-top:8px">
+    <a class="btn" id="rXlsx" target="_blank">📥 Скачать ещё раз</a>
+    <a class="btn" id="rSheet" target="_blank">Открыть в Google</a>
+  </div>
+  <div id="msg" class="msg" style="margin-top:6px"></div>
+
+<script>
+  // Списки пришли вместе с окном — показываем сразу
+  const OPTS = <?!= opts ?>;
+  $('#month').innerHTML = '<option value="">Всё время</option>' +
+    OPTS.months.map(m => `<option value="${m.value}"${m.value === OPTS.current ? ' selected' : ''}>${esc(m.label)}</option>`).join('');
+  fillSelect($('#contractor'), OPTS.contractors, 'Все подрядчики');
+  fillSelect($('#manager'), OPTS.managers, 'Все менеджеры');
+  fillSelect($('#lang'), OPTS.langs, 'Все языки');
+
+  const filters = () => ({ month: $('#month').value, by: $('#by').value, contractor: $('#contractor').value, manager: $('#manager').value, lang: $('#lang').value });
+
+  // Сводка по выбранным фильтрам — обновляется сама
+  let seq = 0;
+  function preview() {
+    const my = ++seq;
+    ['#pOrders', '#pLines', '#pTotal'].forEach(id => { $(id).textContent = '…'; });
+    $('#pIssues').textContent = 'Считаю…';
+    $('#pIssues').className = 'issues';
+    $('#result').hidden = true;
+    run('moneyExportPreview', filters()).then(p => {
+      if (my !== seq) return;
+      $('#pOrders').textContent = p.orders;
+      $('#pLines').textContent = p.lines;
+      $('#pTotal').textContent = money(p.total);
+      if (!p.lines) { $('#pIssues').textContent = 'По этим фильтрам задач нет.'; return; }
+      $('#pIssues').textContent = p.issues
+        ? '⚠️ Проверить: ' + p.issues + ' (сумма без сметы, отдано без суммы и т. п.) — список будет на листе «Проверить».'
+        : '✓ Всё сходится: у всех сумм есть сметы и наоборот.';
+      $('#pIssues').className = 'issues ' + (p.issues ? 'bad' : 'ok');
+    }).catch(e => { if (my === seq) { $('#pIssues').textContent = ''; setMsg($('#msg'), 'Не получилось посчитать: ' + e.message, 'err'); } });
+  }
+  ['#month', '#by', '#contractor', '#manager', '#lang'].forEach(id => $(id).addEventListener('change', preview));
+  preview();
+
+  $('#go').addEventListener('click', () => {
+    const btn = $('#go');
+    btn.disabled = true;
+    btn.textContent = 'Собираю файл… 5–15 секунд';
+    setMsg($('#msg'), '');
+    run('exportMoneyExcel', filters()).then(r => {
+      $('#rXlsx').href = r.url;
+      $('#rSheet').href = r.sheetUrl;
+      $('#result').hidden = false;
+      setMsg($('#msg'), r.lines ? 'Готово: «' + r.name + '» — файл скачивается' : 'По этим фильтрам задач нет — файл пустой.', r.lines ? 'ok' : '');
+      if (r.lines) window.open(r.url, '_blank');
+    }).catch(e => setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'))
+      .finally(() => { btn.disabled = false; btn.textContent = '📥 Скачать Excel'; });
+  });
+</script>
+</body>
+</html>

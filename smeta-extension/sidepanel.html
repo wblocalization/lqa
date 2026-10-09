@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Задачи и сметы</title>
+<link rel="stylesheet" href="sidepanel.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<header class="top">
+  <h1 id="pageTitle" class="page-title">Новая задача</h1>
+  <a id="openTable" class="icon-btn" href="#" target="_blank" rel="noopener" title="Открыть таблицу" aria-label="Открыть таблицу" hidden>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
+  </a>
+  <button id="themeBtn" class="icon-btn" type="button" title="Светлая / тёмная тема" aria-label="Светлая / тёмная тема">
+    <svg class="i-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+    <svg class="i-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+  </button>
+  <button id="openSettings" class="icon-btn" type="button" title="Подключение к таблице и «Кто вы»" aria-label="Подключение к таблице">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.09a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+  </button>
+</header>
+
+<main>
+  <section id="settings" class="card settings" hidden>
+    <h2>Подключение</h2>
+    <label>Адрес веб-приложения
+      <input id="setUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec">
+    </label>
+    <label>Токен
+      <input id="setToken" type="password" autocomplete="off">
+    </label>
+    <label>Кто вы <span class="opt">будете менеджером в новых задачах и во вкладке «Мои»</span>
+      <span class="with-btn">
+        <select id="setManager"><option value="">Сначала адрес и токен</option></select>
+        <button id="retryManagers" class="btn ghost small" type="button" title="Загрузить список ещё раз">↻</button>
+      </span>
+    </label>
+    <p id="setManagerMsg" class="status err" hidden></p>
+    <div class="tpl-io">
+      <span>Шаблоны задач и писем подрядчикам — поделиться с коллегой или перенести на другой компьютер</span>
+      <span class="tpl-actions">
+        <button id="tExportTpl" class="link-btn" type="button">Скачать файлом</button>
+        <button id="tImportTpl" class="link-btn" type="button">Загрузить из файла</button>
+      </span>
+      <input id="tImportFile" type="file" accept=".json,application/json" hidden>
+      <p id="tTplIoMsg" class="status" role="status"></p>
+    </div>
+    <label>Папка для смет на ВБ Диске <span class="opt">путь или ссылка на папку из адресной строки диска; внутри — папка с темой письма</span>
+      <input id="setDiskFolder" type="text" placeholder="localization/Сметы">
+    </label>
+    <button id="whatsNew" class="link-btn whatsnew-link" type="button">✨ Что нового</button>
+    <div class="row-btns">
+      <button id="closeSettings" class="btn ghost" type="button">Отмена</button>
+      <button id="saveSettings" class="btn" type="button">Сохранить</button>
+    </div>
+  </section>
+
+  <section id="tabTask" role="tabpanel">
+    <p id="taskLoading" class="muted center" hidden></p>
+
+    <form id="taskForm" class="task-form" hidden>
+      <div id="tRowMode" class="row-mode" hidden>
+        <div><b>Ещё строка в заказ <span id="tRowId"></span></b><span class="row-mode-note">номер, тема, дата и подрядчик — как у заказа; Band, ник, языки, сроки — свои</span></div>
+        <button id="tRowCancel" class="link-btn" type="button">✕ Отменить</button>
+      </div>
+      <div class="preview-box" hidden>
+        <div class="preview-txt"><span class="eyebrow">Тема письма <span class="eyebrow-note" title="Точный номер таблица выдаст при добавлении — тема скопируется сама">· номер предварительный</span></span><p id="tPreview" class="preview"></p></div>
+        <button id="tCopyPreview" class="btn ghost small" type="button">Скопировать</button>
+      </div>
+      <div id="tRows" class="order-rows" hidden></div>
+      <div class="tpl">
+        <span class="tpl-title">Шаблоны</span>
+        <div id="tTplChips" class="tpl-chips"></div>
+        <select id="tTemplate" hidden><option value="">— без шаблона —</option></select>
+        <div class="tpl-actions">
+          <button id="tClearTpl" class="link-btn" type="button" hidden title="Очистить форму и снять шаблон">✕ Сбросить</button>
+          <button id="tUpdTpl" class="link-btn strong" type="button" hidden title="Записать в шаблон то, что сейчас в форме: тикет, языки, продукт…">💾 Сохранить изменения</button>
+          <button id="tSaveTpl" class="link-btn" type="button" title="Запомнить подрядчика, тикет, продукт, языки и т. д.">＋ Сохранить как шаблон</button>
+          <button id="tRenTpl" class="link-btn" type="button" hidden>Переименовать</button>
+          <button id="tDelTpl" class="link-btn" type="button" hidden>Удалить шаблон</button>
+        </div>
+        <label id="tLetterTextRow" class="tpl-letter" hidden><span>✉️ Текст письма</span><select id="tLetterText"><option value="">Обычный (как у подрядчика)</option></select></label>
+      </div>
+
+      <div class="two">
+        <label><span>Подрядчик <span class="req">*</span></span>
+          <select id="tContractor" required></select>
+        </label>
+        <label>Тикет в трекере
+          <span class="prefixed"><span>LOCAL-</span><input id="tTicketNum" type="text" inputmode="numeric" placeholder="1234"></span>
+        </label>
+      </div>
+
+      <div id="tSuggest" class="suggest" hidden>
+        <span id="tSuggestText"></span>
+        <span class="suggest-btns">
+          <button id="tSuggestApply" class="btn small" type="button">Заполнить</button>
+          <button id="tSuggestClose" class="icon-btn small" type="button" title="Не надо" aria-label="Не надо">✕</button>
+        </span>
+      </div>
+
+      <label><span>Тема письма <span class="req">*</span></span>
+        <input id="tSubject" type="text" required placeholder="Только суть, номер добавится сам">
+        <span id="tOtHint" class="field-hint">Напишите в конце «от» — дата подставится сама</span>
+      </label>
+
+      <label>Ссылка на Band <span class="opt">если есть</span>
+        <span class="with-btn">
+          <input id="tLink" type="url" placeholder="https://band.wb.ru/…">
+          <button id="tPasteLink" class="btn ghost" type="button">Вставить</button>
+        </span>
+      </label>
+
+      <div class="field-group">
+        <span class="field-label">Ещё ссылки на Band <span class="opt">если переписок несколько</span></span>
+        <div id="tLink2"></div>
+      </div>
+
+      <div class="two">
+        <label>Продукт <select id="tProduct"></select></label>
+        <label>Дата получения <input id="tDate" type="date"></label>
+      </div>
+
+      <div class="two">
+        <label>Срок сдачи <input id="tExactDeadline" type="date"><span id="tWeekend" class="field-hint weekend" hidden></span></label>
+        <label>Дедлайн <select id="tDeadline"></select><span class="field-hint">ставится сам по сроку сдачи</span></label>
+      </div>
+
+      <label>Ник заказчика
+        <input id="tCustomer" type="text" placeholder="@nick">
+      </label>
+
+      <fieldset class="langs">
+        <legend>Языки</legend>
+        <div id="tLangs"></div>
+      </fieldset>
+
+      <div class="two">
+        <label>Менеджер <select id="tManager"></select></label>
+        <label>Статус <select id="tStatus" class="status-sel"></select></label>
+      </div>
+
+      <details class="more">
+        <summary>Ещё поля</summary>
+        <label>Статус отдачи <select id="tDeliveryStatus"></select></label>
+        <label>Смета (ссылка) <input id="tEstimateLink" type="url"></label>
+        <div class="two">
+          <label>Итого с НДС, ₽ <input id="tTotal" type="number" step="any" min="0"></label>
+          <label>SP <input id="tSp" type="number" step="1" min="0"></label>
+        </div>
+        <label>Комментарий <input id="tComment" type="text"></label>
+        <label>Жалобы на заказчика <input id="tComplaints" type="text" placeholder="несоблюдение процессов, грубость…"></label>
+      </details>
+
+
+
+      <button id="tMoreRow" class="btn ghost small add-row-btn" type="button" title="Тот же номер и тема, но другой Band, заказчик, языки или сроки — как несколько строк одного заказа в таблице">＋ Ещё строка в этот заказ</button>
+      <button id="tSubmit" class="btn primary" type="submit">Добавить задачу</button>
+    </form>
+
+    <section id="taskDone" class="done" hidden>
+      <span class="done-check" aria-hidden="true">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      </span>
+      <h2>Добавлено: <span id="taskDoneId"></span></h2>
+      <p id="taskDoneSubject" class="done-subject"></p>
+      <p id="taskDoneCopied" class="done-copied" hidden>✓ Тема с точным номером уже скопирована</p>
+      <div class="done-actions">
+        <button id="taskCopyDone" class="btn ghost small" type="button">Скопировать тему</button>
+        <a id="taskOpenRow" class="btn ghost small" href="#" target="_blank" rel="noopener" hidden>Открыть в таблице ↗</a>
+        <button id="taskAgain" class="btn primary small" type="button">＋ Новая задача</button>
+      </div>
+      <button id="taskAddRow" class="btn ghost small add-row-btn" type="button" title="Тот же номер и тема, но другой Band, заказчик, языки или сроки — как несколько строк одного заказа в таблице">＋ Ещё строка в этот заказ</button>
+      <section id="letter" class="letter" hidden>
+        <div class="letter-head"><b>Письмо в <span id="lContractor"></span></b><button id="lEdit" class="link-btn strong" type="button">✏️ Настроить</button></div>
+        <p id="lEmpty" class="letter-empty">Для этого подрядчика ещё нет адресов и шаблона письма. <button class="link-btn strong" type="button">Настроить один раз →</button></p>
+        <div id="lView" class="composer" hidden>
+          <div class="c-row"><span class="c-lbl">Тема</span><div id="lSubject" class="c-subject"></div><button id="lCopySubject" class="link-btn" type="button" title="Скопировать тему">копировать</button></div>
+          <label class="c-row"><span class="c-lbl">Кому</span><input id="lTo" type="text" placeholder="почты через запятую"></label>
+          <label class="c-row"><span class="c-lbl">Копия</span><input id="lCc" type="text" placeholder="если нужно"></label>
+          <div id="lTexts" class="lt-chips" hidden></div>
+          <div class="c-tools"><button id="lBold" type="button" class="bold-btn" title="Выделите слово мышкой и нажмите"><b>Ж</b> Выделить жирным</button><button type="button" class="emoji-btn" data-ed="body" title="Вставить смайлик туда, где курсор" aria-label="Смайлик">😊</button><span class="bold-hint">для жирного сначала выделите слово</span></div>
+          <div id="lBody" class="c-body rich" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Текст письма"></div>
+          <div id="lSig" class="c-sig"></div>
+          <div id="lSigEdit" class="c-sig-edit" hidden>
+            <div class="sig-field"><span class="field-label">Подпись <span class="opt">одна на все письма; можно вставить прямо из Outlook</span></span><div class="c-tools ed sig-tools"><button id="lSigBold" type="button" class="bold-btn" title="Выделите слово мышкой и нажмите"><b>Ж</b> Выделить жирным</button><span class="bold-hint">из Outlook вставляется с жирным</span></div><div id="lSigText" class="rich sig-rich" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Подпись"></div></div>
+            <div class="row-btns"><button id="lSigFetch" class="btn ghost small" type="button">Взять из Outlook</button><button id="lSigSave" class="btn primary small" type="button">Сохранить подпись</button></div>
+          </div>
+          <div class="letter-files">
+            <div id="lDrop" class="letter-drop" role="button" tabindex="0">📎 Вложения — перетащите файлы или нажмите</div>
+            <input id="lFileInput" type="file" multiple hidden>
+            <ul id="lFileList" class="file-list" hidden></ul>
+          </div>
+          <details class="c-links"><summary>🔗 Ссылки на материалы</summary>
+            <textarea id="lLinks" rows="2" placeholder="https://… — каждая с новой строки, встанут в текст письма"></textarea></details>
+          <button id="lSend" class="btn primary" type="button">📨 Отправить</button>
+          <div id="lSent" class="c-sent" hidden><span id="lSentText"></span><button id="lSentOpen" class="btn ghost small" type="button">Проверить в «Отправленных» ↗</button></div>
+          <div class="c-more">
+            <button id="lCopyBody" class="link-btn" type="button">Скопировать текст</button>
+            <button id="lCompose" class="link-btn" type="button" title="Открыть письмо в Outlook, чтобы поправить его там">Открыть в Outlook ↗</button>
+            <button id="lAttachOpen" class="link-btn" type="button" hidden title="Например, если отвечаете в уже существующей переписке">Вложить в открытое письмо</button>
+          </div>
+        </div>
+        <div id="lEditor" class="letter-editor" hidden>
+          <label id="lENameRow" hidden>Название текста <span class="opt">так он будет называться в кнопках и в шаблонах задач</span><input id="lEName" type="text" placeholder="Например: Новые строки для веба"></label>
+          <div id="lEAddr" class="le-addr">
+            <label>Кому <span class="opt">почты через запятую или с новой строки</span><textarea id="lETo" rows="3" placeholder="pm@logrusit.com&#10;vendor@logrusit.com"></textarea></label>
+            <label>Копия <span class="opt">если нужно</span><textarea id="lECc" rows="2"></textarea></label>
+          </div>
+          <div class="tpl-vars">
+            <span class="field-label">Текст письма</span>
+            <div class="c-tools ed"><button id="lEBold" type="button" class="bold-btn" title="Выделите слово мышкой и нажмите"><b>Ж</b> Выделить жирным</button><button type="button" class="emoji-btn" data-ed="tpl" title="Вставить смайлик туда, где курсор" aria-label="Смайлик">😊</button><span class="bold-hint">для жирного сначала выделите слово</span></div>
+            <div class="var-chips">Вставить, где курсор:
+              <button type="button" class="var-chip" data-var="языки" title="языки задачи, строчными, без штатных">языки</button>
+              <button type="button" class="var-chip" data-var="срок" title="«Срок сдачи» из задачи, без года, например 22.10">срок сдачи</button>
+              <button type="button" class="var-chip" data-var="номер" title="номер задачи, например LIT-26-2240">номер</button>
+              <button type="button" class="var-chip" data-var="продукт">продукт</button>
+              <button type="button" class="var-chip" data-var="коды" title="коды языков: kk, ky…">коды</button>
+              <button type="button" class="var-chip" data-var="ссылка" title="ссылка на Band">ссылка</button>
+              <button type="button" class="var-chip" data-var="менеджер">менеджер</button>
+            </div>
+            <div id="lEBody" class="rich" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Текст письма"></div>
+            <span class="field-hint">Цветное подставится само из задачи — в следующей задаче будут её языки и сроки. <button id="lDefaultBody" class="link-btn" type="button">↺ Стандартный текст</button></span>
+          </div>
+          <div class="row-btns"><button id="lCancel" class="btn ghost" type="button">Отмена</button><button id="lSave" class="btn primary" type="button">Сохранить</button></div>
+          <button id="lRemove" class="link-btn danger-link" type="button" hidden>🗑 Удалить почты и шаблон</button>
+        </div>
+      </section>
+    </section>
+
+    <p id="tMsg" class="status" role="status"></p>
+  </section>
+
+  <section id="tabMine" role="tabpanel" hidden>
+    <div id="mineView">
+      <form id="mSearchForm" class="with-btn mine-search">
+        <input id="mSearch" type="search" placeholder="Найти любую задачу: номер, тикет, тема…" autocomplete="off">
+        <button class="btn ghost" type="submit">Найти</button>
+      </form>
+      <div id="mFound" class="mine-list" hidden></div>
+      <div class="mine-head">
+        <select id="mManager" aria-label="Менеджер"></select>
+        <button id="mRefresh" class="btn ghost small" type="button">Обновить</button>
+      </div>
+      <div id="mFilter" class="seg" role="tablist" aria-label="Какие задачи показать">
+        <button type="button" data-f="open">Открытые</button>
+        <button type="button" data-f="done">Отданные</button>
+        <button type="button" data-f="cancelled">Отменённые</button>
+        <button type="button" data-f="all">Все</button>
+      </div>
+      <p id="mSummary" class="muted"></p>
+      <div id="mList" class="mine-list"></div>
+      <p id="mMsg" class="status" role="status"></p>
+    </div>
+
+    <form id="editForm" class="task-form" hidden>
+      <div class="edit-head">
+        <button id="eBack" class="btn ghost small" type="button">← Назад</button>
+        <b id="eTitle"></b>
+      </div>
+      <p id="eTop" class="status" role="status" hidden></p>
+      <label><span>Тема письма <span class="req">*</span></span>
+        <textarea id="eSubject" rows="2" required></textarea>
+      </label>
+      <label>Ссылка на Band <input id="eLink" type="url" placeholder="https://band.wb.ru/…"></label>
+      <div class="field-group">
+        <span class="field-label">Ещё ссылки на Band</span>
+        <div id="eLink2"></div>
+      </div>
+      <div class="two">
+        <label>Тикет в трекере
+          <span class="prefixed"><span>LOCAL-</span><input id="eTicketNum" type="text" inputmode="numeric" placeholder="1234"></span>
+        </label>
+        <label>Дата получения <input id="eDate" type="date"></label>
+      </div>
+      <div class="two">
+        <label>Продукт <select id="eProduct"></select></label>
+        <label>Ник заказчика <input id="eCustomer" type="text" placeholder="@nick"></label>
+      </div>
+      <fieldset class="langs">
+        <legend>Языки</legend>
+        <div id="eLangs"></div>
+      </fieldset>
+      <div class="two">
+        <label>Дедлайн <select id="eDeadline"></select><span class="field-hint">ставится сам по сроку сдачи</span></label>
+        <label>Срок сдачи <input id="eExactDeadline" type="date"></label>
+      </div>
+      <div class="two">
+        <label>Статус <select id="eStatus" class="status-sel"></select></label>
+        <label>Статус отдачи <select id="eDeliveryStatus" class="delivery-sel"></select></label>
+      </div>
+      <div class="two">
+        <label>Подрядчик <select id="eContractor"></select></label>
+        <label>Менеджер <select id="eManager"></select></label>
+      </div>
+      <label>Смета (ссылка) <input id="eEstimateLink" type="url"></label>
+      <div class="two">
+        <label>Итого с НДС <input id="eTotal" type="number" step="any" min="0"></label>
+        <label>SP <input id="eSp" type="number" step="1" min="0"></label>
+      </div>
+      <label>Комментарий <textarea id="eComment" rows="2"></textarea></label>
+      <label>Жалобы на заказчика <textarea id="eComplaints" rows="2"></textarea></label>
+      <button id="eSave" class="btn primary" type="submit">Сохранить изменения</button>
+      <p id="eMsg" class="status" role="status"></p>
+      <button id="eDelete" class="link-btn danger-link" type="button">Удалить задачу</button>
+    </form>
+  </section>
+
+  <section id="tabSmeta" role="tabpanel" hidden>
+    <section id="empty">
+      <label id="drop" class="drop">
+        <input id="file" type="file" accept="application/pdf,.pdf" hidden>
+        <span class="drop-icon" aria-hidden="true">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="m9 15 3-3 3 3"/></svg>
+        </span>
+        <strong>Перетащите PDF сметы</strong>
+        <span>или нажмите, чтобы выбрать · можно прямо из письма в Outlook</span>
+      </label>
+      <p class="muted center">Номер возьмётся из имени файла (всё до «-РВБ»), сумма с НДС — из сметы</p>
+    </section>
+
+    <form id="form" hidden>
+      <div class="file-chip">
+        <span class="pdf-badge">PDF</span>
+        <span id="fileName" class="file-name"></span>
+        <button id="reset" class="icon-btn small" type="button" title="Другая смета" aria-label="Другая смета">✕</button>
+      </div>
+
+      <div class="card amount">
+        <label for="total" class="eyebrow">Итого с НДС</label>
+        <div class="amount-line">
+          <input id="total" type="text" inputmode="decimal">
+          <span class="cur">₽</span>
+        </div>
+        <p id="totalHint" class="hint"></p>
+        <button id="copyTotal" class="link-btn" type="button">Скопировать сумму</button>
+      </div>
+
+      <div class="card">
+        <label for="task" class="eyebrow">Задача</label>
+        <input id="task" class="task-input" type="text" placeholder="Номер из имени файла" autocomplete="off">
+        <div id="rowInfo" class="rowinfo" hidden></div>
+      </div>
+
+      <div class="card">
+        <label for="link" class="eyebrow">Ссылка на ВБ Диск</label>
+        <p class="field-note">Оставьте пустым, если хотите автоматическую загрузку на ВБ Диск</p>
+        <div class="with-btn">
+          <input id="link" type="url" placeholder="https://disk.wb.ru/…">
+          <button id="pasteLink" class="btn ghost" type="button" title="Вставить из буфера">Вставить</button>
+        </div>
+      </div>
+
+      <div id="folderCard" class="card">
+        <label for="folder" class="eyebrow">Папка на ВБ Диске</label>
+        <input id="folder" type="text" placeholder="Название папки, например тема письма" autocomplete="off">
+        <p id="diskHint" class="hint"></p>
+      </div>
+      <button id="submit" class="btn primary" type="submit">Загрузить на ВБ Диск и записать</button>
+    </form>
+
+    <section id="done" class="done" hidden>
+      <span class="done-check" aria-hidden="true">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      </span>
+      <h2 id="doneTitle">Записано</h2>
+      <p id="doneText"></p>
+      <div id="doneTotalBox" class="done-link" hidden>
+        <input id="doneTotal" type="text" readonly aria-label="Сумма с НДС">
+        <button id="copyDoneTotal" class="btn ghost" type="button">Скопировать сумму</button>
+      </div>
+      <div id="doneLinkBox" class="done-link" hidden>
+        <input id="doneLink" type="text" readonly aria-label="Ссылка на смету">
+        <button id="copyLink" class="btn ghost" type="button">Скопировать ссылку</button>
+      </div>
+      <a id="doneOpenRow" class="btn ghost" href="#" target="_blank" rel="noopener" hidden>Открыть в таблице ↗</a>
+      <button id="again" class="btn primary" type="button">Ещё одна смета</button>
+    </section>
+
+    <p id="status" class="status" role="status"></p>
+  </section>
+  <section id="tabReports" role="tabpanel" hidden>
+    <div id="rMenu" class="r-menu">
+      <div class="r-sec">Отчёты</div>
+      <button class="r-item" type="button" data-report="manager"><span class="r-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg></span><span class="r-txt"><b>По менеджеру — для Band</b><span>все тикеты за месяц: ссылки и SP — скопировать в Band · Excel</span></span><span class="r-go"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></span></button>
+      <button class="r-item" type="button" data-report="custom"><span class="r-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg></span><span class="r-txt"><b>Кастомный</b><span>для руководства: продукты, языки, топы · Excel</span></span><span class="r-go"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></span></button>
+      <div class="r-sec">Деньги</div>
+      <button class="r-item" type="button" data-report="money"><span class="r-ic pink"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20V4h6a4 4 0 0 1 0 8H5M5 16h9"/></svg></span><span class="r-txt"><b>Сверка с подрядчиками</b><span>фильтры, итоги, «проверить» → Excel</span></span><span class="r-go"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></span></button>
+    </div>
+    <div id="rView" class="r-view" hidden>
+      <button id="rBack" class="link-btn r-back" type="button">‹ Все отчёты</button>
+      <h2 id="rTitle"></h2>
+      <div id="rForm" class="r-form"></div>
+      <button id="rRun" class="btn primary" type="button">Сформировать</button>
+      <div id="rOut"></div>
+      <div id="rActions" class="two" hidden>
+        <button id="rCopy" class="btn ghost" type="button">Скопировать</button>
+        <button id="rExcel" class="btn ghost" type="button">📥 Скачать Excel</button>
+      </div>
+    </div>
+    <p id="rMsg" class="status" role="status"></p>
+  </section>
+
+  <section id="tabMail" role="tabpanel" hidden>
+    <div class="ml-item conn-item"><div class="ml-head"><div class="lt-info"><b>Подключение к таблице</b><span class="ml-when">адрес, токен, «Кто вы», папка смет, шаблоны файлом</span></div><button id="mlOpenConn" class="btn ghost small" type="button">⚙️ Открыть</button></div></div>
+    <div class="r-sec">Подпись</div>
+    <div class="ml-card ml-sig">
+      <div class="sig-field"><span class="field-label">Подпись в письмах подрядчикам <span class="opt">одна на все письма; можно вставить прямо из Outlook</span></span><div class="c-tools ed sig-tools"><button id="mlSigBold" type="button" class="bold-btn" title="Выделите слово мышкой и нажмите"><b>Ж</b> Выделить жирным</button><span class="bold-hint">из Outlook вставляется с жирным</span></div><div id="mlSigText" class="rich sig-rich" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Подпись"></div></div>
+      <div class="row-btns"><button id="mlSigFetch" class="btn ghost small" type="button">Взять из Outlook</button><button id="mlSigSave" class="btn primary small" type="button">Сохранить подпись</button></div>
+    </div>
+    <div class="r-sec">Письма подрядчикам</div>
+    <p class="field-note">Почты и текст письма для каждого подрядчика — то же, что «✏️ Настроить» после добавления задачи. Хранятся в этом браузере — у каждого свои.</p>
+    <div id="mlLetters" class="ml-list"></div>
+    <div class="r-sec">Тексты писем</div>
+    <p class="field-note">Разные тексты под разные случаи — «Новые строки для веба», «Файлы для приложения»… Подходят любому подрядчику: языки и дедлайн встанут сами. Привяжите текст к шаблону задачи («Новая задача» → «Текст письма») — и письмо сразу будет с ним.</p>
+    <div id="mlTexts" class="ml-list"></div>
+    <button id="mlTextNew" class="btn ghost small lt-new" type="button">＋ Новый текст</button>
+    <div class="r-sec">Напоминания в браузере</div>
+    <div class="ml-item"><div class="ml-head"><b>Сроки на сегодня</b><label class="switch"><input id="mlRemind" type="checkbox" checked><span></span></label></div>
+      <span class="ml-when">уведомление в углу экрана: что сдать сегодня и что просрочено. Нажмёте — откроются «Мои задачи»</span>
+      <div class="snd-row"><span>Время</span><input id="mlRemindTime" type="time" value="10:00" step="300"><label class="chk"><input id="mlRemindWeekdays" type="checkbox" checked> только по будням</label></div>
+      <div class="snd-row"><span>Звук</span><select id="mlSound"></select><button id="mlSoundPlay" class="btn ghost small" type="button" title="Послушать">▶</button></div>
+      <button id="mlRemindTest" class="link-btn" type="button">Показать сейчас</button></div>
+    <div class="ml-item"><div class="ml-head"><b>«Фьюх» при отправке письма</b><label class="switch"><input id="mlSendSound" type="checkbox" checked><span></span></label></div>
+      <span class="ml-when">письмо подрядчику ушло — короткий звук</span></div>
+    <div class="r-sec">Жесты 🖐 <span class="beta">бета</span></div>
+    <div class="ml-item"><div class="ml-head"><b>Управление руками</b><label class="switch"><input id="mlGestures" type="checkbox"><span></span></label></div>
+      <span class="ml-when">камера ноутбука видит руку — подержите жест секунду. Видео никуда не уходит; камера работает, только пока панель открыта.</span>
+      <details class="gest-help"><summary>Как включить и какой жест за что</summary>
+        <ol class="gest-steps">
+          <li>Включите переключатель выше. В первый раз откроется вкладка — нажмите «Разрешить» для камеры.</li>
+          <li>В углу появится кружок с камерой — в нём видно, какой жест распознан.</li>
+          <li>Покажите жест в камеру и подержите секунду. Тот же жест ещё раз — опустите руку и покажите снова.</li>
+          <li>Забыли жесты — нажмите на кружок, появится эта шпаргалка.</li>
+        </ol>
+        <table class="gest-map">
+          <tr><td>☝️</td><td>вкладка «Задача»</td></tr>
+          <tr><td>✌️</td><td>вкладка «Мои»</td></tr>
+          <tr><td>3 пальца</td><td>вкладка «Смета»</td></tr>
+          <tr><td>4 пальца</td><td>вкладка «Отчёты»</td></tr>
+          <tr><td>🖐</td><td>вкладка «Настройки»; в окне «Вы уверены?» — «Отмена»</td></tr>
+          <tr><td>✊</td><td>скопировать тему задачи (на экране «Добавлено»)</td></tr>
+          <tr><td>👍</td><td>под письмом — «📨 Отправить»; в окне «Вы уверены?» — «Да»</td></tr>
+          <tr><td>👍👍 · 🙌</td><td>двумя руками — праздник 🚀</td></tr>
+          <tr><td>🫶</td><td>сердечко двумя руками — «Урааа! Лучшая команда локализации!» и дождь из сердечек 💜</td></tr>
+          <tr><td>🤟</td><td>приколы с конфетти: «Мир, дружба, локализация!», «Все языки — наши!»… 🎉</td></tr>
+          <tr><td>👎</td><td>сюрприз 😉</td></tr>
+        </table>
+      </details></div>
+    <div class="r-sec">Рассылки — куда присылать вам</div>
+    <div class="ml-card">
+      <label>Куда присылать письма — <span id="mlWho"></span> <span class="opt">колонка M в «Списках»; пусто — писем не будет</span>
+        <span class="with-btn"><input id="mlEmail" type="email" placeholder="name@wb.ru"><button id="mlSave" class="btn ghost" type="button">Сохранить</button></span>
+      </label>
+    </div>
+    <div class="r-sec">Рассылки — включить для всей команды</div>
+    <p class="field-note">Включаете — письма начнут приходить всем менеджерам, у кого вписана почта. «Прислать мне» — только вам, для проверки.</p>
+    <div id="mlList" class="ml-list">
+      <div class="ml-item"><div class="ml-head"><b>Сводка открытых задач</b><label class="switch"><input type="checkbox" data-kind="weekly"><span></span></label></div>
+        <span class="ml-when">по понедельникам в 9:00</span><button class="link-btn" type="button" data-test="weekly">Прислать мне сейчас</button></div>
+      <div class="ml-item"><div class="ml-head"><b>Горящие сроки</b><label class="switch"><input type="checkbox" data-kind="due"><span></span></label></div>
+        <span class="ml-when">каждый день в 9:00 — просроченные, сегодня и завтра</span><button class="link-btn" type="button" data-test="due">Прислать мне сейчас</button></div>
+      <div class="ml-item"><div class="ml-head"><b>Незаполненные поля</b><label class="switch"><input type="checkbox" data-kind="month"><span></span></label></div>
+        <span class="ml-when">26 числа в 10:00 — где не хватает данных для отчёта</span><button class="link-btn" type="button" data-test="month">Прислать мне сейчас</button></div>
+    </div>
+    <p id="mlMsg" class="status" role="status"></p>
+  </section>
+</main>
+<nav class="tabbar" role="tablist">
+  <button class="tab" role="tab" data-tab="task" data-title="Задача" aria-controls="tabTask" aria-selected="true" type="button"><span class="pill"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></span>Задача</button>
+  <button class="tab" role="tab" data-tab="mine" data-title="Мои" aria-controls="tabMine" aria-selected="false" type="button"><span class="pill"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg><span id="mineBadge" class="tab-badge" hidden></span></span>Мои</button>
+  <button class="tab" role="tab" data-tab="smeta" data-title="Смета" aria-controls="tabSmeta" aria-selected="false" type="button"><span class="pill"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20V4h6a4 4 0 0 1 0 8H5M5 16h9"/></svg></span>Смета</button>
+  <button class="tab" role="tab" data-tab="reports" data-title="Отчёты" aria-controls="tabReports" aria-selected="false" type="button"><span class="pill"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>Отчёты</button>
+  <button class="tab" role="tab" data-tab="mail" data-title="Настройки" aria-controls="tabMail" aria-selected="false" type="button"><span class="pill"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.09a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>Настройки</button>
+</nav>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<div id="gestBubble" class="gest-bubble" hidden title="Жесты включены — нажмите, чтобы увидеть шпаргалку"><video id="gestVideo" muted playsinline></video><span id="gestSeen"></span></div>
+<div id="gestCheat" class="gest-cheat" hidden><b>🖐 Жесты</b> — подержите секунду
+  <table class="gest-map">
+          <tr><td>☝️</td><td>вкладка «Задача»</td></tr>
+          <tr><td>✌️</td><td>вкладка «Мои»</td></tr>
+          <tr><td>3 пальца</td><td>вкладка «Смета»</td></tr>
+          <tr><td>4 пальца</td><td>вкладка «Отчёты»</td></tr>
+          <tr><td>🖐</td><td>вкладка «Настройки»; в окне «Вы уверены?» — «Отмена»</td></tr>
+          <tr><td>✊</td><td>скопировать тему задачи (на экране «Добавлено»)</td></tr>
+          <tr><td>👍</td><td>под письмом — «📨 Отправить»; в окне «Вы уверены?» — «Да»</td></tr>
+          <tr><td>👍👍 · 🙌</td><td>двумя руками — праздник 🚀</td></tr>
+          <tr><td>🫶</td><td>сердечко двумя руками — «Урааа! Лучшая команда локализации!» и дождь из сердечек 💜</td></tr>
+          <tr><td>🤟</td><td>приколы с конфетти: «Мир, дружба, локализация!», «Все языки — наши!»… 🎉</td></tr>
+          <tr><td>👎</td><td>сюрприз 😉</td></tr>
+        </table>
+  <button id="gestCheatOff" class="link-btn" type="button">Выключить жесты</button></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

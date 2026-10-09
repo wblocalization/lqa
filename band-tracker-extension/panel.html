@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Band → Трекер</title>
+<link rel="stylesheet" href="panel.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="logo" aria-hidden="true">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+    </span>
+    <h1>Band <em>→</em> Трекер</h1>
+  </div>
+  <button id="helpBtn" class="icon-btn" type="button" title="Как это работает" aria-label="Как это работает">?</button>
+  <button id="boardsBtn" class="icon-btn" type="button" title="Типы задач" aria-label="Типы задач">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="18" rx="1.5"/><rect x="14" y="3" width="7" height="11" rx="1.5"/></svg>
+  </button>
+</header>
+
+<main>
+  <!-- Как это работает: видно, пока не пришли из Band -->
+  <section id="intro" class="intro">
+    <p class="kicker">Задача из Band за 2 клика</p>
+    <ol class="steps">
+      <li>
+        <span class="n">1</span>
+        <div>
+          <b>Правый клик по сообщению в Band</b>
+          <div class="demo" aria-hidden="true">
+            <div class="msg"><span class="ava">ИП</span><span><b>ivanov.i</b><br>Нужно перевести баннер 🙏</span></div>
+            <div class="menu"><span>Копировать</span><span class="hl">📮 Создать задачу в трекере</span><span>Просмотреть код</span></div>
+          </div>
+        </div>
+      </li>
+      <li>
+        <span class="n">2</span>
+        <div><b>Здесь всё уже заполнено</b><span class="hint">название, текст со ссылками и ссылка на сообщение. Выберите тип задачи, поправьте, если нужно.</span></div>
+      </li>
+      <li>
+        <span class="n">3</span>
+        <div><b>«Создать в трекере»</b><span class="hint">готово: номер задачи и ссылка — скопировать в тред.</span></div>
+      </li>
+    </ol>
+    <p class="fine">Нужен вход в tracker.wb.ru в этом браузере — задача создаётся от вашего имени.</p>
+  </section>
+
+  <form id="form" class="form">
+    <p id="from" class="from" hidden></p>
+    <label class="field"><span class="lbl">Тип задачи</span>
+      <select id="board"></select>
+    </label>
+    <label class="field"><span class="lbl">Название <span class="req">*</span></span>
+      <input id="title" type="text" required placeholder="Коротко: что нужно сделать">
+    </label>
+    <label class="field"><span class="lbl">Описание <span class="opt">**жирный** · [текст](ссылка)</span></span>
+      <textarea id="desc" rows="8" placeholder="Подробности задачи"></textarea>
+    </label>
+    <button id="submit" class="btn primary" type="submit">Создать в трекере</button>
+    <button id="clear" class="btn ghost" type="button">Очистить</button>
+  </form>
+
+  <section id="done" class="done" hidden>
+    <p class="kicker">Готово ✨</p>
+    <a id="doneKey" class="key" href="#" target="_blank" rel="noopener"></a>
+    <p id="doneTitle" class="done-title"></p>
+    <button id="copyLink" class="btn primary" type="button">Скопировать ссылку</button>
+    <div class="two">
+      <button id="copyKey" class="btn ghost" type="button">Номер</button>
+      <button id="again" class="btn ghost" type="button">Новая задача</button>
+    </div>
+  </section>
+
+  <section id="boards" class="boards" hidden>
+    <h2>типы задач</h2>
+    <div class="tip"><b>Нужен другой тип или проект</b> (например, «Редактура»)? Создайте одну задачу этого типа как обычно, прямо в tracker.wb.ru, — только название. Расширение запомнит его само, и он появится здесь и в списке «Тип задачи».</div>
+    <ul id="boardList" class="board-list"></ul>
+    <button id="boardsClose" class="btn ghost" type="button">Готово</button>
+  </section>
+
+  <p id="msg" class="status" role="status"></p>
+</main>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<script type="module" src="panel.js"></script>
+</body>
+</html>

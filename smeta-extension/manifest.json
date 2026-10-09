@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "Задачи и сметы",
+  "version": "1.24.0",
+  "description": "Добавляет задачи менеджеров в таблицу, показывает ваши открытые задачи и записывает сметы — без захода в таблицу.",
+  "action": {
+    "default_title": "Задачи и сметы",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "clipboardRead",
+    "clipboardWrite",
+    "alarms",
+    "notifications",
+    "offscreen",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://script.google.com/*",
+    "https://script.googleusercontent.com/*",
+    "https://disk.wb.ru/*",
+    "https://mail.rwb.ru/*"
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  }
+}
