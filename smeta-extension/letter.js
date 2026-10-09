@@ -9,8 +9,9 @@ import { sendMail } from './owa-send.js';
 const $ = (s) => document.querySelector(s);
 const els = {
   box: $('#letter'), contractor: $('#lContractor'), edit: $('#lEdit'), view: $('#lView'), empty: $('#lEmpty'),
-  subject: $('#lSubject'), copySubject: $('#lCopySubject'), to: $('#lTo'), copyTo: $('#lCopyTo'), ccRow: $('#lCcRow'), cc: $('#lCc'), copyCc: $('#lCopyCc'),
+  subject: $('#lSubject'), copySubject: $('#lCopySubject'), to: $('#lTo'), cc: $('#lCc'),
   body: $('#lBody'), copyBody: $('#lCopyBody'), compose: $('#lCompose'), links: $('#lLinks'),
+  sig: $('#lSig'), sigEdit: $('#lSigEdit'), sigText: $('#lSigText'), sigFetch: $('#lSigFetch'), sigSave: $('#lSigSave'),
   send: $('#lSend'), drop: $('#lDrop'), fileInput: $('#lFileInput'), fileList: $('#lFileList'), attachOpen: $('#lAttachOpen'),
   editor: $('#lEditor'), eTo: $('#lETo'), eCc: $('#lECc'), eBody: $('#lEBody'), save: $('#lSave'), cancel: $('#lCancel'), remove: $('#lRemove'),
 };
@@ -78,11 +79,21 @@ export function fillTemplate(tpl, c) {
   return String(tpl || '').replace(/\{([а-яё]+)\}/gi, (m, k) => (k.toLowerCase() in map ? map[k.toLowerCase()] || '' : m));
 }
 
-const ddmm = (iso) => { const [y, m, d] = String(iso || '').split('-'); return d ? `${d}.${m}.${y}` : ''; };
+const ddmm = (iso) => { const [, m, d] = String(iso || '').split('-'); return d ? `${d}.${m}` : ''; }; // без года: «22.10»
 
 /** Показать блок письма для только что добавленной задачи. c: { contractor, id, subject, languages, codes, exactDeadline, product, manager, link } */
 export async function showLetter(c) {
   await loadLetters();
+  await loadSignature();
+  if (!signature) {
+    // подписи ещё нет — тихо пробуем взять из Outlook
+    fetchOutlookSignature().then(async (s) => {
+      if (!s || signature) return;
+      signature = s;
+      await chrome.storage.local.set({ signature });
+      if (ctx && !els.view.hidden) renderSignature();
+    }).catch(() => {});
+  }
   ctx = { ...c, due: ddmm(c.exactDeadline) };
   els.links.value = ''; // ссылки и вложения — у каждой задачи свои
   files = [];
@@ -95,30 +106,135 @@ export async function showLetter(c) {
   render();
 }
 
+let bodyEdited = false; // текст поправили руками — шаблон и ссылки больше не перезаписывают его
+
 function render() {
   const l = letters[ctx.contractor];
-  const to = parseEmails(l && l.to);
-  const cc = parseEmails(l && l.cc);
   els.empty.hidden = Boolean(l);
   els.view.hidden = !l;
   if (!l) return;
-  const chips = (list) => list.length ? list.map((e) => `<span class="mail-chip">${e.replace(/</g, '&lt;')}</span>`).join('') : '<span class="muted">не указано</span>';
   els.subject.textContent = ctx.subject;
-  els.to.innerHTML = chips(to);
-  els.cc.innerHTML = chips(cc);
-  els.ccRow.hidden = !cc.length;
-  els.copyTo.disabled = !to.length;
-  els.body.textContent = withMaterials(fillTemplate(l.body || DEFAULT_BODY, ctx), els.links.value);
+  els.to.value = parseEmails(l.to).join(', ');
+  els.cc.value = parseEmails(l.cc).join(', ');
+  bodyEdited = false;
+  fillBody();
+  renderSignature();
 }
+function fillBody() {
+  const l = letters[ctx.contractor] || {};
+  if (!bodyEdited) els.body.value = withMaterials(fillTemplate(l.body || DEFAULT_BODY, ctx), els.links.value);
+}
+els.body.addEventListener('input', () => { bodyEdited = true; });
 
 async function copy(text, done) {
   try { await navigator.clipboard.writeText(text); toast(done); } catch { toast('Нет доступа к буферу — выделите и скопируйте вручную', 'err'); }
 }
 
-els.copySubject.addEventListener('click', () => copy(ctx.subject, '✓ Тема скопирована — вставьте в «Тема»'));
-els.copyTo.addEventListener('click', () => copy(parseEmails(letters[ctx.contractor].to).join('; '), '✓ Адреса скопированы — вставьте в «Кому»'));
-els.copyCc.addEventListener('click', () => copy(parseEmails(letters[ctx.contractor].cc).join('; '), '✓ Копия скопирована — вставьте в «Копия»'));
-els.copyBody.addEventListener('click', () => copy(els.body.textContent, '✓ Текст письма скопирован'));
+els.copySubject.addEventListener('click', () => copy(ctx.subject, '✓ Тема скопирована'));
+els.copyBody.addEventListener('click', () => copy(els.body.value, '✓ Текст письма скопирован'));
+
+// ---------- Подпись ----------
+// Одна на все письма. Сначала пробуем взять из настроек Outlook; не вышло — человек вставляет её один раз сам.
+let signature = null; // { html, text }
+async function loadSignature() {
+  const r = await chrome.storage.local.get('signature');
+  signature = r.signature && (r.signature.html || r.signature.text) ? r.signature : null;
+}
+const htmlToText = (html) => {
+  const d = document.createElement('div');
+  d.innerHTML = String(html).replace(/<br\s*\/?>/gi, '\n').replace(/<\/?(p|div)\b[^>]*>/gi, '\n');
+  return d.textContent.replace(/\u00a0/g, ' ').split('\n').map((l) => l.trim()).filter((l, i, a) => l || (a[i - 1] && i < a.length - 1)).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+};
+const textToSigHtml = (text) => String(text).split('\n').map((l) => l.replace(/&/g, '&amp;').replace(/</g, '&lt;') || '<br>').join('<br>');
+
+function renderSignature() {
+  els.sigEdit.hidden = true;
+  els.sig.hidden = false;
+  els.sig.innerHTML = '';
+  if (signature) {
+    const pre = document.createElement('div');
+    pre.className = 'c-sig-text';
+    pre.textContent = signature.text || htmlToText(signature.html);
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'link-btn'; b.textContent = 'изменить подпись';
+    b.addEventListener('click', openSigEdit);
+    els.sig.append(pre, b);
+  } else {
+    els.sig.innerHTML = '<span class="muted">Подписи пока нет — </span>';
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'link-btn strong'; b.textContent = 'добавить подпись';
+    b.addEventListener('click', openSigEdit);
+    els.sig.append(b);
+  }
+}
+function openSigEdit() {
+  els.sigText.value = signature ? (signature.text || htmlToText(signature.html)) : '';
+  els.sig.hidden = true;
+  els.sigEdit.hidden = false;
+  els.sigText.focus();
+}
+els.sigSave.addEventListener('click', async () => {
+  const text = els.sigText.value.trim();
+  // текст поменяли — своя подпись, без оформления Outlook
+  signature = text ? (signature && signature.html && htmlToText(signature.html) === text ? signature : { text }) : null;
+  await chrome.storage.local.set({ signature });
+  renderSignature();
+  toast(text ? '✓ Подпись сохранена — будет в каждом письме' : 'Подпись убрана');
+});
+els.sigFetch.addEventListener('click', async () => {
+  els.sigFetch.disabled = true;
+  try {
+    const s = await fetchOutlookSignature();
+    if (!s) return toast('Не нашла подпись в Outlook — вставьте её сюда текстом', 'warn');
+    signature = s;
+    els.sigText.value = s.text || htmlToText(s.html);
+    toast('✓ Подпись взята из Outlook — нажмите «Сохранить подпись»');
+  } finally {
+    els.sigFetch.disabled = false;
+  }
+});
+
+/** Подпись из Outlook (нужна открытая вкладка с почтой). */
+async function fetchOutlookSignature() {
+  const tabs = await chrome.tabs.query({ url: `${OWA_ORIGIN}/owa/*` });
+  if (!tabs.length) return null;
+  try {
+    const [{ result }] = await chrome.scripting.executeScript({ target: { tabId: tabs[0].id }, world: 'MAIN', func: owaSignatureInPage });
+    return result && (result.html || result.text) ? result : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Выполняется на странице Outlook: ищем подпись в настройках пользователя (там же, откуда её берёт сам Outlook). */
+async function owaSignatureInPage() {
+  const find = (o, depth = 0) => {
+    if (!o || typeof o !== 'object' || depth > 8) return null;
+    for (const k of Object.keys(o)) {
+      if (/^SignatureHtml$/i.test(k) && typeof o[k] === 'string' && o[k].trim()) return { html: o[k] };
+      if (/^SignatureText$/i.test(k) && typeof o[k] === 'string' && o[k].trim()) return { text: o[k] };
+    }
+    for (const k of Object.keys(o)) { const r = find(o[k], depth + 1); if (r) return r; }
+    return null;
+  };
+  const canary = decodeURIComponent((document.cookie.match(/(?:^|;\s*)X-OWA-CANARY=([^;]*)/i) || [])[1] || '');
+  const headers = { 'Content-Type': 'application/json; charset=utf-8', 'X-OWA-CANARY': canary, 'X-Requested-With': 'XMLHttpRequest' };
+  const tries = [
+    () => fetch('/owa/sessiondata.ashx?appcache=true', { method: 'POST', credentials: 'include', headers }),
+    () => fetch('/owa/service.svc?action=GetOwaUserConfiguration&AC=1', { method: 'POST', credentials: 'include', headers: { ...headers, Action: 'GetOwaUserConfiguration', 'X-OWA-ActionName': 'GetOwaUserConfiguration' }, body: '{}' }),
+  ];
+  for (const t of tries) {
+    try {
+      const r = await t();
+      if (!r.ok) continue;
+      const found = find(await r.json());
+      if (found) return found;
+    } catch { /* следующий способ */ }
+  }
+  // открыт черновик — подпись прямо в нём
+  const el = document.querySelector('#Signature');
+  return el && el.textContent.trim() ? { html: el.innerHTML } : null;
+}
 
 // ---------- Вложения ----------
 // Файлы лежат только в панели, пока не вложены в письмо; кладём их через кнопку Outlook «Вложить».
@@ -198,23 +314,25 @@ els.attachOpen.addEventListener('click', async () => {
 
 // «📨 Отправить» — прямо отсюда, с рабочей почты; перед отправкой — ещё раз показать, что уйдёт, и спросить
 els.send.addEventListener('click', async () => {
-  const l = letters[ctx.contractor] || {};
-  const to = parseEmails(l.to);
-  const cc = parseEmails(l.cc);
-  if (!to.length) return toast('Нет адресов «Кому» — «✏️ Настроить»', 'err');
-  const text = els.body.textContent;
+  const to = parseEmails(els.to.value);
+  const cc = parseEmails(els.cc.value);
+  if (!to.length) return toast('Впишите, кому отправить', 'err');
+  const text = els.body.value.trim();
+  if (!text) return toast('Письмо пустое', 'err');
+  const sigText = signature ? (signature.text || htmlToText(signature.html)) : '';
   const ok = confirm(`Отправить письмо?\n\nКому: ${to.join(', ')}` + (cc.length ? `\nКопия: ${cc.join(', ')}` : '') +
     `\nТема: ${ctx.subject}` + (files.length ? `\nВложения: ${files.map((f) => f.name).join(', ')}` : '') +
-    `\n\n${text.length > 400 ? `${text.slice(0, 400)}…` : text}`);
+    `\n\n${text.length > 400 ? `${text.slice(0, 400)}…` : text}` + (sigText ? `\n\n${sigText}` : '\n\n(без подписи)'));
   if (!ok) return;
   els.send.disabled = true;
   els.send.textContent = files.length ? 'Отправляю с вложениями…' : 'Отправляю…';
   try {
-    const r = await sendMail({ to, cc, subject: ctx.subject, text, files });
+    const signatureHtml = signature ? (signature.html || textToSigHtml(signature.text)) : '';
+    await sendMail({ to, cc, subject: ctx.subject, text, files, signatureHtml });
     files = [];
     renderFiles();
     els.send.textContent = '✓ Отправлено';
-    toast(r.signature ? '📨 Письмо отправлено — оно в «Отправленных»' : '📨 Письмо отправлено (без подписи — её не нашла в Outlook)');
+    toast('📨 Письмо отправлено — оно в «Отправленных»');
   } catch (e) {
     els.send.disabled = false;
     els.send.textContent = '📨 Отправить';
@@ -224,14 +342,13 @@ els.send.addEventListener('click', async () => {
 
 /** Новое письмо в Outlook Web App — сразу с адресами, темой и текстом. */
 els.compose.addEventListener('click', async () => {
-  const l = letters[ctx.contractor] || {};
   const q = new URLSearchParams({ path: '/mail/action/compose' });
-  const to = parseEmails(l.to).join(';');
-  const cc = parseEmails(l.cc).join(';');
+  const to = parseEmails(els.to.value).join(';');
+  const cc = parseEmails(els.cc.value).join(';');
   if (to) q.set('to', to);
   if (cc) q.set('cc', cc);
   q.set('subject', ctx.subject);
-  q.set('body', els.body.textContent || fillTemplate(DEFAULT_BODY, ctx));
+  q.set('body', els.body.value || fillTemplate(DEFAULT_BODY, ctx));
   const tab = await chrome.tabs.create({ url: `${OWA_ORIGIN}/owa/?${q.toString().replace(/\+/g, '%20')}` });
   if (files.length) {
     await waitComplete(tab.id);
@@ -351,4 +468,4 @@ els.remove.addEventListener('click', async () => {
 });
 
 // Вставили ссылки — текст письма обновляется сразу
-els.links.addEventListener('input', () => { if (ctx && letters[ctx.contractor]) render(); });
+els.links.addEventListener('input', () => { if (ctx && letters[ctx.contractor]) fillBody(); });

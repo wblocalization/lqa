@@ -116,8 +116,8 @@
       </div>
 
       <div class="two">
+        <label>Срок сдачи <input id="tExactDeadline" type="date"><span id="tWeekend" class="field-hint weekend" hidden></span></label>
         <label>Дедлайн <select id="tDeadline"></select><span class="field-hint">ставится сам по сроку сдачи</span></label>
-        <label>Срок сдачи <input id="tExactDeadline" type="date"></label>
       </div>
 
       <label>Ник заказчика
@@ -148,7 +148,6 @@
 
 
 
-      <p class="field-note submit-note">✉️ После добавления — сразу письмо подрядчику по шаблону: тема, адреса и текст подставятся сами.</p>
       <button id="tSubmit" class="btn primary" type="submit">Добавить задачу</button>
     </form>
 
@@ -167,26 +166,34 @@
       <section id="letter" class="letter" hidden>
         <div class="letter-head"><b>Письмо в <span id="lContractor"></span></b><button id="lEdit" class="link-btn strong" type="button">✏️ Настроить</button></div>
         <p id="lEmpty" class="letter-empty">Для этого подрядчика ещё нет адресов и шаблона письма. <button class="link-btn strong" type="button">Настроить один раз →</button></p>
-        <div id="lView" hidden>
-          <div class="letter-row"><span class="letter-lbl">Тема</span><div id="lSubject" class="letter-subject"></div><button id="lCopySubject" class="btn ghost small" type="button">Скопировать</button></div>
-          <div class="letter-row"><span class="letter-lbl">Кому</span><div id="lTo" class="mail-chips"></div><button id="lCopyTo" class="btn ghost small" type="button">Скопировать</button></div>
-          <div id="lCcRow" class="letter-row"><span class="letter-lbl">Копия</span><div id="lCc" class="mail-chips"></div><button id="lCopyCc" class="btn ghost small" type="button">Скопировать</button></div>
-          <label class="letter-links">Ссылки на материалы <span class="opt">документы, Figma, архивы на диске — каждая с новой строки; встанут в текст письма</span>
-            <textarea id="lLinks" rows="2" placeholder="https://…"></textarea></label>
+        <div id="lView" class="composer" hidden>
+          <div class="c-row"><span class="c-lbl">Тема</span><div id="lSubject" class="c-subject"></div><button id="lCopySubject" class="link-btn" type="button" title="Скопировать тему">копировать</button></div>
+          <label class="c-row"><span class="c-lbl">Кому</span><input id="lTo" type="text" placeholder="почты через запятую"></label>
+          <label class="c-row"><span class="c-lbl">Копия</span><input id="lCc" type="text" placeholder="если нужно"></label>
+          <textarea id="lBody" class="c-body" rows="9" aria-label="Текст письма"></textarea>
+          <div id="lSig" class="c-sig"></div>
+          <div id="lSigEdit" class="c-sig-edit" hidden>
+            <label>Подпись <span class="opt">одна на все письма; можно вставить прямо из Outlook</span><textarea id="lSigText" rows="4"></textarea></label>
+            <div class="row-btns"><button id="lSigFetch" class="btn ghost small" type="button">Взять из Outlook</button><button id="lSigSave" class="btn primary small" type="button">Сохранить подпись</button></div>
+          </div>
           <div class="letter-files">
             <div id="lDrop" class="letter-drop" role="button" tabindex="0">📎 Вложения — перетащите файлы или нажмите</div>
             <input id="lFileInput" type="file" multiple hidden>
             <ul id="lFileList" class="file-list" hidden></ul>
           </div>
-          <div class="letter-text"><pre id="lBody"></pre><button id="lCopyBody" class="btn ghost small" type="button">Скопировать текст</button></div>
+          <details class="c-links"><summary>🔗 Ссылки на материалы</summary>
+            <textarea id="lLinks" rows="2" placeholder="https://… — каждая с новой строки, встанут в текст письма"></textarea></details>
           <button id="lSend" class="btn primary" type="button">📨 Отправить</button>
-          <button id="lCompose" class="btn ghost" type="button" title="Открыть письмо в Outlook, чтобы поправить его там">✉️ Открыть в Outlook</button>
-          <button id="lAttachOpen" class="btn ghost" type="button" hidden title="Например, если отвечаете в уже существующей переписке">📎 Вложить в открытое письмо</button>
+          <div class="c-more">
+            <button id="lCopyBody" class="link-btn" type="button">Скопировать текст</button>
+            <button id="lCompose" class="link-btn" type="button" title="Открыть письмо в Outlook, чтобы поправить его там">Открыть в Outlook ↗</button>
+            <button id="lAttachOpen" class="link-btn" type="button" hidden title="Например, если отвечаете в уже существующей переписке">Вложить в открытое письмо</button>
+          </div>
         </div>
         <div id="lEditor" class="letter-editor" hidden>
           <label>Кому <span class="opt">почты через запятую или с новой строки</span><textarea id="lETo" rows="3" placeholder="pm@logrusit.com&#10;vendor@logrusit.com"></textarea></label>
           <label>Копия <span class="opt">если нужно</span><textarea id="lECc" rows="2"></textarea></label>
-          <label>Текст письма <span class="opt">тема письма подставится сама; в тексте можно: {номер} {языки} {коды} {срок} {продукт} {менеджер} {ссылка} {тема} {материалы}</span><textarea id="lEBody" rows="7"></textarea></label>
+          <label title="В тексте можно: {номер} {языки} {коды} {срок} {продукт} {менеджер} {ссылка} {тема} {материалы}">Текст письма<textarea id="lEBody" rows="7"></textarea></label>
           <div class="row-btns"><button id="lCancel" class="btn ghost" type="button">Отмена</button><button id="lSave" class="btn primary" type="button">Сохранить</button></div>
           <button id="lRemove" class="link-btn danger-link" type="button" hidden>🗑 Удалить почты и шаблон</button>
         </div>

@@ -77,7 +77,7 @@ function buildForm() {
   fillSelect(els.deliveryStatus, lists.deliveryStatuses);
   fillSelect(els.manager, lists.managers);
 
-  const titles = { regular: 'Основные', shtat: 'ШТАТ', rare: 'Редкие' };
+  const titles = { regular: 'Подрядчики', shtat: 'Штат', rare: 'Подрядчики · редкие' };
   els.langs.innerHTML = ['regular', 'shtat', 'rare']
     .filter((g) => (lists.languages[g] || []).length)
     .map((g) => `<div class="lang-group"><span class="lang-title">${titles[g]}</span><div class="chips">` +
@@ -94,6 +94,7 @@ let fromLast = false; // форму заполнили «Как в прошлы�
 function resetForm() {
   fromLast = false;
   els.form.reset();
+  document.querySelector('#tWeekend').hidden = true;
   els.link2.value = '';
   els.template.value = ''; // форма с нуля — шаблон снова можно выбрать кнопкой
   els.delTpl.hidden = true;
@@ -566,4 +567,29 @@ els.again.addEventListener('click', () => {
 els.clearTpl.addEventListener('click', () => {
   resetForm();
   setMsg('');
+});
+
+// ---------- Срок сдачи на выходной ----------
+// Выбрали субботу или воскресенье — подсказка и кнопки «← пятница» / «понедельник →»
+const weekendHint = document.querySelector('#tWeekend');
+const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+function checkWeekend() {
+  const [y, m, d] = els.exactDeadline.value.split('-').map(Number);
+  const date = y ? new Date(y, m - 1, d) : null;
+  const wd = date ? date.getDay() : -1;
+  if (wd !== 0 && wd !== 6) { weekendHint.hidden = true; return; }
+  const fri = new Date(date); fri.setDate(date.getDate() - (wd === 6 ? 1 : 2));
+  const mon = new Date(date); mon.setDate(date.getDate() + (wd === 6 ? 2 : 1));
+  const dm = (x) => `${String(x.getDate()).padStart(2, '0')}.${String(x.getMonth() + 1).padStart(2, '0')}`;
+  weekendHint.innerHTML = `${wd === 6 ? 'Это суббота' : 'Это воскресенье'}: <button type="button" class="link-btn strong" data-to="${isoOf(fri)}">← пт ${dm(fri)}</button> <button type="button" class="link-btn strong" data-to="${isoOf(mon)}">пн ${dm(mon)} →</button>`;
+  weekendHint.hidden = false;
+}
+els.exactDeadline.addEventListener('change', checkWeekend);
+els.exactDeadline.addEventListener('input', checkWeekend);
+weekendHint.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-to]');
+  if (!b) return;
+  e.preventDefault();
+  els.exactDeadline.value = b.dataset.to;
+  els.exactDeadline.dispatchEvent(new Event('change', { bubbles: true }));
 });

@@ -35,7 +35,7 @@ export function textToHtml(text) {
 }
 
 /**
- * Отправить письмо. msg: { to: [], cc: [], subject, text, files: [File] }.
+ * Отправить письмо. msg: { to: [], cc: [], subject, text, files: [File], signatureHtml }.
  * Возвращает { ok: true } или бросает ошибку с понятным текстом.
  */
 export async function sendMail(msg) {
@@ -50,7 +50,7 @@ export async function sendMail(msg) {
   try {
     [res] = await chrome.scripting.executeScript({
       target: { tabId: tab.id }, world: 'MAIN', func: owaSendInPage,
-      args: [{ to: msg.to, cc: msg.cc || [], subject: msg.subject, html: textToHtml(msg.text), files }],
+      args: [{ to: msg.to, cc: msg.cc || [], subject: msg.subject, html: textToHtml(msg.text), files, signatureHtml: msg.signatureHtml || '' }],
     });
   } catch (e) {
     throw new Error(/error page|Cannot access/i.test(e.message) ? 'Outlook не открылся — проверьте сеть/VPN и вход в почту' : e.message);
@@ -91,9 +91,9 @@ async function owaSendInPage(msg) {
   }
   const rcpt = (list) => list.map((e) => ({ Name: e, EmailAddress: e, RoutingType: 'SMTP', MailboxType: 'OneOff' }));
 
-  // Подпись — та же, что Outlook ставит в новые письма (если найдём)
-  let signature = '';
-  try {
+  // Подпись — сохранённая в расширении; нет — та же, что Outlook ставит в новые письма (если найдём)
+  let signature = msg.signatureHtml ? `<div id="Signature">${msg.signatureHtml}</div>` : '';
+  if (!signature) try {
     const r = await fetch('/owa/service.svc?action=GetOwaUserConfiguration&AC=1', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json; charset=utf-8', Action: 'GetOwaUserConfiguration', 'X-OWA-CANARY': decodeURIComponent(canary) },
