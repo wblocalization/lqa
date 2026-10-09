@@ -635,3 +635,14 @@ select.delivery-sel option { background: var(--card); color: var(--ink); font-we
 b .var-pill, strong .var-pill { font-weight: 800; }
 .var-pill.empty { background: var(--soft); color: var(--ink-soft); border: 1px dashed var(--line); }
 .composer .c-tools { display: flex; align-items: center; gap: 8px; padding: 6px 12px 0; font-size: 11.5px; color: var(--ink-soft); }
+
+/* Строки одного заказа в форме */
+.order-rows { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 14px; background: color-mix(in srgb, var(--accent) 7%, var(--card)); border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--line)); }
+.or-head { font-size: 11.5px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: .03em; }
+.or-row { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 6px 8px; border-radius: 10px; background: var(--card); }
+.or-row b { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: #fff; font-size: 12px; }
+.or-row span { flex: 1; min-width: 0; }
+.or-del { flex: none; border: none; background: none; color: var(--ink-soft); font-size: 15px; cursor: pointer; padding: 2px 6px; }
+.or-del:hover { color: var(--err); }
+.or-next { font-size: 12px; color: var(--ink-soft); padding-left: 4px; }
+.task-form .add-row-btn { width: 100%; }

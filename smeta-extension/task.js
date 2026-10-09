@@ -18,7 +18,7 @@ const els = {
   preview: $('#tPreview'), copyPreview: $('#tCopyPreview'), submit: $('#tSubmit'), msg: $('#tMsg'),
   tplChips: $('#tTplChips'), suggest: $('#tSuggest'), suggestText: $('#tSuggestText'), suggestApply: $('#tSuggestApply'),
   suggestClose: $('#tSuggestClose'), clearTpl: $('#tClearTpl'),
-  rowMode: $('#tRowMode'), rowId: $('#tRowId'), rowCancel: $('#tRowCancel'), addRow: $('#taskAddRow'), tplBox: $('.tpl'), tplIoMsg: $('#tTplIoMsg'), openRow: $('#taskOpenRow'),
+  rows: $('#tRows'), moreRow: $('#tMoreRow'), rowMode: $('#tRowMode'), rowId: $('#tRowId'), rowCancel: $('#tRowCancel'), addRow: $('#taskAddRow'), tplBox: $('.tpl'), tplIoMsg: $('#tTplIoMsg'), openRow: $('#taskOpenRow'),
 };
 autoDeadline(els.deadline, els.exactDeadline, els.date);
 loadLetters().catch(() => {}); // для «Скачать файлом» в настройках
@@ -109,7 +109,7 @@ function resetForm() {
   if (lists.statuses.includes('Принято')) els.status.value = 'Принято'; // новая задача — сразу «Принято»
   els.status.dataset.status = els.status.value;
   nextId = '';
-  updatePreview();
+  clearRows();
 }
 
 // Дата получения — сегодня. Панель могла быть открыта со вчера: если дату не меняли руками, обновим её.
@@ -429,13 +429,14 @@ function checkedLangInputs(onlyChecked = true) {
 
 /** Тема так же, как её собирает таблица: [номер][подрядчик][коды языков][продукт] тема. */
 function buildSubject(id) {
-  const contractor = els.contractor.value;
-  const product = els.product.value;
-  const codes = checkedLangInputs().map((cb) => lists.langCodes[cb.value]).filter(Boolean);
-  const prefix = `[${id}]` + (contractor ? `[${contractor}]` : '') + codes.map((c) => `[${c}]`).join('') +
-    (product ? `[${product}]` : '');
-  const subject = subjectText();
-  return subject ? `${prefix} ${subject}` : prefix;
+  return subjectFor(id, { contractor: els.contractor.value, product: els.product.value, subject: subjectText(), languages: checkedLangInputs().map((cb) => cb.value) });
+}
+/** Тема для уже собранной строки (первая строка заказа задаёт тему всего заказа). */
+function subjectFor(id, t) {
+  const codes = (t.languages || []).map((l) => lists.langCodes[l]).filter(Boolean);
+  const prefix = `[${id}]` + (t.contractor ? `[${t.contractor}]` : '') + codes.map((c) => `[${c}]`).join('') +
+    (t.product ? `[${t.product}]` : '');
+  return t.subject ? `${prefix} ${t.subject}` : prefix;
 }
 
 /** «Перевод строчек … от» → «… от 01.10»: дата из поля «Дата» (по умолчанию сегодня). */
@@ -465,6 +466,7 @@ els.date.addEventListener('change', () => { els.subject.value = withToday(els.su
 function updatePreview() {
   if (!lists) return;
   if (rowOrder) { els.preview.textContent = rowOrder.subject; return; }
+  if (pendingRows.length) { els.preview.textContent = subjectFor(nextId || '…', pendingRows[0]); return; }
   if (!els.contractor.value) { els.preview.textContent = 'Выберите подрядчика — появится номер и тема'; return; }
   els.preview.textContent = buildSubject(nextId || '…');
 }
@@ -501,14 +503,10 @@ els.pasteLink.addEventListener('click', async () => {
 });
 
 // ---------- Добавление ----------
-els.form.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  if (!els.contractor.value) return setMsg('Выберите подрядчика', 'err');
-  if (!els.subject.value.trim()) return setMsg('Впишите тему', 'err');
+/** Задача из того, что сейчас в форме. */
+function taskFromForm() {
   const ticketNum = els.ticketNum.value.trim();
-  if (ticketNum && !/^\d+$/.test(ticketNum)) return setMsg('В тикете — только цифры, LOCAL- подставится сам', 'err');
-
-  const task = {
+  return {
     ticket: ticketNum ? `LOCAL-${ticketNum}` : '',
     contractor: els.contractor.value, subject: subjectText(),
     link: els.link.value.trim(), link2: els.link2.value.split(/[\s,;]+/).filter(Boolean).join('\n'),
@@ -519,11 +517,30 @@ els.form.addEventListener('submit', async (e) => {
     manager: els.manager.value, comment: els.comment.value.trim(), complaints: els.complaints.value.trim(),
     languages: checkedLangInputs().map((cb) => cb.value),
   };
+}
+function checkForm() {
+  if (!els.contractor.value) return 'Выберите подрядчика';
+  if (!els.subject.value.trim()) return 'Впишите тему';
+  if (els.ticketNum.value.trim() && !/^\d+$/.test(els.ticketNum.value.trim())) return 'В тикете — только цифры, LOCAL- подставится сам';
+  return '';
+}
+// В строке что-то заполнено (или это единственная строка) — значит, её надо добавить
+const rowFilled = (t) => Boolean(t.link || t.customer || t.languages.length || t.exactDeadline || t.comment || t.estimateLink || t.total);
+
+// ---------- Добавление ----------
+els.form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const bad = checkForm();
+  if (bad) return setMsg(bad, 'err');
+  const current = taskFromForm();
+  const rows = [...pendingRows];
+  if (!rows.length || rowFilled(current)) rows.push(current);
 
   els.submit.disabled = true;
-  if (rowOrder) return addOrderRow(task);
+  if (rowOrder) return addOrderRows(rowOrder, rows);
   setMsg('Проверяю, нет ли такой задачи…');
   try {
+    const task = rows[0];
     const d = await api({ action: 'checkDuplicates', task });
     if (d.ok && d.duplicates && d.duplicates.length && !await ask({ title: 'Похожая задача уже есть',
         text: d.duplicates.map((x) => `${x.id || '—'} · ${x.title} · ${x.date} · ${x.manager} (${x.why})`).join('\n\n'),
@@ -531,25 +548,22 @@ els.form.addEventListener('submit', async (e) => {
       setMsg('Не добавлено — похожая задача уже есть.', 'err');
       return;
     }
-    setMsg('Добавляю…');
+    setMsg(rows.length > 1 ? `Добавляю строку 1 из ${rows.length}…` : 'Добавляю…');
     const r = await api({ action: 'addTask', task });
     if (!r.ok) throw new Error(r.error);
     nextIds = {};
     loadNextIds(); // номера сдвинулись
     rememberTask(task).catch(() => {});
-    lastSubject = buildSubject(r.id);
+    lastSubject = subjectFor(r.id, task);
     lastOrder = { id: r.id, subject: lastSubject, contractor: task.contractor, ticket: task.ticket, date: task.date, manager: task.manager };
-    els.doneId.textContent = r.id;
-    els.doneSubject.textContent = lastSubject;
     // Номер теперь точный — сразу кладём тему в буфер
-    toast(`Задача ${r.id} добавлена`); // заодно убирает предупреждение о предварительном номере
     els.doneCopied.hidden = true;
     navigator.clipboard.writeText(lastSubject).then(() => { els.doneCopied.hidden = false; }).catch(() => {});
-    setLink(els.openRow, r.url);
-    letterFor(task, r.id);
-    els.form.hidden = true;
-    els.done.hidden = false;
-    setMsg('');
+    if (rows.length > 1) {
+      els.submit.disabled = false;
+      return addOrderRows(lastOrder, rows.slice(1), { first: r, all: rows });
+    }
+    showDone(r, [task], `Задача ${r.id} добавлена`); // заодно убирает предупреждение о предварительном номере
   } catch (err) {
     setMsg(`Не добавилось: ${err.message}`, 'err');
     toast('Задача не добавилась — причина под кнопкой', 'err');
@@ -557,6 +571,30 @@ els.form.addEventListener('submit', async (e) => {
     els.submit.disabled = false;
   }
 });
+
+/** Экран «Добавлено». rows — все строки, которые сейчас добавили (для письма — языки всех строк). */
+function showDone(r, rows, message) {
+  els.doneId.textContent = r.id + (rows.length > 1 ? ` · ${rows.length} ${plural(rows.length, 'строка', 'строки', 'строк')}` : '');
+  els.doneSubject.textContent = lastSubject;
+  setLink(els.openRow, r.url);
+  toast(message);
+  letterFor(mergeRows(rows), r.id);
+  exitRowMode();
+  clearRows();
+  els.form.hidden = true;
+  els.done.hidden = false;
+  setMsg('');
+}
+const plural = (n, one, few, many) => (n % 10 === 1 && n % 100 !== 11 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? few : many);
+
+/** Несколько строк одного заказа → одно письмо: все языки, самый ранний срок сдачи. */
+function mergeRows(rows) {
+  if (rows.length === 1) return rows[0];
+  const langs = [...new Set(rows.flatMap((t) => t.languages))];
+  const dues = rows.map((t) => t.exactDeadline).filter(Boolean).sort();
+  const withDue = rows.find((t) => t.exactDeadline === dues[0]) || rows[0];
+  return { ...rows[0], languages: langs, exactDeadline: dues[0] || '', deadline: withDue.deadline };
+}
 
 /** Письмо — подрядчику: штатные языки (переводят свои) ему не нужны. */
 function letterFor(task, id) {
@@ -572,55 +610,130 @@ function letterFor(task, id) {
 // ---------- Ещё строка в заказ ----------
 // Как LIT-26-2267 в таблице: один номер и тема, а Band, заказчик, языки, сроки и статус у каждой строки свои.
 
-function enterRowMode() {
-  if (!lastOrder) return;
+function enterRowMode(order = lastOrder, rest = []) {
+  if (!order) return;
   els.done.hidden = true;
   els.form.hidden = false;
   resetForm();
-  rowOrder = lastOrder;
+  rowOrder = order;
   els.contractor.value = rowOrder.contractor;
   els.subject.value = rowOrder.subject.replace(/^(\s*\[[^\]]*\])+\s*/, '');
   els.ticketNum.value = String(rowOrder.ticket || '').replace(/^LOCAL-/i, '');
   if (rowOrder.date) els.date.value = rowOrder.date;
   if (rowOrder.manager) els.manager.value = rowOrder.manager;
-  [els.contractor, els.subject, els.date].forEach((el) => { el.disabled = true; });
-  els.tplBox.hidden = true;
   els.rowId.textContent = rowOrder.id;
   els.rowMode.hidden = false;
-  els.submit.textContent = `Добавить строку в ${rowOrder.id}`;
+  pendingRows = rest;
+  renderRows();
   updatePreview();
   setMsg('');
   window.scrollTo(0, 0);
 }
 function exitRowMode() {
   rowOrder = null;
-  [els.contractor, els.subject, els.date].forEach((el) => { el.disabled = false; });
-  els.tplBox.hidden = false;
   els.rowMode.hidden = true;
-  els.submit.textContent = 'Добавить задачу';
+  lockShared();
+  updateSubmitLabel();
 }
-els.addRow.addEventListener('click', enterRowMode);
+
+// ---------- Несколько строк одного заказа — прямо в форме, до «Добавить» ----------
+// «＋ Ещё строка в этот заказ» запоминает заполненную строку и очищает то, что у строк своё
+// (Band, заказчик, языки, сроки, комментарий, смета). Номер, тема, подрядчик и дата — общие.
+let pendingRows = [];
+function lockShared() {
+  const lock = Boolean(rowOrder || pendingRows.length);
+  [els.contractor, els.subject, els.date, els.ticketNum].forEach((el) => { el.disabled = lock; });
+  els.tplBox.hidden = lock;
+}
+function updateSubmitLabel() {
+  const n = pendingRows.length + (rowFilled(taskFromForm()) || !pendingRows.length ? 1 : 0);
+  const rowsWord = `${n} ${plural(n, 'строку', 'строки', 'строк')}`;
+  els.submit.textContent = rowOrder ? `Добавить ${n > 1 ? rowsWord : 'строку'} в ${rowOrder.id}` : n > 1 ? `Добавить заказ · ${n} ${plural(n, 'строка', 'строки', 'строк')}` : 'Добавить задачу';
+}
+function rowSummary(t) {
+  const codes = t.languages.map((l) => (lists && lists.langCodes[l]) || l).join(', ');
+  const [, m, d] = String(t.exactDeadline || '').split('-');
+  return [codes || 'без языков', t.customer, d ? `до ${d}.${m}` : t.deadline, t.link ? 'Band ✓' : ''].filter(Boolean).join(' · ');
+}
+function renderRows() {
+  els.rows.hidden = !pendingRows.length;
+  els.rows.innerHTML = pendingRows.length
+    ? `<div class="or-head">Строки заказа — номер и тема общие</div>` + pendingRows.map((t, i) =>
+      `<div class="or-row"><b>${i + 1}</b><span>${esc(rowSummary(t))}</span><button type="button" class="or-del" data-i="${i}" title="Убрать строку">✕</button></div>`).join('') +
+      `<div class="or-next">Строка ${pendingRows.length + 1} — заполните ниже</div>`
+    : '';
+  lockShared();
+  updateSubmitLabel();
+  updatePreview();
+}
+function clearRowFields() {
+  [els.link, els.customer, els.exactDeadline, els.comment, els.complaints, els.estimateLink, els.total, els.sp].forEach((el) => { el.value = ''; });
+  els.link2.value = '';
+  checkedLangInputs().forEach((cb) => { cb.checked = false; });
+  els.exactDeadline.dispatchEvent(new Event('change', { bubbles: true }));
+  document.querySelector('#tWeekend').hidden = true;
+  renderChips();
+}
+function clearRows() {
+  pendingRows = [];
+  renderRows();
+}
+els.moreRow.addEventListener('click', () => {
+  const bad = checkForm();
+  if (bad) return setMsg(bad, 'err');
+  const t = taskFromForm();
+  if (!rowFilled(t)) return setMsg('Сначала заполните эту строку: языки, заказчик, Band или срок', 'err');
+  pendingRows.push(t);
+  clearRowFields();
+  renderRows();
+  setMsg('');
+  toast(`Строка ${pendingRows.length} запомнена — заполните следующую`);
+  els.rows.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+});
+els.rows.addEventListener('click', async (e) => {
+  const b = e.target.closest('.or-del');
+  if (!b) return;
+  const i = Number(b.dataset.i);
+  if (!await ask({ title: `Убрать строку ${i + 1}?`, text: rowSummary(pendingRows[i]), ok: 'Убрать', danger: true })) return;
+  pendingRows.splice(i, 1);
+  renderRows();
+});
+els.form.addEventListener('input', updateSubmitLabel);
+els.form.addEventListener('change', updateSubmitLabel);
+els.addRow.addEventListener('click', () => enterRowMode());
 els.rowCancel.addEventListener('click', () => { exitRowMode(); resetForm(); setMsg(''); });
 
-async function addOrderRow(task) {
-  setMsg(`Добавляю строку в ${rowOrder.id}…`);
+/**
+ * Добавить строки в уже созданный заказ (order). info.first — ответ таблицы на первую строку, если заказ только что создан,
+ * info.all — все строки заказа вместе с первой. Не добавилась какая-то — форма остаётся в этом заказе с недобавленными строками.
+ */
+async function addOrderRows(order, rows, info = {}) {
+  els.submit.disabled = true;
+  const all = info.all || rows;
+  const offset = all.length - rows.length;
+  let r = info.first || null;
+  let i = 0;
   try {
-    const r = await api({ action: 'addTaskRow', id: rowOrder.id, task });
-    if (!r.ok) throw new Error(/Неизвестное действие/.test(r.error || '') ? 'веб-приложение ещё старое: нужна новая версия развёртывания' : r.error);
-    rememberTask(task).catch(() => {});
-    lastSubject = rowOrder.subject;
-    els.doneId.textContent = `${r.id} · ещё строка`;
-    els.doneSubject.textContent = lastSubject;
-    els.doneCopied.hidden = true;
-    setLink(els.openRow, r.url);
-    toast(`Строка добавлена в ${r.id}`);
-    letterFor(task, r.id);
-    exitRowMode();
-    els.form.hidden = true;
-    els.done.hidden = false;
-    setMsg('');
+    for (; i < rows.length; i++) {
+      setMsg(all.length > 1 ? `Добавляю строку ${offset + i + 1} из ${all.length} в ${order.id}…` : `Добавляю строку в ${order.id}…`);
+      r = await api({ action: 'addTaskRow', id: order.id, task: rows[i] });
+      if (!r.ok) throw new Error(/Неизвестное действие/.test(r.error || '') ? 'веб-приложение ещё старое: нужна новая версия развёртывания' : r.error);
+      rememberTask(rows[i]).catch(() => {});
+    }
+    lastSubject = order.subject;
+    lastOrder = order;
+    showDone(r, all, info.first ? `Заказ ${order.id} добавлен: ${all.length} ${plural(all.length, 'строка', 'строки', 'строк')}`
+      : `${rows.length > 1 ? 'Строки добавлены' : 'Строка добавлена'} в ${order.id}`);
   } catch (err) {
-    setMsg(`Строка не добавилась: ${err.message}`, 'err');
+    const done = offset + i;
+    if (done > 0) {
+      // заказ уже есть — остаёмся в нём, недобавленные строки ждут повторного «Добавить»
+      enterRowMode(order, rows.slice(i));
+      setMsg(`В ${order.id} уже ${done} ${plural(done, 'строка', 'строки', 'строк')}, остальные не добавились: ${err.message}. Нажмите «Добавить» ещё раз.`, 'err');
+    } else {
+      setMsg(`Не добавилось: ${err.message}`, 'err');
+    }
+    toast('Не все строки добавились — причина под кнопкой', 'err');
   } finally {
     els.submit.disabled = false;
   }
