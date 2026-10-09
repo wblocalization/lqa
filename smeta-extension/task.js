@@ -560,7 +560,7 @@ function letterFor(task, id) {
   showLetter({
     contractor: task.contractor, id, subject: lastSubject,
     languages: task.languages.filter((l) => !shtat.has(l) && !/^ШТАТ /i.test(l)),
-    codes: task.languages.map((l) => lists.langCodes[l]).filter(Boolean), exactDeadline: task.exactDeadline,
+    codes: task.languages.map((l) => lists.langCodes[l]).filter(Boolean), exactDeadline: task.exactDeadline, deadline: task.deadline,
     product: task.product, manager: task.manager, link: task.link,
   }).catch(() => {});
 }

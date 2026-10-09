@@ -175,6 +175,7 @@
           <div class="c-row"><span class="c-lbl">Тема</span><div id="lSubject" class="c-subject"></div><button id="lCopySubject" class="link-btn" type="button" title="Скопировать тему">копировать</button></div>
           <label class="c-row"><span class="c-lbl">Кому</span><input id="lTo" type="text" placeholder="почты через запятую"></label>
           <label class="c-row"><span class="c-lbl">Копия</span><input id="lCc" type="text" placeholder="если нужно"></label>
+          <div class="c-tools"><button id="lBold" type="button" class="var-chip bold-btn" title="Жирный: выделите текст">Ж</button><span>выделите текст → Ж — в письме будет жирным</span></div>
           <textarea id="lBody" class="c-body" rows="9" aria-label="Текст письма"></textarea>
           <div id="lSig" class="c-sig"></div>
           <div id="lSigEdit" class="c-sig-edit" hidden>
@@ -198,7 +199,20 @@
         <div id="lEditor" class="letter-editor" hidden>
           <label>Кому <span class="opt">почты через запятую или с новой строки</span><textarea id="lETo" rows="3" placeholder="pm@logrusit.com&#10;vendor@logrusit.com"></textarea></label>
           <label>Копия <span class="opt">если нужно</span><textarea id="lECc" rows="2"></textarea></label>
-          <label title="В тексте можно: {номер} {языки} {коды} {срок} {продукт} {менеджер} {ссылка} {тема} {материалы}">Текст письма<textarea id="lEBody" rows="7"></textarea></label>
+          <div class="tpl-vars">
+            <span class="field-label">Текст письма</span>
+            <div class="var-chips"><button id="lEBold" type="button" class="var-chip bold-btn" title="Жирный: выделите текст или {переменную}">Ж</button> Вставить:
+              <button type="button" class="var-chip" data-var="языки" title="языки задачи, строчными, без штатных">языки</button>
+              <button type="button" class="var-chip" data-var="срок" title="срок сдачи без года, например 22.10; нет срока — дедлайн">срок</button>
+              <button type="button" class="var-chip" data-var="номер" title="номер задачи, например LIT-26-2240">номер</button>
+              <button type="button" class="var-chip" data-var="продукт">продукт</button>
+              <button type="button" class="var-chip" data-var="коды" title="коды языков: kk, ky…">коды</button>
+              <button type="button" class="var-chip" data-var="ссылка" title="ссылка на Band">ссылка</button>
+              <button type="button" class="var-chip" data-var="менеджер">менеджер</button>
+            </div>
+            <textarea id="lEBody" rows="7" aria-label="Текст письма"></textarea>
+            <span class="field-hint">Слова в {скобках} подставятся сами — их можно только удалить целиком. **так** — жирный. <button id="lDefaultBody" class="link-btn" type="button">↺ Стандартный текст</button></span>
+          </div>
           <div class="row-btns"><button id="lCancel" class="btn ghost" type="button">Отмена</button><button id="lSave" class="btn primary" type="button">Сохранить</button></div>
           <button id="lRemove" class="link-btn danger-link" type="button" hidden>🗑 Удалить почты и шаблон</button>
         </div>

@@ -25,10 +25,12 @@ async function owaTab() {
 
 const escHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-/** Текст письма → HTML как у Outlook: шрифт Calibri 12pt, абзацы, ссылки кликабельные. */
+/** Текст письма → HTML как у Outlook: шрифт Calibri 12pt, абзацы, ссылки кликабельные, **жирный**. */
 export function textToHtml(text) {
   const lines = String(text || '').split('\n').map((line) => {
-    const html = escHtml(line).replace(/(https?:\/\/[^\s<]+)/g, (u) => `<a href="${u}">${u}</a>`);
+    const html = escHtml(line)
+      .replace(/(https?:\/\/[^\s<*]+)/g, (u) => `<a href="${u}">${u}</a>`)
+      .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>'); // **жирный**
     return `<p>${html || '<br>'}</p>`;
   }).join('');
   return '<div style="font-size:12pt;color:#000000;font-family:Calibri,Helvetica,sans-serif;" dir="ltr">' + lines + '<p><br></p></div>';
