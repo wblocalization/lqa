@@ -314,8 +314,9 @@ form { display: flex; flex-direction: column; gap: 16px; }
 .mine-item { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
 .mine-item.overdue { border-color: color-mix(in srgb, var(--err) 45%, var(--line)); background: var(--err-soft); }
 .mine-item .title { font-size: 13px; font-weight: 600; word-break: break-word; }
-.mine-item .title a { color: var(--ink); text-decoration: none; }
-.mine-item .title a:hover { color: var(--accent); }
+.mine-item .title a.band-link { color: var(--ink); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent); text-underline-offset: 3px; }
+.mine-item .title a.band-link:hover { color: var(--accent); text-decoration-color: var(--accent); }
+.band-ic { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 6px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); font-size: 11px; font-weight: 700; text-decoration: none; vertical-align: 1px; white-space: nowrap; }
 .mine-item .meta { margin-top: 2px; font-size: 12px; color: var(--ink-soft); }
 .mine-item .meta .late { color: var(--err); font-weight: 700; }
 .mine-item .meta .today { color: var(--warn); font-weight: 700; }
@@ -704,6 +705,7 @@ dialog.whatsnew li + li { margin-top: 4px; }
 .lt-chip { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .lt-chip:hover { border-color: var(--accent); color: var(--accent); }
 .lt-chip.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent, #fff); }
+.task-form .tpl-letter { flex-direction: row; justify-content: flex-start; }
 .tpl-letter { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); }
 .tpl-letter[hidden] { display: none; }
 .tpl-letter span { flex: none; }

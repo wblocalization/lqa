@@ -1240,7 +1240,11 @@ function searchTasks(query) {
       status: str_(r[COL.STATUS - 1])
     });
   });
-  return out.slice(0, 30);
+  // Ссылка на Band — только у найденных (оформление темы читается медленно)
+  const res = out.slice(0, 30);
+  const links = linksForRows_(sh, res.map(t => t.row - 2));
+  res.forEach(t => { t.link = (links[t.row - 2] || {}).link || ''; });
+  return res;
 }
 
 function getTaskForEdit(row) {

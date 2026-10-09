@@ -98,7 +98,7 @@ function render() {
       : t.overdue ? `<span class="late">просрочено · ${esc(t.due)}</span>`
       : t.dueToday ? `<span class="today">сегодня</span>`
       : t.due ? `срок ${esc(t.due)}` : (t.deadline ? esc(t.deadline) : 'срок не указан');
-    const title = t.link ? `<a href="${esc(t.link)}" target="_blank" rel="noopener">${esc(t.title)} 🔗</a>` : esc(t.title);
+    const title = titleHtml(t);
     return `<div class="mine-item${t.overdue ? ' overdue' : ''}">
       <div class="title">${title}</div>
       <div class="meta-row"><div class="meta">${esc(t.id || '—')}${t.ticket ? ' · ' + esc(t.ticket) : ''} · ${due}</div>
@@ -198,10 +198,17 @@ async function runSearch() {
     els.found.innerHTML = `<p class="status err">Не получилось найти: ${esc(e.message)}</p>`;
   }
 }
+/** Название задачи — ссылка на Band, если она есть (иногда ссылки нет — тогда просто текст). */
+function titleHtml(t) {
+  return t.link
+    ? `<a class="band-link" href="${esc(t.link)}" target="_blank" rel="noopener" title="Открыть переписку в Band">${esc(t.title)}<span class="band-ic">Band ↗</span></a>`
+    : esc(t.title);
+}
+
 function renderFound() {
   els.found.innerHTML = found.length
     ? found.map((t, i) => `<div class="mine-item">
-        <div class="title">${esc(t.title)}</div>
+        <div class="title">${titleHtml(t)}</div>
         ${t.id ? `<div class="meta-row"><span></span><button class="link-btn mail-btn" type="button" data-mail-found="${i}" title="Найти письма по этой задаче в Outlook">✉️ Почта</button></div>` : ''}
         <div class="row-actions"><span class="meta" style="flex:1">${esc(t.id || '—')}${t.ticket ? ' · ' + esc(t.ticket) : ''} · ${esc(t.date)}${t.status ? ' · ' + esc(t.status) : ''}</span>
         <button class="btn ghost small" type="button" data-found="${i}">Изменить</button></div>
