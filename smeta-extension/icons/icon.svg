@@ -1,26 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
   <defs>
-    <linearGradient id="bgL" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F6EEFF"/><stop offset="1" stop-color="#E6D6FF"/></linearGradient>
-    <radialGradient id="bgD" cx=".3" cy=".15" r="1"><stop offset="0" stop-color="#5B3A99"/><stop offset=".55" stop-color="#2A1B4D"/><stop offset="1" stop-color="#1A1233"/></radialGradient>
-    <linearGradient id="board" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#EEE6FF"/></linearGradient>
-    <linearGradient id="clip" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F472B6"/><stop offset="1" stop-color="#C026D3"/></linearGradient>
-    <linearGradient id="globe" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#A78BFA"/><stop offset="1" stop-color="#7C3AED"/></linearGradient>
-    <linearGradient id="tick" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8B5CF6"/><stop offset="1" stop-color="#6D28D9"/></linearGradient>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFD43B"/><stop offset="1" stop-color="#FF8A1F"/></linearGradient>
+    <linearGradient id="clip" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#EC4899"/><stop offset="1" stop-color="#BE185D"/></linearGradient>
+    <linearGradient id="acc" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8B5CF6"/><stop offset="1" stop-color="#6D28D9"/></linearGradient>
   </defs>
-  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bgD)"/>
-  <rect x="26" y="24" width="64" height="80" rx="11" fill="url(#board)" stroke="#C4B5FD" stroke-width="2.5"/>
-  <rect x="42" y="16" width="32" height="16" rx="6" fill="url(#clip)"/>
-  <rect x="51" y="13" width="14" height="7" rx="3.5" fill="url(#clip)"/>
-  <rect x="35" y="46" width="13" height="13" rx="3.5" fill="url(#tick)"/>
-  <path d="M38 52.5 l3 3 l5 -6" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
-  <rect x="53" y="49" width="28" height="7" rx="3.5" fill="#A78BFA"/>
-  <rect x="35" y="66" width="13" height="13" rx="3.5" fill="url(#tick)"/>
-  <path d="M38 72.5 l3 3 l5 -6" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
-  <rect x="53" y="69" width="22" height="7" rx="3.5" fill="#C4B5FD"/>
-  <circle cx="90" cy="90" r="23" fill="url(#globe)" stroke="#fff" stroke-width="4"/>
-  <g fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round">
-    <circle cx="90" cy="90" r="14"/>
-    <ellipse cx="90" cy="90" rx="6.5" ry="14"/>
-    <path d="M76.5 85.5 h27 M76.5 94.5 h27"/>
+  <rect x="3" y="3" width="122" height="122" rx="28" fill="url(#bg)" stroke="#3B2470" stroke-width="5"/>
+  <rect x="24" y="22" width="66" height="84" rx="11" fill="#FFFFFF" stroke="#3B2470" stroke-width="4"/>
+  <rect x="41" y="13" width="32" height="18" rx="6" fill="url(#clip)" stroke="#3B2470" stroke-width="3"/>
+  <rect x="34" y="45" width="15" height="15" rx="4" fill="url(#acc)"/>
+  <path d="M37.5 52.5 l3.5 3.5 l5.5 -7" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="54" y="48.5" width="28" height="8" rx="4" fill="#3B2470"/>
+  <rect x="34" y="67" width="15" height="15" rx="4" fill="url(#acc)"/>
+  <path d="M37.5 74.5 l3.5 3.5 l5.5 -7" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="54" y="70.5" width="20" height="8" rx="4" fill="#3B2470"/>
+  <circle cx="91" cy="91" r="24" fill="url(#acc)" stroke="#FFFFFF" stroke-width="5"/>
+  <g fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round">
+    <circle cx="91" cy="91" r="14"/><ellipse cx="91" cy="91" rx="6.5" ry="14"/><path d="M77.5 86 h27 M77.5 96 h27"/>
   </g>
 </svg>
