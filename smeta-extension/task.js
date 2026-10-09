@@ -1,7 +1,7 @@
 // Вкладка «Новая задача»: то же, что окно «➕ Добавить задачу» в таблице, только без захода в таблицу.
 import { settings, isConfigured, api, esc, readClipboard, getLists, autoDeadline, setLink, toast, ask } from './core.js';
 import { makeLinkList } from './links.js';
-import { showLetter, lettersForExport, importLetters, loadLetters } from './letter.js';
+import { showLetter, lettersForExport, importLetters, loadLetters, listTexts, textsForExport, importTexts } from './letter.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
@@ -18,7 +18,7 @@ const els = {
   preview: $('#tPreview'), copyPreview: $('#tCopyPreview'), submit: $('#tSubmit'), msg: $('#tMsg'),
   tplChips: $('#tTplChips'), suggest: $('#tSuggest'),
   clearTpl: $('#tClearTpl'),
-  rows: $('#tRows'), moreRow: $('#tMoreRow'), rowMode: $('#tRowMode'), rowId: $('#tRowId'), rowCancel: $('#tRowCancel'), addRow: $('#taskAddRow'), tplBox: $('.tpl'), tplIoMsg: $('#tTplIoMsg'), openRow: $('#taskOpenRow'),
+  letterText: $('#tLetterText'), letterTextRow: $('#tLetterTextRow'), rows: $('#tRows'), moreRow: $('#tMoreRow'), rowMode: $('#tRowMode'), rowId: $('#tRowId'), rowCancel: $('#tRowCancel'), addRow: $('#taskAddRow'), tplBox: $('.tpl'), tplIoMsg: $('#tTplIoMsg'), openRow: $('#taskOpenRow'),
 };
 autoDeadline(els.deadline, els.exactDeadline, els.date);
 loadLetters().catch(() => {}); // для «Скачать файлом» в настройках
@@ -210,6 +210,7 @@ function applyFields(t, { keepSubject = false } = {}) {
   els.customer.value = t.customer || '';
   els.deadline.value = t.deadline || '';
   els.comment.value = t.comment || '';
+  setLetterText(t.letterText || '');
   if (!(keepSubject && els.subject.value.trim())) els.subject.value = withDate(withToday(t.subject || ''));
   els.link.value = '';
   els.link2.value = ''; // ссылки на Band — у каждой задачи свои, из прошлой не тащим
@@ -240,7 +241,7 @@ async function rememberTask(task) {
 function cleanTemplate(t) {
   const str = (v) => (typeof v === 'string' ? v.trim() : '');
   const out = { name: str(t && t.name) };
-  ['contractor', 'ticket', 'subject', 'product', 'customer', 'deadline', 'comment'].forEach((k) => { out[k] = str(t[k]); });
+  ['contractor', 'ticket', 'subject', 'product', 'customer', 'deadline', 'comment', 'letterText'].forEach((k) => { out[k] = str(t[k]); });
   out.languages = Array.isArray(t.languages) ? t.languages.filter((l) => typeof l === 'string') : [];
   return out;
 }
@@ -281,7 +282,7 @@ function templateFromForm(name) {
   return cleanTemplate({
     name, contractor: els.contractor.value, ticket: ticketNum ? `LOCAL-${ticketNum}` : '', subject: els.subject.value,
     product: els.product.value, customer: els.customer.value, deadline: els.deadline.value, comment: els.comment.value,
-    languages: checkedLangInputs().map((cb) => cb.value),
+    languages: checkedLangInputs().map((cb) => cb.value), letterText: els.letterText.value,
   });
 }
 
@@ -320,7 +321,7 @@ els.delTpl.addEventListener('click', async () => {
 els.exportTpl.addEventListener('click', () => {
   const letters = lettersForExport();
   if (!templates.length && !Object.keys(letters).length) return ioMsg('Шаблонов пока нет: заполните форму и нажмите «Сохранить как шаблон»', 'err');
-  const blob = new Blob([JSON.stringify({ type: TPL_FILE_TYPE, version: 1, templates, letters }, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify({ type: TPL_FILE_TYPE, version: 1, templates, letters, letterTexts: textsForExport() }, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'task-templates.json';
@@ -344,7 +345,8 @@ els.importFile.addEventListener('change', async () => {
   try {
     const data = JSON.parse(await file.text());
     const list = (Array.isArray(data) ? data : data.templates || []).map(cleanTemplate).filter((t) => t.name);
-    const nl = Array.isArray(data) ? 0 : await importLetters(data.letters);
+    const nl = Array.isArray(data) ? 0 : (await importLetters(data.letters)) + (await importTexts(data.letterTexts));
+    fillLetterTexts();
     if (!list.length && !nl) throw new Error('в файле нет шаблонов');
     let replaced = 0;
     list.forEach((t) => {
@@ -480,7 +482,7 @@ function taskFromForm() {
     status: els.status.value, deliveryStatus: els.deliveryStatus.value,
     estimateLink: els.estimateLink.value.trim(), total: els.total.value, sp: els.sp.value,
     manager: els.manager.value, comment: els.comment.value.trim(), complaints: els.complaints.value.trim(),
-    languages: checkedLangInputs().map((cb) => cb.value),
+    languages: checkedLangInputs().map((cb) => cb.value), letterText: els.letterText.value,
   };
 }
 function checkForm() {
@@ -568,7 +570,7 @@ function letterFor(task, id) {
     contractor: task.contractor, id, subject: lastSubject,
     languages: task.languages.filter((l) => !shtat.has(l) && !/^ШТАТ /i.test(l)),
     codes: task.languages.map((l) => lists.langCodes[l]).filter(Boolean), exactDeadline: task.exactDeadline, deadline: task.deadline,
-    product: task.product, manager: task.manager, link: task.link,
+    product: task.product, manager: task.manager, link: task.link, textId: task.letterText || '',
   }).catch(() => {});
 }
 
@@ -744,3 +746,28 @@ weekendHint.addEventListener('click', (e) => {
   els.exactDeadline.value = b.dataset.to;
   els.exactDeadline.dispatchEvent(new Event('change', { bubbles: true }));
 });
+
+// ---------- Текст письма подрядчику — привязка к шаблону ----------
+// Выбор под шаблонами: какой текст из «Настройки → Тексты писем» будет в письме. Выбран шаблон — выбор запоминается в нём.
+async function fillLetterTexts() {
+  const list = await listTexts();
+  const cur = els.letterText.value;
+  els.letterText.innerHTML = '<option value="">Обычный (как у подрядчика)</option>' +
+    list.map((t) => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
+  els.letterText.value = list.some((t) => t.id === cur) ? cur : '';
+  els.letterTextRow.hidden = !list.length; // текстов нет — и выбирать нечего
+}
+function setLetterText(id) {
+  els.letterText.value = id;
+  if (els.letterText.value !== id) els.letterText.value = '';
+}
+els.letterText.addEventListener('change', async () => {
+  const i = Number(els.template.value), t = templates[i];
+  if (els.template.value === '' || !t) return;
+  t.letterText = els.letterText.value;
+  await storeTemplates(t.name);
+  const name = els.letterText.selectedOptions[0].textContent;
+  toast(`Шаблон «${t.name}»: письмо будет с текстом «${name}»`);
+});
+chrome.storage.onChanged.addListener((ch) => { if (ch.letterTexts) fillLetterTexts(); });
+fillLetterTexts();

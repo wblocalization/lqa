@@ -80,6 +80,7 @@
           <button id="tRenTpl" class="link-btn" type="button" hidden>Переименовать</button>
           <button id="tDelTpl" class="link-btn" type="button" hidden>Удалить шаблон</button>
         </div>
+        <label id="tLetterTextRow" class="tpl-letter" hidden><span>✉️ Текст письма</span><select id="tLetterText"><option value="">Обычный (как у подрядчика)</option></select></label>
       </div>
 
       <div class="two">
@@ -178,6 +179,7 @@
           <div class="c-row"><span class="c-lbl">Тема</span><div id="lSubject" class="c-subject"></div><button id="lCopySubject" class="link-btn" type="button" title="Скопировать тему">копировать</button></div>
           <label class="c-row"><span class="c-lbl">Кому</span><input id="lTo" type="text" placeholder="почты через запятую"></label>
           <label class="c-row"><span class="c-lbl">Копия</span><input id="lCc" type="text" placeholder="если нужно"></label>
+          <div id="lTexts" class="lt-chips" hidden></div>
           <div class="c-tools"><button id="lBold" type="button" class="bold-btn" title="Выделите слово мышкой и нажмите"><b>Ж</b> Выделить жирным</button><button type="button" class="emoji-btn" data-ed="body" title="Вставить смайлик туда, где курсор" aria-label="Смайлик">😊</button><span class="bold-hint">для жирного сначала выделите слово</span></div>
           <div id="lBody" class="c-body rich" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Текст письма"></div>
           <div id="lSig" class="c-sig"></div>
@@ -201,8 +203,11 @@
           </div>
         </div>
         <div id="lEditor" class="letter-editor" hidden>
-          <label>Кому <span class="opt">почты через запятую или с новой строки</span><textarea id="lETo" rows="3" placeholder="pm@logrusit.com&#10;vendor@logrusit.com"></textarea></label>
-          <label>Копия <span class="opt">если нужно</span><textarea id="lECc" rows="2"></textarea></label>
+          <label id="lENameRow" hidden>Название текста <span class="opt">так он будет называться в кнопках и в шаблонах задач</span><input id="lEName" type="text" placeholder="Например: Новые строки для веба"></label>
+          <div id="lEAddr" class="le-addr">
+            <label>Кому <span class="opt">почты через запятую или с новой строки</span><textarea id="lETo" rows="3" placeholder="pm@logrusit.com&#10;vendor@logrusit.com"></textarea></label>
+            <label>Копия <span class="opt">если нужно</span><textarea id="lECc" rows="2"></textarea></label>
+          </div>
           <div class="tpl-vars">
             <span class="field-label">Текст письма</span>
             <div class="c-tools ed"><button id="lEBold" type="button" class="bold-btn" title="Выделите слово мышкой и нажмите"><b>Ж</b> Выделить жирным</button><button type="button" class="emoji-btn" data-ed="tpl" title="Вставить смайлик туда, где курсор" aria-label="Смайлик">😊</button><span class="bold-hint">для жирного сначала выделите слово</span></div>
@@ -407,6 +412,10 @@
     <div class="r-sec">Письма подрядчикам</div>
     <p class="field-note">Почты и текст письма для каждого подрядчика — то же, что «✏️ Настроить» после добавления задачи. Хранятся в этом браузере — у каждого свои.</p>
     <div id="mlLetters" class="ml-list"></div>
+    <div class="r-sec">Тексты писем</div>
+    <p class="field-note">Разные тексты под разные случаи — «Новые строки для веба», «Файлы для приложения»… Подходят любому подрядчику: языки и дедлайн встанут сами. Привяжите текст к шаблону задачи («Новая задача» → «Текст письма») — и письмо сразу будет с ним.</p>
+    <div id="mlTexts" class="ml-list"></div>
+    <button id="mlTextNew" class="btn ghost small lt-new" type="button">＋ Новый текст</button>
     <div class="r-sec">Напоминания в браузере</div>
     <div class="ml-item"><div class="ml-head"><b>Сроки на сегодня</b><label class="switch"><input id="mlRemind" type="checkbox" checked><span></span></label></div>
       <span class="ml-when">уведомление в углу экрана: что сдать сегодня и что просрочено. Нажмёте — откроются «Мои задачи»</span>

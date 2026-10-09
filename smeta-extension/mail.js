@@ -1,6 +1,6 @@
 // Вкладка «Настройки»: своя почта для писем и включение рассылок (то же, что «⚙️ Настройки» в таблице).
 import { settings, isConfigured, call, toast, ask, getLists } from './core.js';
-import { renderLetterList, renderSignatureCard } from './letter.js';
+import { renderLetterList, renderSignatureCard, renderTextList } from './letter.js';
 import { remindOn, remindDue, soundPrefs } from './remind.js';
 import { SOUNDS, playSound } from './sounds.js';
 
@@ -78,6 +78,7 @@ async function loadLetterList() {
   try { if (isConfigured()) contractors = ((await getLists()) || {}).contractors || []; } catch { /* только настроенные */ }
   await renderLetterList($('#mlLetters'), contractors);
   renderSignatureCard();
+  renderTextList($('#mlTexts'), $('#mlTextNew'));
 }
 
 export async function loadMail() {

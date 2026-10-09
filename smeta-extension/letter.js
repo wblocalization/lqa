@@ -13,7 +13,7 @@ const $ = (s) => document.querySelector(s);
 const els = {
   box: $('#letter'), contractor: $('#lContractor'), edit: $('#lEdit'), view: $('#lView'), empty: $('#lEmpty'),
   subject: $('#lSubject'), copySubject: $('#lCopySubject'), to: $('#lTo'), cc: $('#lCc'),
-  body: $('#lBody'), copyBody: $('#lCopyBody'), compose: $('#lCompose'), links: $('#lLinks'),
+  body: $('#lBody'), texts: $('#lTexts'), eNameRow: $('#lENameRow'), eName: $('#lEName'), eAddr: $('#lEAddr'), copyBody: $('#lCopyBody'), compose: $('#lCompose'), links: $('#lLinks'),
   sig: $('#lSig'), sigEdit: $('#lSigEdit'), sigText: $('#lSigText'), sigFetch: $('#lSigFetch'), sigSave: $('#lSigSave'),
   send: $('#lSend'), sent: $('#lSent'), sentText: $('#lSentText'), sentOpen: $('#lSentOpen'), drop: $('#lDrop'), fileInput: $('#lFileInput'), fileList: $('#lFileList'), attachOpen: $('#lAttachOpen'),
   editor: $('#lEditor'), eTo: $('#lETo'), eCc: $('#lECc'), eBody: $('#lEBody'), save: $('#lSave'), cancel: $('#lCancel'), remove: $('#lRemove'),
@@ -29,15 +29,40 @@ const OLD_DEFAULTS = [
 let letters = {};   // { [подрядчик]: { to, cc, body } }
 let ctx = null;     // задача, которую только что добавили
 
+// Тексты писем — общая библиотека для всех подрядчиков: «Новые строки для веба», «Файлы для приложения»…
+// Шаблон задачи может быть привязан к тексту (letterText = id) — тогда письмо сразу с ним. Без привязки — текст подрядчика.
+let texts = []; // [{ id, name, body }]
+
 export async function loadLetters() {
-  const r = await chrome.storage.local.get('letters');
+  const r = await chrome.storage.local.get(['letters', 'letterTexts']);
   letters = r.letters && typeof r.letters === 'object' ? r.letters : {};
+  texts = Array.isArray(r.letterTexts) ? r.letterTexts.filter((t) => t && t.id && t.name) : [];
   Object.values(letters).forEach((l) => { if (l && OLD_DEFAULTS.includes(l.body)) l.body = DEFAULT_BODY; });
   return letters;
 }
 
 /** Для файла «Скачать файлом» / «Загрузить из файла» — вместе с шаблонами задач. */
 export const lettersForExport = () => letters;
+export const textsForExport = () => texts;
+/** Тексты писем — для выбора в форме задачи. */
+export async function listTexts() { await loadLetters(); return texts.map((t) => ({ id: t.id, name: t.name })); }
+const saveTexts = () => chrome.storage.local.set({ letterTexts: texts });
+/** Загрузить тексты из файла: с тем же названием — заменить. */
+export async function importTexts(list) {
+  if (!Array.isArray(list)) return 0;
+  await loadLetters();
+  let n = 0;
+  list.forEach((t) => {
+    if (!t || typeof t.name !== 'string' || typeof t.body !== 'string' || !t.name.trim()) return;
+    const id = typeof t.id === 'string' && t.id ? t.id : `t${Date.now().toString(36)}${n}`;
+    const i = texts.findIndex((x) => x.id === id || x.name === t.name);
+    const item = { id: i !== -1 ? texts[i].id : id, name: t.name.trim(), body: t.body };
+    if (i !== -1) texts[i] = item; else texts.push(item);
+    n++;
+  });
+  await saveTexts();
+  return n;
+}
 export async function importLetters(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return 0;
   await loadLetters();
@@ -100,7 +125,7 @@ export async function showLetter(c) {
       if (ctx && !els.view.hidden) renderSignature();
     }).catch(() => {});
   }
-  ctx = { ...c, due: ddmm(c.exactDeadline) };
+  ctx = { ...c, due: ddmm(c.exactDeadline), textId: c.textId || '' };
   els.links.value = ''; // ссылки и вложения — у каждой задачи свои
   files = [];
   renderFiles();
@@ -181,14 +206,36 @@ function render() {
   els.to.value = parseEmails(l.to).join(', ');
   els.cc.value = parseEmails(l.cc).join(', ');
   bodyEdited = false;
+  if (ctx.textId && !texts.some((t) => t.id === ctx.textId)) ctx.textId = ''; // текст удалили — берём текст подрядчика
+  renderTextChips();
   fillBody();
-  if (!ctx.due && /\{срок\}/i.test(l.body || DEFAULT_BODY)) toast('В задаче нет «Срока сдачи» — впишите дату в письмо сами', 'warn');
+  if (!ctx.due && /\{срок\}/i.test(currentTemplate())) toast('В задаче нет «Срока сдачи» — впишите дату в письмо сами', 'warn');
   renderSignature();
 }
-function fillBody() {
-  const l = letters[ctx.contractor] || {};
-  if (!bodyEdited) bodyEd.set(withMaterials(fillTemplate(l.body || DEFAULT_BODY, ctx), els.links.value));
+/** Шаблон текста письма сейчас: выбранный из библиотеки или текст подрядчика. */
+function currentTemplate() {
+  const t = texts.find((x) => x.id === ctx.textId);
+  return t ? t.body : ((letters[ctx.contractor] || {}).body || DEFAULT_BODY);
 }
+function fillBody() {
+  if (!bodyEdited) bodyEd.set(withMaterials(fillTemplate(currentTemplate(), ctx), els.links.value));
+}
+/** Переключатель текста над письмом: «Обычный» (текст подрядчика) и тексты из библиотеки. */
+function renderTextChips() {
+  els.texts.hidden = !texts.length;
+  els.texts.innerHTML = texts.length ? '<span class="lt-lbl">Текст:</span>' + [{ id: '', name: 'Обычный' }, ...texts].map((t) =>
+    `<button type="button" class="lt-chip${(ctx.textId || '') === t.id ? ' on' : ''}" data-text="${t.id}">${escHtml(t.name)}</button>`).join('') : '';
+}
+const escHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+els.texts.addEventListener('click', async (e) => {
+  const b = e.target.closest('button[data-text]');
+  if (!b || b.dataset.text === (ctx.textId || '')) return;
+  if (bodyEdited && !await ask({ title: 'Заменить текст письма?', text: 'Вы уже правили письмо — правки пропадут.', ok: 'Заменить' })) return;
+  ctx.textId = b.dataset.text;
+  bodyEdited = false;
+  renderTextChips();
+  fillBody();
+});
 
 async function copy(text, done) {
   try { await navigator.clipboard.writeText(text); toast(done); } catch { toast('Нет доступа к буферу — выделите и скопируйте вручную', 'err'); }
@@ -527,22 +574,29 @@ async function owaAttach(list) {
 
 // ---------- Настройка для подрядчика ----------
 // Открывается под добавленной задачей («✏️ Настроить») или во вкладке «Настройки» (host — куда поставить редактор).
-function openEditor(contractor = ctx && ctx.contractor, { host = null, onDone = null } = {}) {
+function openEditor(contractor = ctx && ctx.contractor, { host = null, onDone = null, textId = null } = {}) {
   if (editing && editing.host && editing.host !== host) closeEditor();
-  editing = { contractor, host, onDone, ctx: host ? null : ctx };
+  // textId: null — письмо подрядчика (адреса + обычный текст); '' — новый текст библиотеки; id — текст библиотеки
+  const kind = textId === null ? 'letter' : 'text';
+  editing = { contractor, host, onDone, ctx: host ? null : ctx, kind, textId };
   const l = letters[contractor] || {};
+  const t = texts.find((x) => x.id === textId);
   (host || els.box).appendChild(els.editor);
+  els.eAddr.hidden = kind === 'text';
+  els.eNameRow.hidden = kind !== 'text';
+  els.eName.value = t ? t.name : '';
   els.eTo.value = parseEmails(l.to).join('\n');
   els.eCc.value = parseEmails(l.cc).join('\n');
-  tplEd.set(l.body || DEFAULT_BODY);
-  els.remove.hidden = !letters[contractor];
+  tplEd.set(kind === 'text' ? (t ? t.body : DEFAULT_BODY) : (l.body || DEFAULT_BODY));
+  els.remove.hidden = kind === 'text' ? !t : !letters[contractor];
+  els.remove.textContent = kind === 'text' ? '🗑 Удалить этот текст' : '🗑 Удалить почты и шаблон';
   els.editor.hidden = false;
   if (!host) {
     els.view.hidden = true;
     els.empty.hidden = true;
     els.edit.hidden = true;
   }
-  els.eTo.focus();
+  (kind === 'text' ? els.eName : els.eTo).focus();
 }
 function closeEditor() {
   els.editor.hidden = true;
@@ -559,6 +613,7 @@ els.edit.addEventListener('click', () => openEditor());
 els.empty.addEventListener('click', (e) => { if (e.target.closest('button')) openEditor(); });
 els.cancel.addEventListener('click', () => closeEditor());
 els.save.addEventListener('click', async () => {
+  if (editing.kind === 'text') return saveText();
   const who = editing.contractor;
   const to = parseEmails(els.eTo.value);
   const cc = parseEmails(els.eCc.value);
@@ -572,6 +627,7 @@ els.save.addEventListener('click', async () => {
 
 // Стереть почты и шаблон подрядчика целиком
 els.remove.addEventListener('click', async () => {
+  if (editing.kind === 'text') return removeText();
   const who = editing.contractor;
   if (!await ask({ title: `Удалить письмо для ${who}?`, text: 'Почты и текст письма этого подрядчика сотрутся.', ok: 'Удалить', danger: true })) return;
   await loadLetters();
@@ -631,3 +687,66 @@ document.querySelector('#lDefaultBody').addEventListener('click', () => {
   tplEd.set(DEFAULT_BODY);
   tplEd.focus();
 });
+
+// ---------- Тексты писем (библиотека) ----------
+async function saveText() {
+  const name = els.eName.value.trim();
+  if (!name) { els.eName.focus(); return toast('Назовите текст — например, «Новые строки для веба»', 'warn'); }
+  await loadLetters();
+  if (texts.some((t) => t.name === name && t.id !== editing.textId)) return toast(`Текст «${name}» уже есть — выберите другое название`, 'warn');
+  const body = tplEd.get().trim() || DEFAULT_BODY;
+  const i = texts.findIndex((t) => t.id === editing.textId);
+  if (i !== -1) texts[i] = { ...texts[i], name, body };
+  else texts.push({ id: `t${Date.now().toString(36)}`, name, body });
+  await saveTexts();
+  closeEditor();
+  if (ctx && !els.box.hidden && letters[ctx.contractor]) render();
+  toast(`Текст «${name}» сохранён`);
+}
+async function removeText() {
+  const t = texts.find((x) => x.id === editing.textId);
+  if (!t || !await ask({ title: `Удалить текст «${t.name}»?`, text: 'Шаблоны задач с этим текстом будут брать обычный текст подрядчика.', ok: 'Удалить', danger: true })) return;
+  await loadLetters();
+  texts = texts.filter((x) => x.id !== t.id);
+  await saveTexts();
+  closeEditor();
+  if (ctx && !els.box.hidden && letters[ctx.contractor]) render();
+  toast(`🗑 Текст «${t.name}» удалён`);
+}
+
+/** Вкладка «Настройки» → «Тексты писем»: список, «Изменить», «＋ Новый текст» — редактор прямо там. */
+export async function renderTextList(box, newBtn) {
+  await loadLetters();
+  if (editing && editing.host && box.contains(editing.host)) closeEditor();
+  box.innerHTML = texts.length ? '' : '<p class="field-note">Пока только обычный текст у каждого подрядчика. Нажмите «＋ Новый текст».</p>';
+  const again = () => renderTextList(box, newBtn);
+  texts.forEach((t) => {
+    const item = document.createElement('div');
+    item.className = 'ml-item lt-item';
+    const head = document.createElement('div');
+    head.className = 'ml-head';
+    const info = document.createElement('div');
+    info.className = 'lt-info';
+    const b = document.createElement('b'); b.textContent = t.name;
+    const sub = document.createElement('span'); sub.className = 'ml-when';
+    sub.textContent = t.body.replace(/\*\*/g, '').replace(/\{([а-яё]+)\}/gi, '‹$1›').replace(/\s+/g, ' ').slice(0, 90);
+    info.append(b, sub);
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'btn ghost small'; btn.textContent = '✏️ Изменить';
+    btn.addEventListener('click', () => {
+      if (editing && editing.host === item) return closeEditor();
+      openEditor(null, { host: item, onDone: again, textId: t.id });
+    });
+    head.append(info, btn);
+    item.append(head);
+    box.append(item);
+  });
+  newBtn.onclick = async () => {
+    if (editing) closeEditor();
+    await renderTextList(box, newBtn);
+    const item = document.createElement('div');
+    item.className = 'ml-item lt-item lt-newbox';
+    box.append(item);
+    openEditor(null, { host: item, onDone: again, textId: '' });
+  };
+}
