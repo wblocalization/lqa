@@ -37,9 +37,23 @@ function handName(r, i) {
   const n = countFingers(lm);
   return n >= 1 ? `F${n}` : '';
 }
-// Двумя руками сразу — праздничные жесты: ✌️✌️, 👍👍, 🙌
-const DUO = { F2: 'Duo_Victory', Thumb_Up: 'Duo_Thumbs', F5: 'Duo_Palms' };
+// Двумя руками сразу — праздничные жесты: 👍👍, 🙌 (✌️✌️ убрали — вживую распознавался плохо)
+const DUO = { Thumb_Up: 'Duo_Thumbs', F5: 'Duo_Palms' };
+/**
+ * 🫶 Сердечко двумя руками: кончики указательных сошлись сверху, кончики больших — снизу.
+ * Расстояния меряем в «ладонях», чтобы не зависело от того, далеко ли руки от камеры.
+ */
+export function isHeart(hands) {
+  if (!hands || hands.length < 2) return false;
+  const [a, b] = hands;
+  const d = (p, q) => Math.hypot(p.x - q.x, p.y - q.y);
+  const palm = (d(a[0], a[9]) + d(b[0], b[9])) / 2 || 1e-6;
+  const topY = (a[8].y + b[8].y) / 2, bottomY = (a[4].y + b[4].y) / 2;
+  return d(a[8], b[8]) < 0.6 * palm && d(a[4], b[4]) < 0.6 * palm && bottomY - topY > 0.3 * palm;
+}
+
 function gestureName(r) {
+  if (isHeart(r.landmarks)) return 'Heart';
   const a = handName(r, 0);
   if (r.landmarks && r.landmarks.length > 1) {
     const b = handName(r, 1);
@@ -60,7 +74,7 @@ export function countFingers(lm) {
 
 /**
  * Включить. onGesture(name) — жест подержали: 'Thumb_Up' | 'Thumb_Down' | 'Closed_Fist' | 'ILoveYou' | 'F1'…'F5' (сколько пальцев)
- * или двумя руками: 'Duo_Victory' (✌️✌️) | 'Duo_Thumbs' (👍👍) | 'Duo_Palms' (🙌).
+ * или двумя руками: 'Duo_Thumbs' (👍👍) | 'Duo_Palms' (🙌) | 'Heart' (🫶).
  * onSeen(name) — что видно прямо сейчас (для подсказки на экране). Бросает ошибку 'NotAllowedError', если нет доступа к камере.
  */
 export async function startGestures(videoEl, { onGesture, onSeen }) {

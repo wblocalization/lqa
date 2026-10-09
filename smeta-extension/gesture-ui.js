@@ -4,7 +4,7 @@ import { playSound } from './sounds.js';
 
 const $ = (s) => document.querySelector(s);
 const box = $('#mlGestures'), bubble = $('#gestBubble'), video = $('#gestVideo'), seen = $('#gestSeen');
-const ICONS = { Duo_Victory: '✌️✌️', Duo_Thumbs: '👍👍', Duo_Palms: '🙌', Thumb_Up: '👍', Thumb_Down: '👎', Closed_Fist: '✊', ILoveYou: '🤟', F1: '☝️', F2: '✌️', F3: '3️⃣', F4: '4️⃣', F5: '🖐' };
+const ICONS = { Heart: '🫶', Duo_Thumbs: '👍👍', Duo_Palms: '🙌', Thumb_Up: '👍', Thumb_Down: '👎', Closed_Fist: '✊', ILoveYou: '🤟', F1: '☝️', F2: '✌️', F3: '3️⃣', F4: '4️⃣', F5: '🖐' };
 // Пальцы — вкладки: 1 Задача · 2 Мои · 3 Смета · 4 Отчёты · 5 Настройки
 const TABS = { F1: ['task', 'Задача'], F2: ['mine', 'Мои'], F3: ['smeta', 'Смета'], F4: ['reports', 'Отчёты'], F5: ['mail', 'Настройки'] };
 const cheat = $('#gestCheat');
@@ -20,9 +20,8 @@ $('#gestCheatOff').addEventListener('click', async () => {
 });
 let mod = null; // модуль с моделью грузим, только когда включили (он большой)
 
-// Праздник двумя руками — каждый раз новая фраза
+// Праздник (🤟) — каждый раз новая фраза
 const CHEERS = [
-  'Урааа! Лучшая команда локализации! 🎉',
   'Мир, дружба, локализация! ✌️',
   'Переведём всё — даже суахили! 💪',
   'Дедлайн? Какой дедлайн? Мы всё успеем! ⏰',
@@ -32,8 +31,32 @@ const CHEERS = [
   'Подрядчики сдают в срок, сметы сходятся до копейки! ✨',
   'Кофе-брейк заслужен! ☕',
 ];
-let cheerI = -1; // первый раз — «Урааа! Лучшая команда локализации!», дальше по кругу
+let cheerI = -1; // фразы по кругу («Лучшая команда локализации!» — у сердечка 🫶)
 const nextCheer = () => CHEERS[(cheerI = (cheerI + 1) % CHEERS.length)];
+
+// 🫶 — всегда «Лучшая команда локализации!»
+const LOVE_TEXT = 'Урааа! Лучшая команда локализации! 💜';
+
+/** 🫶 — большое сердце, сердечки сыплются, тёплая фраза. */
+function hearts() {
+  playSound('chime');
+  const layer = document.createElement('div');
+  layer.className = 'confetti hearts';
+  for (let i = 0; i < 30; i++) {
+    const s = document.createElement('span');
+    s.textContent = ['💜', '❤️', '💖', '🩷', '💕'][i % 5];
+    s.style.left = `${Math.random() * 100}%`;
+    s.style.animationDelay = `${Math.random() * 0.8}s`;
+    s.style.fontSize = `${16 + Math.random() * 18}px`;
+    layer.appendChild(s);
+  }
+  document.body.appendChild(layer);
+  const big = document.createElement('div');
+  big.className = 'big-heart';
+  big.innerHTML = `<span>💜</span><b>${LOVE_TEXT}</b>`;
+  document.body.appendChild(big);
+  setTimeout(() => { layer.remove(); big.remove(); }, 3000);
+}
 
 /** Большая надпись по центру + конфетти + звук. */
 function celebrate(text, sound = 'harp') {
@@ -76,7 +99,7 @@ function onGesture(name) {
     if (name === 'F5') { const b = dlg.querySelector('[data-a="0"]'); if (b) b.click(); else dlg.close(); }
     return; // пока открыто окно — вкладки и остальное не трогаем
   }
-  if (name === 'Duo_Victory') { celebrate(nextCheer()); return; }
+  if (name === 'Heart') { hearts(); return; }
   if (name === 'Duo_Thumbs') { celebrate('Мы это сделали! 🚀', 'coin'); return; }
   if (name === 'Duo_Palms') { celebrate('Ура-а-а! 🙌', 'chime'); return; }
   if (TABS[name]) {
