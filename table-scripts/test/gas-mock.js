@@ -137,6 +137,7 @@ class Sheet {
   setConditionalFormatRules(r) { this.cf = r; }
   getFilter() { return this.filter; }
   setFrozenRows(n) { this.frozenRows = n; }
+  hideSheet() { this.hidden = true; return this; }
   setFrozenColumns(n) { this.frozenCols = n; }
   getColumnGroupDepth(c) { return this.groups[c] ? 1 : 0; }
   getColumnGroup(c) { return chain({ collapse: () => { this.groups[c + ':collapsed'] = true; } }); }

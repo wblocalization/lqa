@@ -62,6 +62,7 @@ function doPost(e) {
     if (req.action === 'exportXlsx') return smetaJson_(exportXlsx_(req));
     if (req.action === 'mailStatus') return smetaJson_(mailStatus_(req));
     if (req.action === 'mailTest') return smetaJson_(mailTest_(req));
+    if (req.action === 'personalGet') return smetaJson_(personalGet_(req));
   } catch (err) {
     return smetaJson_({ ok: false, error: String(err && err.message || err) });
   }
@@ -83,6 +84,7 @@ function doPost(e) {
     if (req.action === 'setDelivery') { requireTableScript_(); return smetaJson_(setTaskDelivery(req.row, req.id, req.origSubject, req.value)); }
     if (req.action === 'mailToggle') return smetaJson_(mailToggle_(req));
     if (req.action === 'mailEmail') return smetaJson_(mailEmail_(req));
+    if (req.action === 'personalSave') return smetaJson_(personalSave_(req));
     if (req.action === 'deleteTask') { requireTableScript_(); deleteTask(req.row, req.id, req.origSubject); return smetaJson_({ ok: true }); }
     return smetaJson_({ ok: false, error: 'Неизвестное действие' });
   } catch (err) {
@@ -96,7 +98,7 @@ function doPost(e) {
 
 /** Проверка: открыть адрес веб-приложения в браузере — должно написать, что скрипт работает. */
 function doGet() {
-  return ContentService.createTextOutput('Скрипт работает. Адрес правильный — вставьте его в настройки расширения.\n\nВерсия: 9 октября, вечер (строки в заказ, дедлайн по рабочим дням).');
+  return ContentService.createTextOutput('Скрипт работает. Адрес правильный — вставьте его в настройки расширения.\n\nВерсия: 9 октября, ночь (личные шаблоны в таблице, строки в заказ, дедлайн по рабочим дням).');
 }
 
 function smetaLookup_(req) {
@@ -432,4 +434,62 @@ function mailEmail_(req) {
     }
   }
   return { ok: false, error: 'Нет менеджера «' + manager + '» в «Списках»' };
+}
+
+// ---------- Личные шаблоны: шаблоны задач, письма подрядчикам и подпись каждого менеджера ----------
+// Скрытый лист «Личные шаблоны»: A — менеджер, B — когда сохранено, C… — данные (JSON, кусками: в ячейку влезает 50 000 знаков).
+const PERSONAL_SHEET = 'Личные шаблоны';
+const PERSONAL_CHUNK = 45000;
+
+function personalSheet_(create) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(PERSONAL_SHEET);
+  if (!sh && create) {
+    sh = ss.insertSheet(PERSONAL_SHEET);
+    sh.getRange(1, 1, 1, 3).setValues([['Менеджер', 'Сохранено', 'Данные (не редактировать руками)']]);
+    sh.setFrozenRows(1);
+    sh.hideSheet();
+  }
+  return sh;
+}
+
+function personalRow_(sh, manager) {
+  const last = sh.getLastRow();
+  if (last < 2) return 0;
+  const names = sh.getRange(2, 1, last - 1, 1).getValues();
+  for (let i = 0; i < names.length; i++) if (String(names[i][0]).trim() === manager) return i + 2;
+  return 0;
+}
+
+function personalGet_(req) {
+  const manager = String(req.manager || '').trim();
+  if (!manager) return { ok: false, error: 'Не выбран менеджер (⚙️ → «Кто вы»)' };
+  const sh = personalSheet_(false);
+  const row = sh ? personalRow_(sh, manager) : 0;
+  if (!row) return { ok: true, data: null };
+  const width = Math.max(sh.getLastColumn() - 2, 1);
+  const json = sh.getRange(row, 3, 1, width).getValues()[0].map((v) => String(v).replace(/^~/, '')).join('');
+  let data = null;
+  try { data = json ? JSON.parse(json) : null; } catch (e) { return { ok: false, error: 'Личные шаблоны в таблице повреждены' }; }
+  return { ok: true, data: data };
+}
+
+function personalSave_(req) {
+  const manager = String(req.manager || '').trim();
+  if (!manager) return { ok: false, error: 'Не выбран менеджер (⚙️ → «Кто вы»)' };
+  if (!req.data || typeof req.data !== 'object') return { ok: false, error: 'Нечего сохранять' };
+  const json = JSON.stringify(req.data);
+  const parts = [];
+  for (let i = 0; i < json.length; i += PERSONAL_CHUNK) parts.push(json.slice(i, i + PERSONAL_CHUNK));
+  if (parts.length > 40) return { ok: false, error: 'Слишком много шаблонов — не помещается в таблицу' };
+  const sh = personalSheet_(true);
+  let row = personalRow_(sh, manager);
+  if (!row) row = Math.max(sh.getLastRow(), 1) + 1;
+  const width = Math.max(sh.getLastColumn() - 2, parts.length, 1);
+  const cells = [];
+  // «~» впереди — чтобы кусок, начавшийся с «=» или «+», таблица не приняла за формулу
+  for (let i = 0; i < width; i++) cells.push(parts[i] ? '~' + parts[i] : '');
+  sh.getRange(row, 1, 1, 2).setValues([[manager, new Date()]]);
+  sh.getRange(row, 3, 1, width).setNumberFormat('@').setValues([cells]);
+  return { ok: true };
 }

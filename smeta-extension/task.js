@@ -136,6 +136,9 @@ let templates = [];
 let lastTask = null;     // последняя добавленная задача — «Как в прошлый раз»
 let byContractor = {};   // последние поля по каждому подрядчику — для подсказки «как обычно»
 
+/** Шаблоны поменялись не здесь (пришли из таблицы) — перечитать. */
+export const reloadTemplates = () => loadTemplates();
+
 async function loadTemplates() {
   const saved = await chrome.storage.local.get(['templates', 'lastTask', 'byContractor']);
   templates = saved.templates || [];
