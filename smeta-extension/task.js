@@ -16,8 +16,8 @@ const els = {
   link2: $('#tLink2'), deliveryStatus: $('#tDeliveryStatus'), estimateLink: $('#tEstimateLink'),
   total: $('#tTotal'), sp: $('#tSp'), comment: $('#tComment'), complaints: $('#tComplaints'),
   preview: $('#tPreview'), copyPreview: $('#tCopyPreview'), submit: $('#tSubmit'), msg: $('#tMsg'),
-  tplChips: $('#tTplChips'), suggest: $('#tSuggest'), suggestText: $('#tSuggestText'), suggestApply: $('#tSuggestApply'),
-  suggestClose: $('#tSuggestClose'), clearTpl: $('#tClearTpl'),
+  tplChips: $('#tTplChips'), suggest: $('#tSuggest'),
+  clearTpl: $('#tClearTpl'),
   rows: $('#tRows'), moreRow: $('#tMoreRow'), rowMode: $('#tRowMode'), rowId: $('#tRowId'), rowCancel: $('#tRowCancel'), addRow: $('#taskAddRow'), tplBox: $('.tpl'), tplIoMsg: $('#tTplIoMsg'), openRow: $('#taskOpenRow'),
 };
 autoDeadline(els.deadline, els.exactDeadline, els.date);
@@ -221,43 +221,11 @@ function applyFields(t, { keepSubject = false } = {}) {
   applying = false;
 }
 
-// ---------- Подсказка «как обычно» по подрядчику ----------
-let suggestion = null;
+// Подсказку «как в прошлый раз с подрядчиком» при выборе подрядчика убрали — мешала; есть чип «↻ Как в прошлый раз»
 function hideSuggest() {
-  suggestion = null;
   els.suggest.hidden = true;
 }
 
-function suggestFor(contractor) {
-  hideSuggest();
-  if (!contractor || applying) return;
-  // В форме уже что-то выбрано — не мешаем
-  if (els.product.value || checkedLangInputs().length) return;
-  const tpl = templates.find((t) => t.contractor === contractor);
-  const memo = byContractor[contractor];
-  if (tpl) {
-    suggestion = { fields: tpl, tplIndex: templates.indexOf(tpl) };
-    els.suggestText.textContent = `С ${contractor} есть шаблон «${tpl.name}»: ${describe(tpl)}`;
-  } else if (memo) {
-    suggestion = { fields: memo };
-    els.suggestText.textContent = `Как в прошлый раз с ${contractor}: ${describe(memo)}`;
-  } else {
-    return;
-  }
-  els.suggest.hidden = false;
-}
-
-els.suggestApply.addEventListener('click', () => {
-  if (!suggestion) return;
-  const s = suggestion;
-  if (s.tplIndex != null) els.template.value = String(s.tplIndex);
-  els.delTpl.hidden = s.tplIndex == null;
-  applyFields(s.fields, { keepSubject: true });
-  renderChips();
-  setMsg('Заполнено. Проверьте тему и, если есть, вставьте ссылку на Band.');
-});
-els.suggestClose.addEventListener('click', hideSuggest);
-els.contractor.addEventListener('change', () => suggestFor(els.contractor.value));
 
 /** Запомнить добавленную задачу: для «Как в прошлый раз» и подсказки по подрядчику. */
 async function rememberTask(task) {
