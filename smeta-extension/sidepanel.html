@@ -63,10 +63,11 @@
         <div><b>Ещё строка в заказ <span id="tRowId"></span></b><span class="row-mode-note">номер, тема, дата и подрядчик — как у заказа; Band, ник, языки, сроки — свои</span></div>
         <button id="tRowCancel" class="link-btn" type="button">✕ Отменить</button>
       </div>
-      <div class="preview-box">
+      <div class="preview-box" hidden>
         <div class="preview-txt"><span class="eyebrow">Тема письма <span class="eyebrow-note" title="Точный номер таблица выдаст при добавлении — тема скопируется сама">· номер предварительный</span></span><p id="tPreview" class="preview"></p></div>
         <button id="tCopyPreview" class="btn ghost small" type="button">Скопировать</button>
       </div>
+      <div id="tRows" class="order-rows" hidden></div>
       <div class="tpl">
         <span class="tpl-title">Шаблоны</span>
         <div id="tTplChips" class="tpl-chips"></div>
@@ -152,7 +153,6 @@
 
 
 
-      <div id="tRows" class="order-rows" hidden></div>
       <button id="tMoreRow" class="btn ghost small add-row-btn" type="button" title="Тот же номер и тема, но другой Band, заказчик, языки или сроки — как несколько строк одного заказа в таблице">＋ Ещё строка в этот заказ</button>
       <button id="tSubmit" class="btn primary" type="submit">Добавить задачу</button>
     </form>
@@ -413,7 +413,7 @@
     </div>
     <p id="mlMsg" class="status" role="status"></p>
     <div class="r-sec">Письма подрядчикам</div>
-    <p class="field-note">Почты и текст письма для каждого подрядчика — то же, что «✏️ Настроить» после добавления задачи. Хранятся в таблице, у каждого менеджера свои.</p>
+    <p class="field-note">Почты и текст письма для каждого подрядчика — то же, что «✏️ Настроить» после добавления задачи. Хранятся в этом браузере — у каждого свои.</p>
     <div id="mlLetters" class="ml-list"></div>
   </section>
 </main>

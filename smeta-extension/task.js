@@ -136,9 +136,6 @@ let templates = [];
 let lastTask = null;     // последняя добавленная задача — «Как в прошлый раз»
 let byContractor = {};   // последние поля по каждому подрядчику — для подсказки «как обычно»
 
-/** Шаблоны поменялись не здесь (пришли из таблицы) — перечитать. */
-export const reloadTemplates = () => loadTemplates();
-
 async function loadTemplates() {
   const saved = await chrome.storage.local.get(['templates', 'lastTask', 'byContractor']);
   templates = saved.templates || [];
@@ -466,7 +463,7 @@ els.date.addEventListener('change', () => { els.subject.value = withToday(els.su
 function updatePreview() {
   if (!lists) return;
   if (rowOrder) { els.preview.textContent = rowOrder.subject; return; }
-  if (pendingRows.length) { els.preview.textContent = subjectFor(nextId || '…', pendingRows[0]); return; }
+  if (pendingRows.length) { els.preview.textContent = subjectFor(nextId || '…', mergeRows(pendingRows)); return; }
   if (!els.contractor.value) { els.preview.textContent = 'Выберите подрядчика — появится номер и тема'; return; }
   els.preview.textContent = buildSubject(nextId || '…');
 }
@@ -660,7 +657,7 @@ function renderRows() {
   els.rows.innerHTML = pendingRows.length
     ? `<div class="or-head">Строки заказа — номер и тема общие</div>` + pendingRows.map((t, i) =>
       `<div class="or-row"><b>${i + 1}</b><span>${esc(rowSummary(t))}</span><button type="button" class="or-del" data-i="${i}" title="Убрать строку">✕</button></div>`).join('') +
-      `<div class="or-next">Строка ${pendingRows.length + 1} — заполните ниже</div>`
+      `<div class="or-next">Строка ${pendingRows.length + 1} — заполните ниже, потом «${rowOrder ? 'Добавить' : 'Добавить заказ'}» или ещё «＋ строка»</div>`
     : '';
   lockShared();
   updateSubmitLabel();
@@ -688,7 +685,7 @@ els.moreRow.addEventListener('click', () => {
   renderRows();
   setMsg('');
   toast(`Строка ${pendingRows.length} запомнена — заполните следующую`);
-  els.rows.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  window.scrollTo({ top: 0, behavior: 'smooth' }); // поля строки — наверху формы
 });
 els.rows.addEventListener('click', async (e) => {
   const b = e.target.closest('.or-del');
@@ -720,8 +717,9 @@ async function addOrderRows(order, rows, info = {}) {
       if (!r.ok) throw new Error(/Неизвестное действие/.test(r.error || '') ? 'веб-приложение ещё старое: нужна новая версия развёртывания' : r.error);
       rememberTask(rows[i]).catch(() => {});
     }
-    lastSubject = order.subject;
-    lastOrder = order;
+    lastSubject = (r && r.subject) || order.subject; // тема заказа — уже с языками всех строк
+    lastOrder = { ...order, subject: lastSubject };
+    navigator.clipboard.writeText(lastSubject).then(() => { els.doneCopied.hidden = false; }).catch(() => {});
     showDone(r, all, info.first ? `Заказ ${order.id} добавлен: ${all.length} ${plural(all.length, 'строка', 'строки', 'строк')}`
       : `${rows.length > 1 ? 'Строки добавлены' : 'Строка добавлена'} в ${order.id}`);
   } catch (err) {

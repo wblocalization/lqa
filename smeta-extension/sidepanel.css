@@ -288,6 +288,7 @@ form { display: flex; flex-direction: column; gap: 16px; }
 .more[open] summary { margin-bottom: 0; }
 
 /* Тема письма и «Скопировать» всегда видны — прилипают под шапкой при прокрутке */
+.preview-box[hidden] { display: none; }
 .preview-box {
   position: sticky; top: var(--head-h, 57px); z-index: 1;
   display: flex; gap: 10px; align-items: flex-start;
@@ -370,6 +371,7 @@ input[type=text], input[type=url], input[type=search], input[type=password], inp
 .tpl-chip.last { color: var(--accent); border-color: var(--accent); }
 .chip span { background: var(--card); }
 .chip input:checked + span { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+.preview-box[hidden] { display: none; }
 .preview-box { background: linear-gradient(100deg, var(--soft), var(--err-soft)); }
 .suggest { background: var(--card); border: 1px solid var(--line); box-shadow: 0 4px 14px rgb(139 92 246 / .12); border-radius: 14px; }
 .suggest .btn { background: var(--accent); color: var(--on-accent); border: none; }

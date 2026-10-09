@@ -5,7 +5,6 @@ import * as task from './task.js';
 import * as mine from './mine.js';
 import * as reports from './reports.js';
 import { loadMail } from './mail.js';
-import { cloudSync } from './cloud.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
@@ -100,7 +99,6 @@ els.saveSettings.addEventListener('click', async () => {
   smeta.onSettingsSaved();
   task.onSettingsSaved();
   mine.loadMine();
-  syncPersonal();
 });
 
 // Статус — цветом: выбрали другой — цвет сменился сразу
@@ -135,17 +133,8 @@ const setHeadH = () => document.documentElement.style.setProperty('--head-h', he
 setHeadH();
 window.addEventListener('resize', setHeadH);
 
-// Свои шаблоны (задачи, письма, подпись) — из таблицы; пришло новее, чем в браузере, — перерисовать
-function syncPersonal() {
-  cloudSync((keys) => {
-    if (keys.includes('templates')) task.reloadTemplates();
-    if (!$('#tabMail').hidden) loadMail();
-  }).catch(() => {});
-}
-
 await loadSettings();
 showTableLink();
-syncPersonal();
 if (!isConfigured() || !settings.manager) {
   fillSettings();
   els.settings.hidden = false;

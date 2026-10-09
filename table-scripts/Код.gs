@@ -1153,6 +1153,8 @@ function addRowToTask(id, task) {
     ids.forEach((r, i) => { if (str_(r[0]) === id) { if (first < 0) first = i + 2; last = i + 2; } });
     if (first < 0) throw new Error('Не нашла заказ ' + id + ' — возможно, его удалили или поменяли номер');
     const base = sh.getRange(first, 1, 1, TASK_COLS).getValues()[0];
+    const orderRows = [];
+    ids.forEach((r, i) => { if (str_(r[0]) === id) orderRows.push(i + 2); });
 
     sh.insertRowAfter(last);
     const row = last + 1;
@@ -1162,7 +1164,15 @@ function addRowToTask(id, task) {
 
     const date = isDate_(base[COL.DATE - 1]) ? base[COL.DATE - 1] : parseIsoDate_(task.date);
     if (!task.deadline) task.deadline = deadlineFromDue_(parseIsoDate_(task.exactDeadline), date, '');
-    const subject = stripLinkMarkers_(str_(base[COL.SUBJECT - 1]));
+    const oldSubject = stripLinkMarkers_(str_(base[COL.SUBJECT - 1]));
+    // Тема заказа — с кодами языков всех его строк: [LIT-…][Подрядчик][kk][zhs][ar][az][en][Продукт] суть
+    const langs = [];
+    orderRows.forEach(r => str_(sh.getRange(r, COL.LANGS).getValue()).split(/\s*,\s*/).forEach(l => { if (l && langs.indexOf(l) === -1) langs.push(l); }));
+    (task.languages || []).forEach(l => { if (l && langs.indexOf(l) === -1) langs.push(l); });
+    const subject = buildTaskSubject_(id, {
+      contractor: str_(base[COL.CONTRACTOR - 1]), product: str_(base[COL.PRODUCT - 1]), languages: langs,
+      subject: oldSubject.replace(/^(\s*\[[^\]]*\])+\s*/, ''),
+    });
     const values = [
       id, task.ticket ? normTicket_(task.ticket) : base[COL.TICKET - 1], subject,
       date || '', task.product, task.customer, (task.languages || []).join(', '),
@@ -1174,6 +1184,15 @@ function addRowToTask(id, task) {
     if (task.link || task.link2) sh.getRange(row, COL.SUBJECT).setRichTextValue(buildSubjectRich_(subject, task.link, task.link2));
     if (values[COL.LANGS - 1]) colorizeLanguagesCell(sh, row);
     colorizeRowDirectly(sh, row);
+    // У прежних строк заказа — та же новая тема (ссылки на Band у каждой остаются свои)
+    if (subject !== oldSubject) {
+      orderRows.forEach(r => {
+        const cell = sh.getRange(r, COL.SUBJECT);
+        const links = linksFromRich_(cell.getRichTextValue());
+        if (links.link || links.link2) cell.setRichTextValue(buildSubjectRich_(subject, links.link, links.link2));
+        else cell.setValue(subject);
+      });
+    }
     return { id: id, row: row, subject: subject };
   });
 }
