@@ -8,12 +8,14 @@ import { OWA_ORIGIN } from './outlook.js';
 const $ = (s) => document.querySelector(s);
 const els = {
   box: $('#letter'), contractor: $('#lContractor'), edit: $('#lEdit'), view: $('#lView'), empty: $('#lEmpty'),
-  to: $('#lTo'), copyTo: $('#lCopyTo'), ccRow: $('#lCcRow'), cc: $('#lCc'), copyCc: $('#lCopyCc'),
+  subject: $('#lSubject'), copySubject: $('#lCopySubject'), to: $('#lTo'), copyTo: $('#lCopyTo'), ccRow: $('#lCcRow'), cc: $('#lCc'), copyCc: $('#lCopyCc'),
   body: $('#lBody'), copyBody: $('#lCopyBody'), compose: $('#lCompose'),
   editor: $('#lEditor'), eTo: $('#lETo'), eCc: $('#lECc'), eBody: $('#lEBody'), save: $('#lSave'), cancel: $('#lCancel'),
 };
 
-export const DEFAULT_BODY = 'Добрый день!\n\nПросим взять в работу: {тема}\nЯзыки: {языки}\nСрок сдачи: {срок}\n\nСпасибо!';
+export const DEFAULT_BODY = 'Добрый день!\n\nВозьмите, пожалуйста, в работу.\n\nСпасибо!';
+// Прежний текст по умолчанию — тема в нём дублировалась (она и так в теме письма); такие заменяем на новый
+const OLD_DEFAULT = 'Добрый день!\n\nПросим взять в работу: {тема}\nЯзыки: {языки}\nСрок сдачи: {срок}\n\nСпасибо!';
 
 let letters = {};   // { [подрядчик]: { to, cc, body } }
 let ctx = null;     // задача, которую только что добавили
@@ -21,6 +23,7 @@ let ctx = null;     // задача, которую только что доба
 export async function loadLetters() {
   const r = await chrome.storage.local.get('letters');
   letters = r.letters && typeof r.letters === 'object' ? r.letters : {};
+  Object.values(letters).forEach((l) => { if (l && l.body === OLD_DEFAULT) l.body = DEFAULT_BODY; });
   return letters;
 }
 
@@ -75,6 +78,7 @@ function render() {
   els.view.hidden = !l;
   if (!l) return;
   const chips = (list) => list.length ? list.map((e) => `<span class="mail-chip">${e.replace(/</g, '&lt;')}</span>`).join('') : '<span class="muted">не указано</span>';
+  els.subject.textContent = ctx.subject;
   els.to.innerHTML = chips(to);
   els.cc.innerHTML = chips(cc);
   els.ccRow.hidden = !cc.length;
@@ -86,6 +90,7 @@ async function copy(text, done) {
   try { await navigator.clipboard.writeText(text); toast(done); } catch { toast('Нет доступа к буферу — выделите и скопируйте вручную', 'err'); }
 }
 
+els.copySubject.addEventListener('click', () => copy(ctx.subject, '✓ Тема скопирована — вставьте в «Тема»'));
 els.copyTo.addEventListener('click', () => copy(parseEmails(letters[ctx.contractor].to).join('; '), '✓ Адреса скопированы — вставьте в «Кому»'));
 els.copyCc.addEventListener('click', () => copy(parseEmails(letters[ctx.contractor].cc).join('; '), '✓ Копия скопирована — вставьте в «Копия»'));
 els.copyBody.addEventListener('click', () => copy(els.body.textContent, '✓ Текст письма скопирован'));

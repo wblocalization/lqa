@@ -558,8 +558,11 @@ els.form.addEventListener('submit', async (e) => {
     els.doneCopied.hidden = true;
     navigator.clipboard.writeText(lastSubject).then(() => { els.doneCopied.hidden = false; }).catch(() => {});
     setLink(els.openRow, r.url);
+    // Письмо — подрядчику: штатные языки (переводят свои) ему не нужны
+    const shtat = new Set((lists.languages && lists.languages.shtat) || []);
     showLetter({
-      contractor: task.contractor, id: r.id, subject: lastSubject, languages: task.languages,
+      contractor: task.contractor, id: r.id, subject: lastSubject,
+      languages: task.languages.filter((l) => !shtat.has(l) && !/^ШТАТ /i.test(l)),
       codes: task.languages.map((l) => lists.langCodes[l]).filter(Boolean), exactDeadline: task.exactDeadline,
       product: task.product, manager: task.manager, link: task.link,
     }).catch(() => {});
