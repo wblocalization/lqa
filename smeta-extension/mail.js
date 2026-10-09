@@ -1,4 +1,4 @@
-// Вкладка «Письма»: своя почта для писем и включение рассылок (то же, что «⚙️ Настройки» в таблице).
+// Вкладка «Почта»: своя почта для писем и включение рассылок (то же, что «⚙️ Настройки» в таблице).
 import { settings, isConfigured, call, toast, ask, getLists } from './core.js';
 import { renderLetterList, renderSignatureCard } from './letter.js';
 

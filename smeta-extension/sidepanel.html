@@ -397,12 +397,21 @@
   </section>
 
   <section id="tabMail" role="tabpanel" hidden>
+    <div class="r-sec">Подпись</div>
+    <div class="ml-card ml-sig">
+      <div class="sig-field"><span class="field-label">Подпись в письмах подрядчикам <span class="opt">одна на все письма; можно вставить прямо из Outlook</span></span><div class="c-tools ed sig-tools"><button id="mlSigBold" type="button" class="bold-btn" title="Выделите слово мышкой и нажмите"><b>Ж</b> Выделить жирным</button><span class="bold-hint">из Outlook вставляется с жирным</span></div><div id="mlSigText" class="rich sig-rich" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Подпись"></div></div>
+      <div class="row-btns"><button id="mlSigFetch" class="btn ghost small" type="button">Взять из Outlook</button><button id="mlSigSave" class="btn primary small" type="button">Сохранить подпись</button></div>
+    </div>
+    <div class="r-sec">Письма подрядчикам</div>
+    <p class="field-note">Почты и текст письма для каждого подрядчика — то же, что «✏️ Настроить» после добавления задачи. Хранятся в этом браузере — у каждого свои.</p>
+    <div id="mlLetters" class="ml-list"></div>
+    <div class="r-sec">Рассылки — куда присылать вам</div>
     <div class="ml-card">
       <label>Куда присылать письма — <span id="mlWho"></span> <span class="opt">колонка M в «Списках»; пусто — писем не будет</span>
         <span class="with-btn"><input id="mlEmail" type="email" placeholder="name@wb.ru"><button id="mlSave" class="btn ghost" type="button">Сохранить</button></span>
       </label>
     </div>
-    <div class="r-sec">Письма для всей команды</div>
+    <div class="r-sec">Рассылки — включить для всей команды</div>
     <p class="field-note">Включаете — письма начнут приходить всем менеджерам, у кого вписана почта. «Прислать мне» — только вам, для проверки.</p>
     <div id="mlList" class="ml-list">
       <div class="ml-item"><div class="ml-head"><b>Сводка открытых задач</b><label class="switch"><input type="checkbox" data-kind="weekly"><span></span></label></div>
@@ -413,14 +422,6 @@
         <span class="ml-when">26 числа в 10:00 — где не хватает данных для отчёта</span><button class="link-btn" type="button" data-test="month">Прислать мне сейчас</button></div>
     </div>
     <p id="mlMsg" class="status" role="status"></p>
-    <div class="r-sec">Письма подрядчикам</div>
-    <p class="field-note">Почты и текст письма для каждого подрядчика — то же, что «✏️ Настроить» после добавления задачи. Хранятся в этом браузере — у каждого свои.</p>
-    <div id="mlLetters" class="ml-list"></div>
-    <div class="r-sec">Подпись</div>
-    <div class="ml-card ml-sig">
-      <div class="sig-field"><span class="field-label">Подпись в письмах подрядчикам <span class="opt">одна на все письма; можно вставить прямо из Outlook</span></span><div class="c-tools ed sig-tools"><button id="mlSigBold" type="button" class="bold-btn" title="Выделите слово мышкой и нажмите"><b>Ж</b> Выделить жирным</button><span class="bold-hint">из Outlook вставляется с жирным</span></div><div id="mlSigText" class="rich sig-rich" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Подпись"></div></div>
-      <div class="row-btns"><button id="mlSigFetch" class="btn ghost small" type="button">Взять из Outlook</button><button id="mlSigSave" class="btn primary small" type="button">Сохранить подпись</button></div>
-    </div>
   </section>
 </main>
 <nav class="tabbar" role="tablist">
@@ -428,7 +429,7 @@
   <button class="tab" role="tab" data-tab="mine" data-title="Мои" aria-controls="tabMine" aria-selected="false" type="button"><span class="pill"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg><span id="mineBadge" class="tab-badge" hidden></span></span>Мои</button>
   <button class="tab" role="tab" data-tab="smeta" data-title="Смета" aria-controls="tabSmeta" aria-selected="false" type="button"><span class="pill"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20V4h6a4 4 0 0 1 0 8H5M5 16h9"/></svg></span>Смета</button>
   <button class="tab" role="tab" data-tab="reports" data-title="Отчёты" aria-controls="tabReports" aria-selected="false" type="button"><span class="pill"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>Отчёты</button>
-  <button class="tab" role="tab" data-tab="mail" data-title="Письма" aria-controls="tabMail" aria-selected="false" type="button"><span class="pill"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></span>Письма</button>
+  <button class="tab" role="tab" data-tab="mail" data-title="Почта" aria-controls="tabMail" aria-selected="false" type="button"><span class="pill"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></span>Почта</button>
 </nav>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 <script type="module" src="app.js"></script>

@@ -1,4 +1,4 @@
-// Боковая панель: внизу разделы «Задача» / «Мои» / «Смета» / «Отчёты» / «Письма», сверху — название и настройки.
+// Боковая панель: внизу разделы «Задача» / «Мои» / «Смета» / «Отчёты» / «Почта», сверху — название и настройки.
 import { settings, loadSettings, saveSettings, isConfigured, api, esc, DEFAULT_DISK_FOLDER, setLink, getLists } from './core.js';
 import * as smeta from './smeta.js';
 import * as task from './task.js';
@@ -20,7 +20,7 @@ function showTab(name) {
     t.setAttribute('aria-selected', String(on));
     $(`#${t.getAttribute('aria-controls')}`).hidden = !on;
   });
-  const titles = { task: 'Новая задача', mine: 'Мои задачи', smeta: 'Смета', reports: 'Отчёты', mail: 'Письма' };
+  const titles = { task: 'Новая задача', mine: 'Мои задачи', smeta: 'Смета', reports: 'Отчёты', mail: 'Почта' };
   els.title.textContent = titles[name];
   if (name === 'task') task.initTaskTab();
   if (name === 'mine') mine.loadMine();
