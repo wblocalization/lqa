@@ -171,13 +171,15 @@
           <div class="letter-row"><span class="letter-lbl">Тема</span><div id="lSubject" class="letter-subject"></div><button id="lCopySubject" class="btn ghost small" type="button">Скопировать</button></div>
           <div class="letter-row"><span class="letter-lbl">Кому</span><div id="lTo" class="mail-chips"></div><button id="lCopyTo" class="btn ghost small" type="button">Скопировать</button></div>
           <div id="lCcRow" class="letter-row"><span class="letter-lbl">Копия</span><div id="lCc" class="mail-chips"></div><button id="lCopyCc" class="btn ghost small" type="button">Скопировать</button></div>
+          <label class="letter-links">Ссылки на материалы <span class="opt">документы, Figma, архивы на диске — каждая с новой строки; встанут в текст письма</span>
+            <textarea id="lLinks" rows="2" placeholder="https://…"></textarea></label>
           <div class="letter-text"><pre id="lBody"></pre><button id="lCopyBody" class="btn ghost small" type="button">Скопировать текст</button></div>
           <button id="lCompose" class="btn primary" type="button">✉️ Новое письмо в Outlook</button>
         </div>
         <div id="lEditor" class="letter-editor" hidden>
           <label>Кому <span class="opt">почты через запятую или с новой строки</span><textarea id="lETo" rows="3" placeholder="pm@logrusit.com&#10;vendor@logrusit.com"></textarea></label>
           <label>Копия <span class="opt">если нужно</span><textarea id="lECc" rows="2"></textarea></label>
-          <label>Текст письма <span class="opt">тема письма подставится сама; в тексте можно: {номер} {языки} {коды} {срок} {продукт} {менеджер} {ссылка} {тема}</span><textarea id="lEBody" rows="7"></textarea></label>
+          <label>Текст письма <span class="opt">тема письма подставится сама; в тексте можно: {номер} {языки} {коды} {срок} {продукт} {менеджер} {ссылка} {тема} {материалы}</span><textarea id="lEBody" rows="7"></textarea></label>
           <div class="row-btns"><button id="lCancel" class="btn ghost" type="button">Отмена</button><button id="lSave" class="btn primary" type="button">Сохранить</button></div>
           <button id="lRemove" class="link-btn danger-link" type="button" hidden>🗑 Удалить почты и шаблон</button>
         </div>

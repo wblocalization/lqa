@@ -552,3 +552,6 @@ select.delivery-sel option { background: var(--card); color: var(--ink); font-we
 .done-actions a.btn[hidden] + .btn { grid-column: span 2; }
 #taskDone .done-copied { margin: 0; padding: 6px 10px; font-size: 12px; }
 .submit-note { margin: 0; text-align: center; }
+.letter-links { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); }
+.letter-links .opt { font-weight: 400; }
+.letter-links textarea { min-height: 44px; }

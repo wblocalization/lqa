@@ -9,7 +9,7 @@ const $ = (s) => document.querySelector(s);
 const els = {
   box: $('#letter'), contractor: $('#lContractor'), edit: $('#lEdit'), view: $('#lView'), empty: $('#lEmpty'),
   subject: $('#lSubject'), copySubject: $('#lCopySubject'), to: $('#lTo'), copyTo: $('#lCopyTo'), ccRow: $('#lCcRow'), cc: $('#lCc'), copyCc: $('#lCopyCc'),
-  body: $('#lBody'), copyBody: $('#lCopyBody'), compose: $('#lCompose'),
+  body: $('#lBody'), copyBody: $('#lCopyBody'), compose: $('#lCompose'), links: $('#lLinks'),
   editor: $('#lEditor'), eTo: $('#lETo'), eCc: $('#lECc'), eBody: $('#lEBody'), save: $('#lSave'), cancel: $('#lCancel'), remove: $('#lRemove'),
 };
 
@@ -52,6 +52,21 @@ export function parseEmails(text) {
   return [...new Set(String(text || '').split(/[\s,;]+/).map((s) => s.trim().replace(/^<|>$/g, '')).filter((s) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s)))];
 }
 
+/**
+ * Ссылки на материалы — в текст письма: на место {материалы}, а если его в шаблоне нет —
+ * отдельным абзацем перед последним (подписью «Большое спасибо!»).
+ */
+export function withMaterials(text, links) {
+  const list = String(links || '').split(/\s+/).map((s) => s.trim()).filter((s) => /^https?:\/\//i.test(s));
+  const block = list.length ? `Материалы:\n${list.join('\n')}` : '';
+  if (/\{материалы\}/i.test(text)) return text.replace(/\{материалы\}/gi, block).replace(/\n{3,}/g, '\n\n').trim();
+  if (!block) return text;
+  const parts = text.split(/\n\n/);
+  if (parts.length < 2) return `${text}\n\n${block}`;
+  parts.splice(parts.length - 1, 0, block);
+  return parts.join('\n\n');
+}
+
 /** Подставить в шаблон данные задачи: {тема} {номер} {языки} {коды} {срок} {продукт} {менеджер} {ссылка}. */
 export function fillTemplate(tpl, c) {
   const map = {
@@ -67,6 +82,7 @@ const ddmm = (iso) => { const [y, m, d] = String(iso || '').split('-'); return d
 export async function showLetter(c) {
   await loadLetters();
   ctx = { ...c, due: ddmm(c.exactDeadline) };
+  els.links.value = ''; // ссылки — у каждой задачи свои
   els.contractor.textContent = c.contractor || 'подрядчику';
   els.box.hidden = !c.contractor;
   closeEditor();
@@ -86,7 +102,7 @@ function render() {
   els.cc.innerHTML = chips(cc);
   els.ccRow.hidden = !cc.length;
   els.copyTo.disabled = !to.length;
-  els.body.textContent = fillTemplate(l.body || DEFAULT_BODY, ctx);
+  els.body.textContent = withMaterials(fillTemplate(l.body || DEFAULT_BODY, ctx), els.links.value);
 }
 
 async function copy(text, done) {
@@ -153,3 +169,6 @@ els.remove.addEventListener('click', async () => {
   render();
   toast(`Почты и шаблон для ${ctx.contractor} удалены`);
 });
+
+// Вставили ссылки — текст письма обновляется сразу
+els.links.addEventListener('input', () => { if (ctx && letters[ctx.contractor]) render(); });
