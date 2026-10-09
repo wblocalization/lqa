@@ -648,3 +648,8 @@ b .var-pill, strong .var-pill { font-weight: 800; }
 .or-del:hover { color: var(--err); }
 .or-next { font-size: 12px; color: var(--ink-soft); padding-left: 4px; }
 .task-form .add-row-btn { width: 100%; }
+
+/* Письмо ушло — время, кому и ссылка на «Отправленные» */
+.c-sent { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 8px; padding: 10px; border-radius: 12px; background: color-mix(in srgb, var(--ok) 10%, var(--card)); font-size: 12.5px; color: var(--ink); text-align: center; }
+.c-sent[hidden] { display: none; }
+.composer > .c-sent { margin: -2px 12px 10px; }

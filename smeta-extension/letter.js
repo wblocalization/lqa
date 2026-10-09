@@ -13,7 +13,7 @@ const els = {
   subject: $('#lSubject'), copySubject: $('#lCopySubject'), to: $('#lTo'), cc: $('#lCc'),
   body: $('#lBody'), copyBody: $('#lCopyBody'), compose: $('#lCompose'), links: $('#lLinks'),
   sig: $('#lSig'), sigEdit: $('#lSigEdit'), sigText: $('#lSigText'), sigFetch: $('#lSigFetch'), sigSave: $('#lSigSave'),
-  send: $('#lSend'), drop: $('#lDrop'), fileInput: $('#lFileInput'), fileList: $('#lFileList'), attachOpen: $('#lAttachOpen'),
+  send: $('#lSend'), sent: $('#lSent'), sentText: $('#lSentText'), sentOpen: $('#lSentOpen'), drop: $('#lDrop'), fileInput: $('#lFileInput'), fileList: $('#lFileList'), attachOpen: $('#lAttachOpen'),
   editor: $('#lEditor'), eTo: $('#lETo'), eCc: $('#lECc'), eBody: $('#lEBody'), save: $('#lSave'), cancel: $('#lCancel'), remove: $('#lRemove'),
 };
 
@@ -104,6 +104,7 @@ export async function showLetter(c) {
   renderFiles();
   els.send.disabled = false;
   els.send.textContent = '📨 Отправить';
+  els.sent.hidden = true;
   els.contractor.textContent = c.contractor || 'подрядчику';
   els.box.hidden = !c.contractor;
   closeEditor();
@@ -358,13 +359,20 @@ els.send.addEventListener('click', async () => {
     files = [];
     renderFiles();
     els.send.textContent = '✓ Отправлено';
+    const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    els.sentText.textContent = `Ушло в ${time} → ${to.join(', ')}`;
+    els.sent.hidden = false;
     toast('📨 Письмо отправлено — оно в «Отправленных»');
   } catch (e) {
     els.send.disabled = false;
     els.send.textContent = '📨 Отправить';
+  els.sent.hidden = true;
     toast(`Не отправилось: ${e.message}`, 'err');
   }
 });
+
+// Проверить, что письмо ушло: папка «Отправленные» в Outlook — новое письмо в ней первым
+els.sentOpen.addEventListener('click', () => chrome.tabs.create({ url: `${OWA_ORIGIN}/owa/#path=/mail/sentitems` }));
 
 /** Новое письмо в Outlook Web App — сразу с адресами, темой и текстом. */
 els.compose.addEventListener('click', async () => {
