@@ -17,7 +17,7 @@ const els = {
   total: $('#tTotal'), sp: $('#tSp'), comment: $('#tComment'), complaints: $('#tComplaints'),
   preview: $('#tPreview'), copyPreview: $('#tCopyPreview'), submit: $('#tSubmit'), msg: $('#tMsg'),
   tplChips: $('#tTplChips'), suggest: $('#tSuggest'), suggestText: $('#tSuggestText'), suggestApply: $('#tSuggestApply'),
-  suggestClose: $('#tSuggestClose'), similar: $('#taskSimilar'), tplIoMsg: $('#tTplIoMsg'), openRow: $('#taskOpenRow'),
+  suggestClose: $('#tSuggestClose'), clearTpl: $('#tClearTpl'), tplIoMsg: $('#tTplIoMsg'), openRow: $('#taskOpenRow'),
 };
 autoDeadline(els.deadline, els.exactDeadline, els.date);
 loadLetters().catch(() => {}); // для «Скачать файлом» в настройках
@@ -90,7 +90,9 @@ function buildForm() {
   loadTemplates();
 }
 
+let fromLast = false; // форму заполнили «Как в прошлый раз» — тоже можно «Сбросить»
 function resetForm() {
+  fromLast = false;
   els.form.reset();
   els.link2.value = '';
   els.template.value = ''; // форма с нуля — шаблон снова можно выбрать кнопкой
@@ -165,6 +167,7 @@ function renderChips() {
   // Выбран шаблон — его можно поправить: поменяли в форме тикет, языки… → «Сохранить изменения»
   const on = Boolean(templates[sel]);
   els.delTpl.hidden = els.updTpl.hidden = els.renTpl.hidden = !on;
+  els.clearTpl.hidden = !(on || fromLast);
   els.updTpl.textContent = on ? `💾 Сохранить изменения в «${templates[sel].name}»` : '💾 Сохранить изменения';
   els.saveTpl.textContent = on ? '＋ Сохранить как новый' : '＋ Сохранить как шаблон';
 }
@@ -176,6 +179,7 @@ els.tplChips.addEventListener('click', (e) => {
     els.template.value = '';
     els.delTpl.hidden = true;
     applyFields(lastTask);
+    fromLast = true;
     renderChips();
     setMsg('Заполнено как прошлая задача. Проверьте тему и, если есть, вставьте ссылку на Band.');
     return;
@@ -577,16 +581,15 @@ els.form.addEventListener('submit', async (e) => {
 });
 
 els.copyDone.addEventListener('click', () => copyText(lastSubject, 'Тема скопирована — можно вставлять в письмо'));
-els.similar.addEventListener('click', () => {
-  els.done.hidden = true;
-  els.form.hidden = false;
-  resetForm();
-  applyFields(lastTask);
-  setMsg('Заполнено как предыдущая задача. Проверьте тему и, если есть, вставьте ссылку на Band.');
-});
 els.again.addEventListener('click', () => {
   els.done.hidden = true;
   els.form.hidden = false;
+  resetForm();
+  setMsg('');
+});
+
+// «✕ Сбросить» — снять шаблон и очистить форму
+els.clearTpl.addEventListener('click', () => {
   resetForm();
   setMsg('');
 });

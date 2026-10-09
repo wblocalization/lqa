@@ -68,6 +68,7 @@
         <div id="tTplChips" class="tpl-chips"></div>
         <select id="tTemplate" hidden><option value="">— без шаблона —</option></select>
         <div class="tpl-actions">
+          <button id="tClearTpl" class="link-btn" type="button" hidden title="Очистить форму и снять шаблон">✕ Сбросить</button>
           <button id="tUpdTpl" class="link-btn strong" type="button" hidden title="Записать в шаблон то, что сейчас в форме: тикет, языки, продукт…">💾 Сохранить изменения</button>
           <button id="tSaveTpl" class="link-btn" type="button" title="Запомнить подрядчика, тикет, продукт, языки и т. д.">＋ Сохранить как шаблон</button>
           <button id="tRenTpl" class="link-btn" type="button" hidden>Переименовать</button>
@@ -156,7 +157,12 @@
       </span>
       <h2>Добавлено: <span id="taskDoneId"></span></h2>
       <p id="taskDoneSubject" class="done-subject"></p>
-      <p id="taskDoneCopied" class="done-copied" hidden>✓ Тема с точным номером уже скопирована — можно вставлять в письмо</p>
+      <p id="taskDoneCopied" class="done-copied" hidden>✓ Тема с точным номером уже скопирована</p>
+      <div class="done-actions">
+        <button id="taskCopyDone" class="btn ghost small" type="button">Скопировать тему</button>
+        <a id="taskOpenRow" class="btn ghost small" href="#" target="_blank" rel="noopener" hidden>Открыть в таблице ↗</a>
+        <button id="taskAgain" class="btn primary small" type="button">＋ Новая задача</button>
+      </div>
       <section id="letter" class="letter" hidden>
         <div class="letter-head"><b>Письмо в <span id="lContractor"></span></b><button id="lEdit" class="link-btn strong" type="button">✏️ Настроить</button></div>
         <p id="lEmpty" class="letter-empty">Для этого подрядчика ещё нет адресов и шаблона письма. <button class="link-btn strong" type="button">Настроить один раз →</button></p>
@@ -175,10 +181,6 @@
           <button id="lRemove" class="link-btn danger-link" type="button" hidden>🗑 Удалить почты и шаблон</button>
         </div>
       </section>
-      <button id="taskCopyDone" class="btn ghost" type="button">Скопировать тему</button>
-      <a id="taskOpenRow" class="btn ghost" href="#" target="_blank" rel="noopener" hidden>Открыть в таблице ↗</a>
-      <button id="taskSimilar" class="btn ghost" type="button">Ещё одну такую же</button>
-      <button id="taskAgain" class="btn primary" type="button">Новая задача</button>
     </section>
 
     <p id="tMsg" class="status" role="status"></p>
