@@ -4,7 +4,7 @@ import { playSound } from './sounds.js';
 
 const $ = (s) => document.querySelector(s);
 const box = $('#mlGestures'), bubble = $('#gestBubble'), video = $('#gestVideo'), seen = $('#gestSeen');
-const ICONS = { Thumb_Up: '👍', Thumb_Down: '👎', Closed_Fist: '✊', ILoveYou: '🤟', F1: '☝️', F2: '✌️', F3: '3️⃣', F4: '4️⃣', F5: '🖐' };
+const ICONS = { Swipe_Next: '👉', Swipe_Prev: '👈', Thumb_Up: '👍', Thumb_Down: '👎', Closed_Fist: '✊', ILoveYou: '🤟', F1: '☝️', F2: '✌️', F3: '3️⃣', F4: '4️⃣', F5: '🖐' };
 // Пальцы — вкладки: 1 Задача · 2 Мои · 3 Смета · 4 Отчёты · 5 Настройки
 const TABS = { F1: ['task', 'Задача'], F2: ['mine', 'Мои'], F3: ['smeta', 'Смета'], F4: ['reports', 'Отчёты'], F5: ['mail', 'Настройки'] };
 const cheat = $('#gestCheat');
@@ -49,6 +49,16 @@ function onGesture(name) {
     if (name === 'Thumb_Up') { const b = dlg.querySelector('[data-a="1"], .btn.primary'); if (b) b.click(); }
     if (name === 'F5') { const b = dlg.querySelector('[data-a="0"]'); if (b) b.click(); else dlg.close(); }
     return; // пока открыто окно — вкладки и остальное не трогаем
+  }
+  if (name === 'Swipe_Next' || name === 'Swipe_Prev') {
+    // Смахнули ладонью — соседняя вкладка (по кругу)
+    const tabs = [...document.querySelectorAll('.tabbar .tab')];
+    const cur = tabs.findIndex((b) => b.getAttribute('aria-selected') === 'true');
+    const next = tabs[(cur + (name === 'Swipe_Next' ? 1 : -1) + tabs.length) % tabs.length];
+    next.click();
+    seen.textContent = ICONS[name];
+    toast(`${ICONS[name]} ${next.textContent.trim()}`);
+    return;
   }
   if (TABS[name]) {
     const [tab, title] = TABS[name];
