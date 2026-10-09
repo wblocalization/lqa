@@ -3,6 +3,7 @@
 // (CreateAttachmentFromLocalFile) → отправка (UpdateItem с SendAndSaveCopy). Запросы идут со страницы Outlook,
 // от имени того, кто в ней вошёл; нет открытой вкладки — откроем в фоне.
 import { OWA_ORIGIN } from './outlook.js';
+import { fixBold } from './richtext.js';
 
 function waitComplete(tabId, timeoutMs = 30000) {
   return new Promise((resolve) => {
@@ -27,7 +28,7 @@ const escHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').re
 
 /** Текст письма → HTML как у Outlook: шрифт Calibri 12pt, абзацы, ссылки кликабельные, **жирный**. */
 export function textToHtml(text) {
-  const lines = String(text || '').split('\n').map((line) => {
+  const lines = fixBold(text).split('\n').map((line) => {
     const html = escHtml(line)
       .replace(/(https?:\/\/[^\s<*]+)/g, (u) => `<a href="${u}">${u}</a>`)
       .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>'); // **жирный**

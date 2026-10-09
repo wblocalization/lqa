@@ -16,9 +16,25 @@ function chip(name, valueOf) {
   return `<span class="var-pill${v ? '' : ' empty'}" contenteditable="false" data-var="${esc(name)}" title="Подставится само: ${esc(label)}">${esc(v || label)}</span>`;
 }
 
+/**
+ * Жирный не переходит через перенос строки: «**Дедлайн: 12.10\n**» → «**Дедлайн: 12.10**\n».
+ * Иначе в письме остаются звёздочки (выделили слово вместе с концом строки).
+ */
+export function fixBold(text) {
+  return String(text || '').replace(/\*\*([\s\S]*?)\*\*/g, (m, inner) => {
+    if (!inner.includes('\n')) return inner.trim() ? m : inner;
+    return inner.split('\n').map((line) => {
+      const t = line.trim();
+      if (!t) return line;
+      const lead = line.match(/^\s*/)[0], tail = line.match(/\s*$/)[0];
+      return `${lead}**${t}**${tail}`;
+    }).join('\n');
+  });
+}
+
 /** Текст (**жирный**, {переменная}) → HTML для поля. valueOf(name) — что показать на таблетке. */
 export function textToRich(text, valueOf) {
-  return String(text || '').split('\n').map((line) => {
+  return fixBold(text).split('\n').map((line) => {
     let h = esc(line);
     h = h.replace(/\{([а-яё]+)\}/gi, (m, v) => chip(v.toLowerCase(), valueOf));
     h = h.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
@@ -49,7 +65,7 @@ export function richToText(root) {
     if (block && el.nextSibling && !out.endsWith('\n')) out += '\n';
   }
   root.childNodes.forEach((n) => walk(n, false));
-  return out.replace(/\*\*\*\*/g, '').replace(/\*\*(\s*)\*\*/g, '$1').replace(/\n+$/, '');
+  return fixBold(out.replace(/\*\*\*\*/g, '').replace(/\*\*(\s*)\*\*/g, '$1')).replace(/\n+$/, '');
 }
 
 /** HTML (например, подпись, скопированная из Outlook) → наш текст: жирный остаётся **жирным**, остальное оформление — нет. */

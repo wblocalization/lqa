@@ -242,7 +242,7 @@ async function copy(text, done) {
 }
 
 els.copySubject.addEventListener('click', () => copy(ctx.subject, '✓ Тема скопирована'));
-const plain = (t) => String(t).replace(/\*\*(.+?)\*\*/g, '$1'); // без звёздочек «жирного» — для Outlook и буфера
+const plain = (t) => String(t).replace(/\*\*([\s\S]+?)\*\*/g, '$1'); // без звёздочек «жирного» — для Outlook и буфера
 els.copyBody.addEventListener('click', () => copy(plain(bodyEd.get()), '✓ Текст письма скопирован'));
 
 // ---------- Подпись ----------
