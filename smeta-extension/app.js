@@ -1,4 +1,4 @@
-// Боковая панель: внизу разделы «Задача» / «Мои» / «Смета» / «Отчёты» / «Почта», сверху — название и настройки.
+// Боковая панель: внизу разделы «Задача» / «Мои» / «Смета» / «Отчёты» / «Настройки», сверху — название и настройки.
 import { settings, loadSettings, saveSettings, isConfigured, api, esc, DEFAULT_DISK_FOLDER, setLink, getLists } from './core.js';
 import * as smeta from './smeta.js';
 import * as task from './task.js';
@@ -21,7 +21,7 @@ function showTab(name) {
     t.setAttribute('aria-selected', String(on));
     $(`#${t.getAttribute('aria-controls')}`).hidden = !on;
   });
-  const titles = { task: 'Новая задача', mine: 'Мои задачи', smeta: 'Смета', reports: 'Отчёты', mail: 'Почта' };
+  const titles = { task: 'Новая задача', mine: 'Мои задачи', smeta: 'Смета', reports: 'Отчёты', mail: 'Настройки' };
   els.title.textContent = titles[name];
   if (name === 'task') task.initTaskTab();
   if (name === 'mine') mine.loadMine();
@@ -90,6 +90,7 @@ els.openSettings.addEventListener('click', () => {
   els.settings.hidden = !els.settings.hidden;
 });
 els.closeSettings.addEventListener('click', () => { els.settings.hidden = true; });
+$('#mlOpenConn').addEventListener('click', () => { fillSettings(); els.settings.hidden = false; window.scrollTo(0, 0); });
 els.saveSettings.addEventListener('click', async () => {
   const patch = { url: els.setUrl.value.trim(), token: els.setToken.value.trim(),
     diskFolder: diskFolderFromInput(els.setDiskFolder.value) || DEFAULT_DISK_FOLDER };

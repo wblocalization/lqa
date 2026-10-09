@@ -1,7 +1,22 @@
-// Напоминание о сроках — уведомлением Chrome (справа внизу экрана), по будням около 10:00 и один раз в день.
-// Нажали на уведомление — откроется панель на «Моих задачах». Включается и выключается во вкладке «Почта».
+// Напоминание о сроках — уведомлением Chrome (справа внизу экрана), в выбранное время (по умолчанию 10:00, по будням), раз в день.
+// Нажали на уведомление — откроется панель на «Моих задачах». Включается и выключается во вкладке «Настройки».
 
-export const REMIND_HOUR = 10;
+export const REMIND_TIME = '10:00';
+
+/** Сегодня уже пора? time — «ЧЧ:ММ». */
+const reached = (now, time) => { const [h, m] = String(time || REMIND_TIME).split(':').map(Number); return now.getHours() * 60 + now.getMinutes() >= h * 60 + (m || 0); };
+
+/** Когда следующее напоминание (для будильника в фоне): ближайшее «время» в подходящий день. */
+export async function nextRemindAt() {
+  const st = (await chrome.storage.local.get('remind')).remind || {};
+  if (st.off) return null;
+  const [h, m] = String(st.time || REMIND_TIME).split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m || 0, 5, 0);
+  if (d <= new Date()) d.setDate(d.getDate() + 1);
+  while (st.weekdays !== false && (d.getDay() === 0 || d.getDay() === 6)) d.setDate(d.getDate() + 1);
+  return d.getTime();
+}
 
 /** Настройки звука: sound — для напоминаний (по умолчанию колокольчик), sendSound — «фьюх» при отправке письма. */
 export async function soundPrefs() {
@@ -27,7 +42,7 @@ export async function remindDue(r, { force = false, play = null } = {}) {
   const st = (await chrome.storage.local.get('remind')).remind || {};
   if (!force) {
     if (st.off || st.shown === todayKey()) return false;
-    if (now.getDay() === 0 || now.getDay() === 6 || now.getHours() < REMIND_HOUR) return false;
+    if ((st.weekdays !== false && (now.getDay() === 0 || now.getDay() === 6)) || !reached(now, st.time)) return false;
   }
   const today = r.tasks.filter((t) => t.dueToday);
   const late = r.tasks.filter((t) => t.overdue);

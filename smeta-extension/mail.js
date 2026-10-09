@@ -1,4 +1,4 @@
-// Вкладка «Почта»: своя почта для писем и включение рассылок (то же, что «⚙️ Настройки» в таблице).
+// Вкладка «Настройки»: своя почта для писем и включение рассылок (то же, что «⚙️ Настройки» в таблице).
 import { settings, isConfigured, call, toast, ask, getLists } from './core.js';
 import { renderLetterList, renderSignatureCard } from './letter.js';
 import { remindOn, remindDue, soundPrefs } from './remind.js';
@@ -33,7 +33,7 @@ remindOn().then((on) => { remindBox.checked = on; });
 remindBox.addEventListener('change', async () => {
   const st = (await chrome.storage.local.get('remind')).remind || {};
   await chrome.storage.local.set({ remind: { ...st, off: !remindBox.checked } });
-  toast(remindBox.checked ? 'Напоминания включены — по будням около 10:00' : 'Напоминания выключены');
+  toast(remindBox.checked ? `Напоминания включены — в ${timeIn.value || '10:00'}` : 'Напоминания выключены');
 });
 $('#mlRemindTest').addEventListener('click', async (e) => {
   if (!isConfigured() || !settings.manager) return toast('Выберите себя в настройках (⚙️ → «Кто вы»)', 'err');
@@ -54,6 +54,17 @@ const soundSel = $('#mlSound');
 soundSel.innerHTML = Object.entries(SOUNDS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
 const sendSoundBox = $('#mlSendSound');
 soundPrefs().then((p) => { soundSel.value = p.sound; sendSoundBox.checked = p.sendSound; });
+// Время напоминания и дни — свои у каждого
+const timeIn = $('#mlRemindTime'), weekdaysBox = $('#mlRemindWeekdays');
+chrome.storage.local.get('remind').then(({ remind: st = {} }) => { timeIn.value = st.time || '10:00'; weekdaysBox.checked = st.weekdays !== false; });
+timeIn.addEventListener('change', async () => {
+  if (!timeIn.value) return;
+  // новое время сегодня ещё впереди — пусть сегодня тоже напомнит
+  const st = (await chrome.storage.local.get('remind')).remind || {};
+  await chrome.storage.local.set({ remind: { ...st, time: timeIn.value, shown: '' } });
+  toast(`Напомню в ${timeIn.value}${weekdaysBox.checked ? ' по будням' : ' каждый день'}`);
+});
+weekdaysBox.addEventListener('change', () => saveSound({ weekdays: weekdaysBox.checked }));
 async function saveSound(patch) {
   const st = (await chrome.storage.local.get('remind')).remind || {};
   await chrome.storage.local.set({ remind: { ...st, ...patch } });

@@ -2,7 +2,7 @@
 // пока переключаешься между Outlook и ВБ Диском.
 // Раз в полчаса обновляет цифру просроченных задач на иконке, а по будням около 10:00 напоминает о сроках (remind.js).
 import { loadSettings, isConfigured, settings, api } from './core.js';
-import { remindDue } from './remind.js';
+import { remindDue, nextRemindAt } from './remind.js';
 
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(console.error);
 
@@ -34,9 +34,21 @@ async function refreshBadge() {
 chrome.runtime.onInstalled.addListener(() => {
   chrome.alarms.create('badge', { periodInMinutes: 30 });
   refreshBadge();
+  scheduleRemind();
 });
-chrome.runtime.onStartup.addListener(refreshBadge);
-chrome.alarms.onAlarm.addListener((a) => { if (a.name === 'badge') refreshBadge(); });
+chrome.runtime.onStartup.addListener(() => { refreshBadge(); scheduleRemind(); });
+chrome.alarms.onAlarm.addListener((a) => {
+  if (a.name === 'badge') refreshBadge();
+  if (a.name === 'remind') refreshBadge().then(scheduleRemind);
+});
+
+// Будильник ровно на выбранное время напоминания; поменяли время — переставляем
+async function scheduleRemind() {
+  const when = await nextRemindAt();
+  await chrome.alarms.clear('remind');
+  if (when) chrome.alarms.create('remind', { when });
+}
+chrome.storage.onChanged.addListener((ch) => { if (ch.remind) scheduleRemind(); });
 
 // Нажали на напоминание — панель на «Моих задачах»
 chrome.notifications.onClicked.addListener(async (id) => {

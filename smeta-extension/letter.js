@@ -118,7 +118,7 @@ let bodyEdited = false; // текст поправили руками — шаб
 // Текст письма и шаблона — как в почте: жирный виден жирным; в шаблоне вместо {языки}, {срок}… сразу
 // видно, что подставится из этой задачи (цветным).
 const bodyEd = richEditor(els.body, { onInput: () => { bodyEdited = true; }, onSelect: () => syncBold() });
-let editing = null; // { contractor, host, onDone, ctx } — чей шаблон открыт и где (под задачей или во вкладке «Почта»)
+let editing = null; // { contractor, host, onDone, ctx } — чей шаблон открыт и где (под задачей или во вкладке «Настройки»)
 const tplEd = richEditor(els.eBody, { valueOf: (name) => (editing && editing.ctx ? varValues(editing.ctx)[name] || '' : ''), onSelect: () => syncBold() });
 // Подпись — тоже с жирным; скопированная из Outlook вставляется с жирным
 const sigEd = richEditor(els.sigText, { pasteBold: true, onSelect: () => syncBold() });
@@ -259,7 +259,7 @@ async function fetchInto(btn, ed) {
 els.sigSave.addEventListener('click', () => saveSignature(sigEd.get()));
 els.sigFetch.addEventListener('click', () => fetchInto(els.sigFetch, sigEd));
 
-// Подпись во вкладке «Почта» — то же самое, что «изменить подпись» в письме
+// Подпись во вкладке «Настройки» — то же самое, что «изменить подпись» в письме
 const card = { save: $('#mlSigSave'), fetch: $('#mlSigFetch') };
 export async function renderSignatureCard() {
   await loadSignature();
@@ -526,7 +526,7 @@ async function owaAttach(list) {
 }
 
 // ---------- Настройка для подрядчика ----------
-// Открывается под добавленной задачей («✏️ Настроить») или во вкладке «Почта» (host — куда поставить редактор).
+// Открывается под добавленной задачей («✏️ Настроить») или во вкладке «Настройки» (host — куда поставить редактор).
 function openEditor(contractor = ctx && ctx.contractor, { host = null, onDone = null } = {}) {
   if (editing && editing.host && editing.host !== host) closeEditor();
   editing = { contractor, host, onDone, ctx: host ? null : ctx };
@@ -583,7 +583,7 @@ els.remove.addEventListener('click', async () => {
 });
 
 /**
- * Вкладка «Почта»: все подрядчики — у кого письмо уже настроено и у кого ещё нет. Нажали — редактор прямо там.
+ * Вкладка «Настройки»: все подрядчики — у кого письмо уже настроено и у кого ещё нет. Нажали — редактор прямо там.
  * contractors — из справочника таблицы (может быть пустым — тогда только уже настроенные).
  */
 export async function renderLetterList(box, contractors = []) {
