@@ -366,7 +366,11 @@ function mailStatus_(req) {
   const out = { ok: true, known: !!me, email: me ? me.email : '' };
   // Расписания видны только с разрешением «script.scriptapp»; без него почта и «прислать мне» всё равно работают
   let handlers = null;
-  try { handlers = ScriptApp.getProjectTriggers().map(function (t) { return t.getHandlerFunction(); }); } catch (e) { out.noTriggers = String(e.message || e); }
+  try { handlers = ScriptApp.getProjectTriggers().map(function (t) { return t.getHandlerFunction(); }); } catch (e) {
+    out.noTriggers = String(e.message || e);
+    // от чьего имени работает веб-приложение — разрешение нужно дать именно этому аккаунту
+    try { out.runAs = Session.getEffectiveUser().getEmail(); } catch (e2) { /* не страшно */ }
+  }
   Object.keys(MAIL_KINDS).forEach(function (k) { out[k] = handlers ? handlers.indexOf(MAIL_KINDS[k].handler) !== -1 : false; });
   return out;
 }

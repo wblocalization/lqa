@@ -135,6 +135,7 @@ function onOpen() {
     .addItem('🛡 Защитить шапку и справочники', 'protectImportantRanges')
     .addItem('📥 Перенести историю из старой таблицы', 'migrateFromOldTable')
     .addItem('🩺 Проверить окна', 'diagnoseWindows')
+    .addItem('🔑 Разрешить письма и Excel', 'authorizeMail')
     .addSeparator()
     .addSubMenu(ui.createMenu('✉️ Еженедельная сводка')
       .addItem('Включить (по понедельникам)', 'createWeeklyDigestTrigger')
@@ -278,6 +279,31 @@ function estimateLabelsToUrls_(sh) {
     return [rich[i][0] || SpreadsheetApp.newRichTextValue().setText(cellText_(r[0])).build()];
   }));
   return changed;
+}
+
+/**
+ * «⚙️ Настройки → 🔑 Разрешить письма и Excel»: Google сам спросит разрешения (расписания, Диск, внешние запросы),
+ * а мы сразу проверяем, что они есть, и пишем, что делать дальше. Запускать тому, от чьего имени развёрнуто веб-приложение.
+ */
+function authorizeMail() {
+  const ui = SpreadsheetApp.getUi();
+  const lines = [];
+  let ok = true;
+  const check = (name, fn) => {
+    try { fn(); lines.push('✓ ' + name); } catch (e) { ok = false; lines.push('❌ ' + name + ': ' + (e.message || e)); }
+  };
+  check('Расписания писем', () => ScriptApp.getProjectTriggers());
+  check('Google Диск (Excel)', () => DriveApp.getRootFolder().getId());
+  check('Внешние запросы (Excel)', () => UrlFetchApp.getRequest('https://www.googleapis.com/'));
+  let me = '';
+  try { me = Session.getEffectiveUser().getEmail(); } catch (e) { /* не страшно */ }
+  ui.alert(ok ? '🔑 Разрешения есть' : '🔑 Не хватает разрешений',
+    lines.join('\n') + '\n\n' + (ok
+      ? 'Теперь опубликуйте новую версию: Apps Script → Развернуть → Управление развёртываниями → ✏️ → Версия «Новая версия» → Развернуть.\n' +
+        'Важно: в развёртывании «Выполнять как» должен стоять этот же аккаунт' + (me ? ' (' + me + ')' : '') + '.'
+      : 'Если Google не спросил разрешения: Apps Script → ⚙️ Настройки проекта → «Показывать файл манифеста appsscript.json», ' +
+        'и если в нём есть "oauthScopes" — добавьте туда script.scriptapp, drive и script.external_request.'),
+    ui.ButtonSet.OK);
 }
 
 /**
@@ -3530,7 +3556,11 @@ function mailStatus_(req) {
   const out = { ok: true, known: !!me, email: me ? me.email : '' };
   // Расписания видны только с разрешением «script.scriptapp»; без него почта и «прислать мне» всё равно работают
   let handlers = null;
-  try { handlers = ScriptApp.getProjectTriggers().map(function (t) { return t.getHandlerFunction(); }); } catch (e) { out.noTriggers = String(e.message || e); }
+  try { handlers = ScriptApp.getProjectTriggers().map(function (t) { return t.getHandlerFunction(); }); } catch (e) {
+    out.noTriggers = String(e.message || e);
+    // от чьего имени работает веб-приложение — разрешение нужно дать именно этому аккаунту
+    try { out.runAs = Session.getEffectiveUser().getEmail(); } catch (e2) { /* не страшно */ }
+  }
   Object.keys(MAIL_KINDS).forEach(function (k) { out[k] = handlers ? handlers.indexOf(MAIL_KINDS[k].handler) !== -1 : false; });
   return out;
 }

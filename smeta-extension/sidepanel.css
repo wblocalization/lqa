@@ -522,3 +522,4 @@ select.delivery-sel option { background: var(--card); color: var(--ink); font-we
 .mine-item .meta-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .mine-item .meta-row .meta { min-width: 0; }
 .mine-item .mail-btn { flex: none; color: var(--accent); font-weight: 600; white-space: nowrap; }
+#mlMsg { white-space: pre-line; text-align: left; }
