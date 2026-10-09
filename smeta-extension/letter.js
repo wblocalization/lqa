@@ -5,6 +5,7 @@
 import { toast } from './core.js';
 import { OWA_ORIGIN } from './outlook.js';
 import { sendMail } from './owa-send.js';
+import { richEditor } from './richtext.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
@@ -71,11 +72,14 @@ export function withMaterials(text, links) {
 }
 
 /** Подставить в шаблон данные задачи: {тема} {номер} {языки} {коды} {срок} {продукт} {менеджер} {ссылка}. */
-export function fillTemplate(tpl, c) {
-  const map = {
+function varValues(c) {
+  return {
     тема: c.subject, номер: c.id, языки: (c.languages || []).map((l) => l.toLowerCase()).join(', '), коды: (c.codes || []).join(', '),
     срок: c.due || c.deadline, продукт: c.product, менеджер: c.manager, ссылка: c.link,
   };
+}
+export function fillTemplate(tpl, c) {
+  const map = varValues(c);
   return String(tpl || '').replace(/\{([а-яё]+)\}/gi, (m, k) => (k.toLowerCase() in map ? map[k.toLowerCase()] || '' : m));
 }
 
@@ -108,6 +112,26 @@ export async function showLetter(c) {
 
 let bodyEdited = false; // текст поправили руками — шаблон и ссылки больше не перезаписывают его
 
+// Текст письма и шаблона — как в почте: жирный виден жирным; в шаблоне вместо {языки}, {срок}… сразу
+// видно, что подставится из этой задачи (цветным).
+const bodyEd = richEditor(els.body, { onInput: () => { bodyEdited = true; }, onSelect: () => syncBold() });
+const tplEd = richEditor(els.eBody, { valueOf: (name) => (ctx ? varValues(ctx)[name] || '' : ''), onSelect: () => syncBold() });
+const boldBtns = [[$('#lBold'), bodyEd], [$('#lEBold'), tplEd]];
+function syncBold() {
+  boldBtns.forEach(([btn, ed]) => {
+    const on = ed.isBold();
+    btn.classList.toggle('on', on);
+    btn.lastChild.textContent = on ? ' Убрать жирный' : ' Выделить жирным';
+  });
+}
+boldBtns.forEach(([btn, ed]) => {
+  btn.addEventListener('mousedown', (e) => e.preventDefault()); // не терять выделение
+  btn.addEventListener('click', () => {
+    if (!ed.bold()) return toast('Сначала выделите слово мышкой, потом нажмите «Выделить жирным»', 'warn');
+    syncBold();
+  });
+});
+
 function render() {
   const l = letters[ctx.contractor];
   els.empty.hidden = Boolean(l);
@@ -122,9 +146,8 @@ function render() {
 }
 function fillBody() {
   const l = letters[ctx.contractor] || {};
-  if (!bodyEdited) els.body.value = withMaterials(fillTemplate(l.body || DEFAULT_BODY, ctx), els.links.value);
+  if (!bodyEdited) bodyEd.set(withMaterials(fillTemplate(l.body || DEFAULT_BODY, ctx), els.links.value));
 }
-els.body.addEventListener('input', () => { bodyEdited = true; });
 
 async function copy(text, done) {
   try { await navigator.clipboard.writeText(text); toast(done); } catch { toast('Нет доступа к буферу — выделите и скопируйте вручную', 'err'); }
@@ -132,7 +155,7 @@ async function copy(text, done) {
 
 els.copySubject.addEventListener('click', () => copy(ctx.subject, '✓ Тема скопирована'));
 const plain = (t) => String(t).replace(/\*\*(.+?)\*\*/g, '$1'); // без звёздочек «жирного» — для Outlook и буфера
-els.copyBody.addEventListener('click', () => copy(plain(els.body.value), '✓ Текст письма скопирован'));
+els.copyBody.addEventListener('click', () => copy(plain(bodyEd.get()), '✓ Текст письма скопирован'));
 
 // ---------- Подпись ----------
 // Одна на все письма. Сначала пробуем взять из настроек Outlook; не вышло — человек вставляет её один раз сам.
@@ -318,12 +341,12 @@ els.send.addEventListener('click', async () => {
   const to = parseEmails(els.to.value);
   const cc = parseEmails(els.cc.value);
   if (!to.length) return toast('Впишите, кому отправить', 'err');
-  const text = els.body.value.trim();
+  const text = bodyEd.get().trim();
   if (!text) return toast('Письмо пустое', 'err');
   const sigText = signature ? (signature.text || htmlToText(signature.html)) : '';
   const ok = confirm(`Отправить письмо?\n\nКому: ${to.join(', ')}` + (cc.length ? `\nКопия: ${cc.join(', ')}` : '') +
     `\nТема: ${ctx.subject}` + (files.length ? `\nВложения: ${files.map((f) => f.name).join(', ')}` : '') +
-    `\n\n${text.length > 400 ? `${text.slice(0, 400)}…` : text}` + (sigText ? `\n\n${sigText}` : '\n\n(без подписи)'));
+    `\n\n${plain(text.length > 400 ? `${text.slice(0, 400)}…` : text)}` + (sigText ? `\n\n${sigText}` : '\n\n(без подписи)'));
   if (!ok) return;
   els.send.disabled = true;
   els.send.textContent = files.length ? 'Отправляю с вложениями…' : 'Отправляю…';
@@ -349,7 +372,7 @@ els.compose.addEventListener('click', async () => {
   if (to) q.set('to', to);
   if (cc) q.set('cc', cc);
   q.set('subject', ctx.subject);
-  q.set('body', plain(els.body.value || fillTemplate(DEFAULT_BODY, ctx)));
+  q.set('body', plain(bodyEd.get() || fillTemplate(DEFAULT_BODY, ctx)));
   const tab = await chrome.tabs.create({ url: `${OWA_ORIGIN}/owa/?${q.toString().replace(/\+/g, '%20')}` });
   if (files.length) {
     await waitComplete(tab.id);
@@ -430,7 +453,7 @@ function openEditor() {
   const l = letters[ctx.contractor] || {};
   els.eTo.value = parseEmails(l.to).join('\n');
   els.eCc.value = parseEmails(l.cc).join('\n');
-  els.eBody.value = l.body || DEFAULT_BODY;
+  tplEd.set(l.body || DEFAULT_BODY);
   els.remove.hidden = !letters[ctx.contractor];
   els.editor.hidden = false;
   els.view.hidden = true;
@@ -450,7 +473,7 @@ els.save.addEventListener('click', async () => {
   const to = parseEmails(els.eTo.value);
   const cc = parseEmails(els.eCc.value);
   await loadLetters();
-  letters[ctx.contractor] = { to: to.join('; '), cc: cc.join('; '), body: els.eBody.value.trim() || DEFAULT_BODY };
+  letters[ctx.contractor] = { to: to.join('; '), cc: cc.join('; '), body: tplEd.get().trim() || DEFAULT_BODY };
   await chrome.storage.local.set({ letters });
   closeEditor();
   render();
@@ -471,79 +494,13 @@ els.remove.addEventListener('click', async () => {
 // Вставили ссылки — текст письма обновляется сразу
 els.links.addEventListener('input', () => { if (ctx && letters[ctx.contractor]) fillBody(); });
 
-// ---------- Переменные в шаблоне не ломаются ----------
-// {языки}, {срок}… можно удалить только целиком и нельзя вписать что-то внутрь скобок.
-const VAR_RE = /\{[а-яё]+\}/gi;
-function varsIn(text) {
-  const out = [];
-  let m;
-  VAR_RE.lastIndex = 0;
-  while ((m = VAR_RE.exec(text))) out.push([m.index, m.index + m[0].length]);
-  return out;
-}
-/** Расширить диапазон [s, e) так, чтобы он не резал переменную пополам. */
-function widen(text, s, e) {
-  for (const [a, b] of varsIn(text)) {
-    if (s === e ? (s > a && s < b) : (s < b && e > a)) { s = Math.min(s, a); e = Math.max(e, b); }
-  }
-  return [s, e];
-}
-function replaceRange(el, s, e, insert) {
-  el.value = el.value.slice(0, s) + insert + el.value.slice(e);
-  const pos = s + insert.length;
-  el.setSelectionRange(pos, pos);
-  el.dispatchEvent(new Event('input', { bubbles: true }));
-}
-els.eBody.addEventListener('beforeinput', (e) => {
-  const el = els.eBody;
-  const text = el.value;
-  let s = el.selectionStart, end = el.selectionEnd;
-  const t = e.inputType || '';
-  if (t.startsWith('history')) return;
-  if (s === end && t === 'deleteContentBackward') s = Math.max(0, s - 1);
-  else if (s === end && t === 'deleteContentForward') end = Math.min(text.length, end + 1);
-  else if (s === end && t.startsWith('delete')) return; // удаление словами — браузер сам; проверим после
-  const [ws, we] = widen(text, s, end);
-  const inside = s === end && !t.startsWith('delete') && varsIn(text).some(([a, b]) => s > a && s < b);
-  if (ws === s && we === end && !inside) return;
-  e.preventDefault();
-  const data = t.startsWith('delete') ? '' : (e.data != null ? e.data : (e.dataTransfer && e.dataTransfer.getData('text/plain')) || (t === 'insertLineBreak' || t === 'insertParagraph' ? '\n' : ''));
-  if (inside) { const [, b] = varsIn(text).find(([a, b2]) => s > a && s < b2); replaceRange(el, b, b, data); return; }
-  replaceRange(el, ws, we, data);
-});
-// Вставить переменную в место курсора
+// ---------- Вставить переменную туда, где курсор ----------
+document.querySelector('#lEditor .var-chips').addEventListener('mousedown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
 document.querySelector('#lEditor .var-chips').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-var]');
-  if (!b) return;
-  const el = els.eBody;
-  let [s, end] = widen(el.value, el.selectionStart, el.selectionEnd);
-  if (s === end) { const hit = varsIn(el.value).find(([a, z]) => s > a && s < z); if (hit) s = end = hit[1]; }
-  replaceRange(el, s, end, `{${b.dataset.var}}`);
-  el.focus();
+  if (b) tplEd.insertVar(b.dataset.var);
 });
 document.querySelector('#lDefaultBody').addEventListener('click', () => {
-  els.eBody.value = DEFAULT_BODY;
-  els.eBody.focus();
+  tplEd.set(DEFAULT_BODY);
+  tplEd.focus();
 });
-
-// ---------- Жирный: выделили текст или {переменную} → «Ж» → **так** (в письме будет жирным) ----------
-function makeBold(el, protect) {
-  let s = el.selectionStart, end = el.selectionEnd;
-  if (protect) [s, end] = widen(el.value, s, end);
-  if (s === end) return toast('Выделите слово или {переменную}, которую сделать жирной', 'warn');
-  const v = el.value;
-  // уже жирное (звёздочки вокруг или внутри выделения) — снять жирный
-  if (v.slice(s - 2, s) === '**' && v.slice(end, end + 2) === '**') {
-    el.value = v.slice(0, s - 2) + v.slice(s, end) + v.slice(end + 2);
-    el.setSelectionRange(s - 2, end - 2);
-  } else {
-    const sel = v.slice(s, end);
-    const bolded = /^\*\*[\s\S]*\*\*$/.test(sel) ? sel.slice(2, -2) : `**${sel}**`;
-    el.value = v.slice(0, s) + bolded + v.slice(end);
-    el.setSelectionRange(s, s + bolded.length);
-  }
-  el.dispatchEvent(new Event('input', { bubbles: true }));
-  el.focus();
-}
-document.querySelector('#lEBold').addEventListener('click', () => makeBold(els.eBody, true));
-document.querySelector('#lBold').addEventListener('click', () => makeBold(els.body, false));
