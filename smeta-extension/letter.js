@@ -4,13 +4,14 @@
 // делятся с коллегами вместе с шаблонами задач (⚙️ → «Скачать файлом»).
 import { toast } from './core.js';
 import { OWA_ORIGIN } from './outlook.js';
+import { sendMail } from './owa-send.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
   box: $('#letter'), contractor: $('#lContractor'), edit: $('#lEdit'), view: $('#lView'), empty: $('#lEmpty'),
   subject: $('#lSubject'), copySubject: $('#lCopySubject'), to: $('#lTo'), copyTo: $('#lCopyTo'), ccRow: $('#lCcRow'), cc: $('#lCc'), copyCc: $('#lCopyCc'),
   body: $('#lBody'), copyBody: $('#lCopyBody'), compose: $('#lCompose'), links: $('#lLinks'),
-  drop: $('#lDrop'), fileInput: $('#lFileInput'), fileList: $('#lFileList'), attachOpen: $('#lAttachOpen'),
+  send: $('#lSend'), drop: $('#lDrop'), fileInput: $('#lFileInput'), fileList: $('#lFileList'), attachOpen: $('#lAttachOpen'),
   editor: $('#lEditor'), eTo: $('#lETo'), eCc: $('#lECc'), eBody: $('#lEBody'), save: $('#lSave'), cancel: $('#lCancel'), remove: $('#lRemove'),
 };
 
@@ -86,6 +87,8 @@ export async function showLetter(c) {
   els.links.value = ''; // ссылки и вложения — у каждой задачи свои
   files = [];
   renderFiles();
+  els.send.disabled = false;
+  els.send.textContent = '📨 Отправить';
   els.contractor.textContent = c.contractor || 'подрядчику';
   els.box.hidden = !c.contractor;
   closeEditor();
@@ -191,6 +194,32 @@ els.attachOpen.addEventListener('click', async () => {
   await chrome.tabs.update(tab.id, { active: true });
   await chrome.windows.update(tab.windowId, { focused: true });
   attachTo(tab.id);
+});
+
+// «📨 Отправить» — прямо отсюда, с рабочей почты; перед отправкой — ещё раз показать, что уйдёт, и спросить
+els.send.addEventListener('click', async () => {
+  const l = letters[ctx.contractor] || {};
+  const to = parseEmails(l.to);
+  const cc = parseEmails(l.cc);
+  if (!to.length) return toast('Нет адресов «Кому» — «✏️ Настроить»', 'err');
+  const text = els.body.textContent;
+  const ok = confirm(`Отправить письмо?\n\nКому: ${to.join(', ')}` + (cc.length ? `\nКопия: ${cc.join(', ')}` : '') +
+    `\nТема: ${ctx.subject}` + (files.length ? `\nВложения: ${files.map((f) => f.name).join(', ')}` : '') +
+    `\n\n${text.length > 400 ? `${text.slice(0, 400)}…` : text}`);
+  if (!ok) return;
+  els.send.disabled = true;
+  els.send.textContent = files.length ? 'Отправляю с вложениями…' : 'Отправляю…';
+  try {
+    const r = await sendMail({ to, cc, subject: ctx.subject, text, files });
+    files = [];
+    renderFiles();
+    els.send.textContent = '✓ Отправлено';
+    toast(r.signature ? '📨 Письмо отправлено — оно в «Отправленных»' : '📨 Письмо отправлено (без подписи — её не нашла в Outlook)');
+  } catch (e) {
+    els.send.disabled = false;
+    els.send.textContent = '📨 Отправить';
+    toast(`Не отправилось: ${e.message}`, 'err');
+  }
 });
 
 /** Новое письмо в Outlook Web App — сразу с адресами, темой и текстом. */
