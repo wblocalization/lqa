@@ -1147,6 +1147,49 @@ function submitNewTaskFromDialog(task) {
   });
 }
 
+/**
+ * Ещё строка в существующий заказ — как LIT-26-2267: у каждой строки свои продукт, Band, ник, языки, сроки и статус.
+ * Номер, тема, дата, тикет, подрядчик и менеджер — как у заказа; строка встаёт сразу под его строками.
+ */
+function addRowToTask(id, task) {
+  id = str_(id);
+  ['product', 'deadline', 'status', 'deliveryStatus', 'manager', 'customer', 'comment', 'link', 'link2', 'ticket']
+    .forEach(k => { task[k] = str_(task[k]); });
+  if (!id) throw new Error('Нет номера заказа');
+
+  return withScriptLock_(() => {
+    const sh = getTasksSheet();
+    const n = Math.max(sh.getLastRow() - 1, 0);
+    const ids = n ? sh.getRange(2, COL.ID, n, 1).getValues() : [];
+    let first = -1, last = -1;
+    ids.forEach((r, i) => { if (str_(r[0]) === id) { if (first < 0) first = i + 2; last = i + 2; } });
+    if (first < 0) throw new Error('Не нашла заказ ' + id + ' — возможно, его удалили или поменяли номер');
+    const base = sh.getRange(first, 1, 1, TASK_COLS).getValues()[0];
+
+    sh.insertRowAfter(last);
+    const row = last + 1;
+    const src = sh.getRange(last, 1, 1, TASK_COLS), dst = sh.getRange(row, 1, 1, TASK_COLS);
+    src.copyTo(dst, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+    src.copyTo(dst, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
+
+    const date = isDate_(base[COL.DATE - 1]) ? base[COL.DATE - 1] : parseIsoDate_(task.date);
+    if (!task.deadline) task.deadline = deadlineFromDue_(parseIsoDate_(task.exactDeadline), date, '');
+    const subject = stripLinkMarkers_(str_(base[COL.SUBJECT - 1]));
+    const values = [
+      id, task.ticket ? normTicket_(task.ticket) : base[COL.TICKET - 1], subject,
+      date || '', task.product, task.customer, (task.languages || []).join(', '),
+      task.deadline, parseIsoDate_(task.exactDeadline), task.status,
+      '', '', base[COL.CONTRACTOR - 1], task.manager || base[COL.MANAGER - 1],
+      task.deliveryStatus, task.sp ? Number(task.sp) : '', task.comment, ''
+    ];
+    dst.setValues([values]);
+    if (task.link || task.link2) sh.getRange(row, COL.SUBJECT).setRichTextValue(buildSubjectRich_(subject, task.link, task.link2));
+    if (values[COL.LANGS - 1]) colorizeLanguagesCell(sh, row);
+    colorizeRowDirectly(sh, row);
+    return { id: id, row: row, subject: subject };
+  });
+}
+
 // ==================== ПОИСК И ПРАВКА (менеджеры) ====================
 
 function showSearchEditSidebar() {
@@ -3282,6 +3325,7 @@ function doPost(e) {
   try {
     if (req.action === 'write') return smetaJson_(smetaWrite_(req));
     if (req.action === 'addTask') return smetaJson_(addTask_(req));
+    if (req.action === 'addTaskRow') return smetaJson_(addTaskRow_(req));
     if (req.action === 'setStatus') return smetaJson_(setStatus_(req));
     if (req.action === 'saveTask') return smetaJson_(saveTask_(req));
     if (req.action === 'setDelivery') { requireTableScript_(); return smetaJson_(setTaskDelivery(req.row, req.id, req.origSubject, req.value)); }
@@ -3300,7 +3344,7 @@ function doPost(e) {
 
 /** Проверка: открыть адрес веб-приложения в браузере — должно написать, что скрипт работает. */
 function doGet() {
-  return ContentService.createTextOutput('Скрипт работает. Адрес правильный — вставьте его в настройки расширения.\n\nВерсия: 9 октября (отчёты, сверка и письма в расширении).');
+  return ContentService.createTextOutput('Скрипт работает. Адрес правильный — вставьте его в настройки расширения.\n\nВерсия: 9 октября, вечер (строки в заказ, дедлайн по рабочим дням).');
 }
 
 function smetaLookup_(req) {
@@ -3489,6 +3533,25 @@ function addTask_(req) {
 
   const id = submitNewTaskFromDialog(task);
   return { ok: true, id: id, url: tableUrl_(2) }; // новая задача — всегда вторая строка, под шапкой
+}
+
+/** Ещё строка в существующий заказ (свои продукт, Band, ник, языки, сроки) — сразу под его строками. */
+function addTaskRow_(req) {
+  requireTableScript_();
+  const t = req.task || {};
+  const str = function (v) { return String(v == null ? '' : v).trim(); };
+  const task = {
+    ticket: str(t.ticket), link: str(t.link), link2: str(t.link2), date: str(t.date), product: str(t.product),
+    customer: str(t.customer), deadline: str(t.deadline), exactDeadline: str(t.exactDeadline), status: str(t.status),
+    deliveryStatus: str(t.deliveryStatus), sp: str(t.sp), manager: str(t.manager), comment: str(t.comment),
+    languages: (Array.isArray(t.languages) ? t.languages : []).map(str).filter(Boolean),
+  };
+  if (task.ticket && !/^LOCAL-\d+$/.test(task.ticket)) return { ok: false, error: 'Тикет должен быть вида LOCAL-1234' };
+  [task.link].concat(task.link2.split(/[\s,;]+/)).forEach(function (u) {
+    if (u && !/^https?:\/\//i.test(u)) throw new Error('Ссылка должна начинаться с http: ' + u);
+  });
+  const r = addRowToTask(str(req.id), task);
+  return { ok: true, id: r.id, row: r.row, subject: r.subject, url: tableUrl_(r.row) };
 }
 
 /** Быстрая смена статуса из вкладки «Мои задачи». */

@@ -17,7 +17,8 @@ const els = {
   total: $('#tTotal'), sp: $('#tSp'), comment: $('#tComment'), complaints: $('#tComplaints'),
   preview: $('#tPreview'), copyPreview: $('#tCopyPreview'), submit: $('#tSubmit'), msg: $('#tMsg'),
   tplChips: $('#tTplChips'), suggest: $('#tSuggest'), suggestText: $('#tSuggestText'), suggestApply: $('#tSuggestApply'),
-  suggestClose: $('#tSuggestClose'), clearTpl: $('#tClearTpl'), tplIoMsg: $('#tTplIoMsg'), openRow: $('#taskOpenRow'),
+  suggestClose: $('#tSuggestClose'), clearTpl: $('#tClearTpl'),
+  rowMode: $('#tRowMode'), rowId: $('#tRowId'), rowCancel: $('#tRowCancel'), addRow: $('#taskAddRow'), tplBox: $('.tpl'), tplIoMsg: $('#tTplIoMsg'), openRow: $('#taskOpenRow'),
 };
 autoDeadline(els.deadline, els.exactDeadline, els.date);
 loadLetters().catch(() => {}); // для «Скачать файлом» в настройках
@@ -25,6 +26,8 @@ loadLetters().catch(() => {}); // для «Скачать файлом» в на
 let lists = null;       // справочники из таблицы
 let nextId = '';        // номер, который получит задача (подсказка)
 let lastSubject = '';   // тема добавленной задачи — для «Скопировать тему»
+let lastOrder = null;   // заказ, который только что добавили (или в который добавили строку)
+let rowOrder = null;    // форма сейчас добавляет строку в этот заказ
 
 // ---------- Сообщения ----------
 function setMsg(text, kind = 'info') {
@@ -458,6 +461,7 @@ els.date.addEventListener('change', () => { els.subject.value = withToday(els.su
 
 function updatePreview() {
   if (!lists) return;
+  if (rowOrder) { els.preview.textContent = rowOrder.subject; return; }
   if (!els.contractor.value) { els.preview.textContent = 'Выберите подрядчика — появится номер и тема'; return; }
   els.preview.textContent = buildSubject(nextId || '…');
 }
@@ -514,6 +518,7 @@ els.form.addEventListener('submit', async (e) => {
   };
 
   els.submit.disabled = true;
+  if (rowOrder) return addOrderRow(task);
   setMsg('Проверяю, нет ли такой задачи…');
   try {
     const d = await api({ action: 'checkDuplicates', task });
@@ -530,6 +535,7 @@ els.form.addEventListener('submit', async (e) => {
     loadNextIds(); // номера сдвинулись
     rememberTask(task).catch(() => {});
     lastSubject = buildSubject(r.id);
+    lastOrder = { id: r.id, subject: lastSubject, contractor: task.contractor, ticket: task.ticket, date: task.date, manager: task.manager };
     els.doneId.textContent = r.id;
     els.doneSubject.textContent = lastSubject;
     // Номер теперь точный — сразу кладём тему в буфер
@@ -537,14 +543,7 @@ els.form.addEventListener('submit', async (e) => {
     els.doneCopied.hidden = true;
     navigator.clipboard.writeText(lastSubject).then(() => { els.doneCopied.hidden = false; }).catch(() => {});
     setLink(els.openRow, r.url);
-    // Письмо — подрядчику: штатные языки (переводят свои) ему не нужны
-    const shtat = new Set((lists.languages && lists.languages.shtat) || []);
-    showLetter({
-      contractor: task.contractor, id: r.id, subject: lastSubject,
-      languages: task.languages.filter((l) => !shtat.has(l) && !/^ШТАТ /i.test(l)),
-      codes: task.languages.map((l) => lists.langCodes[l]).filter(Boolean), exactDeadline: task.exactDeadline,
-      product: task.product, manager: task.manager, link: task.link,
-    }).catch(() => {});
+    letterFor(task, r.id);
     els.form.hidden = true;
     els.done.hidden = false;
     setMsg('');
@@ -555,8 +554,76 @@ els.form.addEventListener('submit', async (e) => {
   }
 });
 
+/** Письмо — подрядчику: штатные языки (переводят свои) ему не нужны. */
+function letterFor(task, id) {
+  const shtat = new Set((lists.languages && lists.languages.shtat) || []);
+  showLetter({
+    contractor: task.contractor, id, subject: lastSubject,
+    languages: task.languages.filter((l) => !shtat.has(l) && !/^ШТАТ /i.test(l)),
+    codes: task.languages.map((l) => lists.langCodes[l]).filter(Boolean), exactDeadline: task.exactDeadline,
+    product: task.product, manager: task.manager, link: task.link,
+  }).catch(() => {});
+}
+
+// ---------- Ещё строка в заказ ----------
+// Как LIT-26-2267 в таблице: один номер и тема, а Band, заказчик, языки, сроки и статус у каждой строки свои.
+
+function enterRowMode() {
+  if (!lastOrder) return;
+  els.done.hidden = true;
+  els.form.hidden = false;
+  resetForm();
+  rowOrder = lastOrder;
+  els.contractor.value = rowOrder.contractor;
+  els.subject.value = rowOrder.subject.replace(/^(\s*\[[^\]]*\])+\s*/, '');
+  els.ticketNum.value = String(rowOrder.ticket || '').replace(/^LOCAL-/i, '');
+  if (rowOrder.date) els.date.value = rowOrder.date;
+  if (rowOrder.manager) els.manager.value = rowOrder.manager;
+  [els.contractor, els.subject, els.date].forEach((el) => { el.disabled = true; });
+  els.tplBox.hidden = true;
+  els.rowId.textContent = rowOrder.id;
+  els.rowMode.hidden = false;
+  els.submit.textContent = `Добавить строку в ${rowOrder.id}`;
+  updatePreview();
+  setMsg('');
+  window.scrollTo(0, 0);
+}
+function exitRowMode() {
+  rowOrder = null;
+  [els.contractor, els.subject, els.date].forEach((el) => { el.disabled = false; });
+  els.tplBox.hidden = false;
+  els.rowMode.hidden = true;
+  els.submit.textContent = 'Добавить задачу';
+}
+els.addRow.addEventListener('click', enterRowMode);
+els.rowCancel.addEventListener('click', () => { exitRowMode(); resetForm(); setMsg(''); });
+
+async function addOrderRow(task) {
+  setMsg(`Добавляю строку в ${rowOrder.id}…`);
+  try {
+    const r = await api({ action: 'addTaskRow', id: rowOrder.id, task });
+    if (!r.ok) throw new Error(/Неизвестное действие/.test(r.error || '') ? 'веб-приложение ещё старое: нужна новая версия развёртывания' : r.error);
+    rememberTask(task).catch(() => {});
+    lastSubject = rowOrder.subject;
+    els.doneId.textContent = `${r.id} · ещё строка`;
+    els.doneSubject.textContent = lastSubject;
+    els.doneCopied.hidden = true;
+    setLink(els.openRow, r.url);
+    letterFor(task, r.id);
+    exitRowMode();
+    els.form.hidden = true;
+    els.done.hidden = false;
+    setMsg('');
+  } catch (err) {
+    setMsg(`Строка не добавилась: ${err.message}`, 'err');
+  } finally {
+    els.submit.disabled = false;
+  }
+}
+
 els.copyDone.addEventListener('click', () => copyText(lastSubject, 'Тема скопирована — можно вставлять в письмо'));
 els.again.addEventListener('click', () => {
+  exitRowMode();
   els.done.hidden = true;
   els.form.hidden = false;
   resetForm();

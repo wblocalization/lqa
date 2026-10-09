@@ -59,6 +59,10 @@
     <p id="taskLoading" class="muted center" hidden></p>
 
     <form id="taskForm" class="task-form" hidden>
+      <div id="tRowMode" class="row-mode" hidden>
+        <div><b>Ещё строка в заказ <span id="tRowId"></span></b><span class="row-mode-note">номер, тема, дата и подрядчик — как у заказа; Band, ник, языки, сроки — свои</span></div>
+        <button id="tRowCancel" class="link-btn" type="button">✕ Отменить</button>
+      </div>
       <div class="preview-box">
         <div class="preview-txt"><span class="eyebrow">Тема письма <span class="eyebrow-note" title="Точный номер таблица выдаст при добавлении — тема скопируется сама">· номер предварительный</span></span><p id="tPreview" class="preview"></p></div>
         <button id="tCopyPreview" class="btn ghost small" type="button">Скопировать</button>
@@ -163,6 +167,7 @@
         <a id="taskOpenRow" class="btn ghost small" href="#" target="_blank" rel="noopener" hidden>Открыть в таблице ↗</a>
         <button id="taskAgain" class="btn primary small" type="button">＋ Новая задача</button>
       </div>
+      <button id="taskAddRow" class="btn ghost small add-row-btn" type="button" title="Тот же номер и тема, но другой Band, заказчик, языки или сроки — как несколько строк одного заказа в таблице">＋ Ещё строка в этот заказ</button>
       <section id="letter" class="letter" hidden>
         <div class="letter-head"><b>Письмо в <span id="lContractor"></span></b><button id="lEdit" class="link-btn strong" type="button">✏️ Настроить</button></div>
         <p id="lEmpty" class="letter-empty">Для этого подрядчика ещё нет адресов и шаблона письма. <button class="link-btn strong" type="button">Настроить один раз →</button></p>

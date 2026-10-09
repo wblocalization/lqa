@@ -1135,6 +1135,49 @@ function submitNewTaskFromDialog(task) {
   });
 }
 
+/**
+ * Ещё строка в существующий заказ — как LIT-26-2267: у каждой строки свои продукт, Band, ник, языки, сроки и статус.
+ * Номер, тема, дата, тикет, подрядчик и менеджер — как у заказа; строка встаёт сразу под его строками.
+ */
+function addRowToTask(id, task) {
+  id = str_(id);
+  ['product', 'deadline', 'status', 'deliveryStatus', 'manager', 'customer', 'comment', 'link', 'link2', 'ticket']
+    .forEach(k => { task[k] = str_(task[k]); });
+  if (!id) throw new Error('Нет номера заказа');
+
+  return withScriptLock_(() => {
+    const sh = getTasksSheet();
+    const n = Math.max(sh.getLastRow() - 1, 0);
+    const ids = n ? sh.getRange(2, COL.ID, n, 1).getValues() : [];
+    let first = -1, last = -1;
+    ids.forEach((r, i) => { if (str_(r[0]) === id) { if (first < 0) first = i + 2; last = i + 2; } });
+    if (first < 0) throw new Error('Не нашла заказ ' + id + ' — возможно, его удалили или поменяли номер');
+    const base = sh.getRange(first, 1, 1, TASK_COLS).getValues()[0];
+
+    sh.insertRowAfter(last);
+    const row = last + 1;
+    const src = sh.getRange(last, 1, 1, TASK_COLS), dst = sh.getRange(row, 1, 1, TASK_COLS);
+    src.copyTo(dst, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+    src.copyTo(dst, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
+
+    const date = isDate_(base[COL.DATE - 1]) ? base[COL.DATE - 1] : parseIsoDate_(task.date);
+    if (!task.deadline) task.deadline = deadlineFromDue_(parseIsoDate_(task.exactDeadline), date, '');
+    const subject = stripLinkMarkers_(str_(base[COL.SUBJECT - 1]));
+    const values = [
+      id, task.ticket ? normTicket_(task.ticket) : base[COL.TICKET - 1], subject,
+      date || '', task.product, task.customer, (task.languages || []).join(', '),
+      task.deadline, parseIsoDate_(task.exactDeadline), task.status,
+      '', '', base[COL.CONTRACTOR - 1], task.manager || base[COL.MANAGER - 1],
+      task.deliveryStatus, task.sp ? Number(task.sp) : '', task.comment, ''
+    ];
+    dst.setValues([values]);
+    if (task.link || task.link2) sh.getRange(row, COL.SUBJECT).setRichTextValue(buildSubjectRich_(subject, task.link, task.link2));
+    if (values[COL.LANGS - 1]) colorizeLanguagesCell(sh, row);
+    colorizeRowDirectly(sh, row);
+    return { id: id, row: row, subject: subject };
+  });
+}
+
 // ==================== ПОИСК И ПРАВКА (менеджеры) ====================
 
 function showSearchEditSidebar() {

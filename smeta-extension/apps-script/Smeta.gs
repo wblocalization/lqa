@@ -77,6 +77,7 @@ function doPost(e) {
   try {
     if (req.action === 'write') return smetaJson_(smetaWrite_(req));
     if (req.action === 'addTask') return smetaJson_(addTask_(req));
+    if (req.action === 'addTaskRow') return smetaJson_(addTaskRow_(req));
     if (req.action === 'setStatus') return smetaJson_(setStatus_(req));
     if (req.action === 'saveTask') return smetaJson_(saveTask_(req));
     if (req.action === 'setDelivery') { requireTableScript_(); return smetaJson_(setTaskDelivery(req.row, req.id, req.origSubject, req.value)); }
@@ -95,7 +96,7 @@ function doPost(e) {
 
 /** Проверка: открыть адрес веб-приложения в браузере — должно написать, что скрипт работает. */
 function doGet() {
-  return ContentService.createTextOutput('Скрипт работает. Адрес правильный — вставьте его в настройки расширения.\n\nВерсия: 9 октября (отчёты, сверка и письма в расширении).');
+  return ContentService.createTextOutput('Скрипт работает. Адрес правильный — вставьте его в настройки расширения.\n\nВерсия: 9 октября, вечер (строки в заказ, дедлайн по рабочим дням).');
 }
 
 function smetaLookup_(req) {
@@ -284,6 +285,25 @@ function addTask_(req) {
 
   const id = submitNewTaskFromDialog(task);
   return { ok: true, id: id, url: tableUrl_(2) }; // новая задача — всегда вторая строка, под шапкой
+}
+
+/** Ещё строка в существующий заказ (свои продукт, Band, ник, языки, сроки) — сразу под его строками. */
+function addTaskRow_(req) {
+  requireTableScript_();
+  const t = req.task || {};
+  const str = function (v) { return String(v == null ? '' : v).trim(); };
+  const task = {
+    ticket: str(t.ticket), link: str(t.link), link2: str(t.link2), date: str(t.date), product: str(t.product),
+    customer: str(t.customer), deadline: str(t.deadline), exactDeadline: str(t.exactDeadline), status: str(t.status),
+    deliveryStatus: str(t.deliveryStatus), sp: str(t.sp), manager: str(t.manager), comment: str(t.comment),
+    languages: (Array.isArray(t.languages) ? t.languages : []).map(str).filter(Boolean),
+  };
+  if (task.ticket && !/^LOCAL-\d+$/.test(task.ticket)) return { ok: false, error: 'Тикет должен быть вида LOCAL-1234' };
+  [task.link].concat(task.link2.split(/[\s,;]+/)).forEach(function (u) {
+    if (u && !/^https?:\/\//i.test(u)) throw new Error('Ссылка должна начинаться с http: ' + u);
+  });
+  const r = addRowToTask(str(req.id), task);
+  return { ok: true, id: r.id, row: r.row, subject: r.subject, url: tableUrl_(r.row) };
 }
 
 /** Быстрая смена статуса из вкладки «Мои задачи». */

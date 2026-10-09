@@ -586,3 +586,11 @@ select.delivery-sel option { background: var(--card); color: var(--ink); font-we
 .composer .c-more { display: flex; flex-wrap: wrap; gap: 4px 14px; justify-content: center; padding: 0 12px 12px; }
 .done .letter .composer .btn.small { width: auto; }
 .field-hint.weekend { color: var(--warn); font-weight: 600; }
+
+/* Ещё строка в заказ */
+.row-mode { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 12px;
+  background: linear-gradient(100deg, var(--soft), var(--err-soft)); border: 1px solid var(--line); }
+.row-mode b { display: block; }
+.row-mode-note { display: block; font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+.done .add-row-btn { width: 100%; margin-top: 2px; }
+.task-form select:disabled, .task-form input:disabled { opacity: .6; cursor: not-allowed; }

@@ -449,6 +449,26 @@ test('Правка прямо в листе: цветные языки, нова
   const manual = G.submitNewTaskFromDialog({ contractor: 'LogrusIT', subject: 'Свой дедлайн', date: '2026-10-01', exactDeadline: '2026-10-01', deadline: 'До недели', languages: [] });
   assert.equal(sh.getRange(rowOf(manual), 8).getValue(), 'До недели');
 
+  // Ещё строка в существующий заказ: под его строками, номер/тема/дата/подрядчик — как у заказа
+  const order = G.submitNewTaskFromDialog({ contractor: 'LogrusIT', subject: 'Материалы для поддержки', date: '2026-10-07', product: 'WB Такси', languages: ['Кыргызский'], manager: 'Анастасия Лисовая', exactDeadline: '2026-10-08' });
+  const add1 = G.addRowToTask(order, { product: 'WBP', customer: '@dedova', languages: ['Казахский'], exactDeadline: '2026-10-13', status: 'В работе', link: 'https://band.wb.ru/wb/pl/aaa' });
+  const add2 = G.addRowToTask(order, { product: 'WBP', customer: '@agibalova', languages: ['Кыргызский'], exactDeadline: '2026-10-14' });
+  const o0 = rowOf(order);
+  assert.equal(add1.row, o0 + 1, 'первая доп. строка — сразу под заказом');
+  assert.equal(add2.row, o0 + 2, 'вторая — под первой');
+  const v1 = sh.getRange(add1.row, 1, 1, 18).getValues()[0];
+  assert.equal(v1[0], order);
+  assert.equal(v1[2], sh.getRange(o0, 3).getValue(), 'тема — как у заказа');
+  assert.equal(v1[4], 'WBP');
+  assert.equal(v1[5], '@dedova');
+  assert.equal(v1[6], 'Казахский');
+  assert.equal(v1[9], 'В работе');
+  assert.equal(v1[12], 'LogrusIT');
+  assert.equal(v1[13], 'Анастасия Лисовая');
+  assert.equal(sh.getRange(add2.row, 13).getValue(), 'LogrusIT');
+  assert.throws(() => G.addRowToTask('LIT-00-0000', { product: 'WBP' }), /Не нашла заказ/);
+  console.log('  ✓ строки в заказ: под заказом, номер и тема общие, свои продукт/ник/языки/сроки');
+
   // Переводчики
   const t = tr(); const tr2 = t.getLastRow() + 1;
   t.getRange(tr2, 4).setValue('Руками');
