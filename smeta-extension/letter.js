@@ -10,12 +10,15 @@ const els = {
   box: $('#letter'), contractor: $('#lContractor'), edit: $('#lEdit'), view: $('#lView'), empty: $('#lEmpty'),
   subject: $('#lSubject'), copySubject: $('#lCopySubject'), to: $('#lTo'), copyTo: $('#lCopyTo'), ccRow: $('#lCcRow'), cc: $('#lCc'), copyCc: $('#lCopyCc'),
   body: $('#lBody'), copyBody: $('#lCopyBody'), compose: $('#lCompose'),
-  editor: $('#lEditor'), eTo: $('#lETo'), eCc: $('#lECc'), eBody: $('#lEBody'), save: $('#lSave'), cancel: $('#lCancel'),
+  editor: $('#lEditor'), eTo: $('#lETo'), eCc: $('#lECc'), eBody: $('#lEBody'), save: $('#lSave'), cancel: $('#lCancel'), remove: $('#lRemove'),
 };
 
-export const DEFAULT_BODY = 'Добрый день!\n\nВозьмите, пожалуйста, в работу.\n\nСпасибо!';
-// Прежний текст по умолчанию — тема в нём дублировалась (она и так в теме письма); такие заменяем на новый
-const OLD_DEFAULT = 'Добрый день!\n\nПросим взять в работу: {тема}\nЯзыки: {языки}\nСрок сдачи: {срок}\n\nСпасибо!';
+export const DEFAULT_BODY = 'Здравствуйте!\n\nВозьмите, пожалуйста, в работу.\nЯзыки: {языки}\nДедлайн: {срок}\n\nБольшое спасибо!';
+// Прежние тексты по умолчанию — заменяем на новый сами (свой текст человека не трогаем)
+const OLD_DEFAULTS = [
+  'Добрый день!\n\nПросим взять в работу: {тема}\nЯзыки: {языки}\nСрок сдачи: {срок}\n\nСпасибо!',
+  'Добрый день!\n\nВозьмите, пожалуйста, в работу.\n\nСпасибо!',
+];
 
 let letters = {};   // { [подрядчик]: { to, cc, body } }
 let ctx = null;     // задача, которую только что добавили
@@ -23,7 +26,7 @@ let ctx = null;     // задача, которую только что доба
 export async function loadLetters() {
   const r = await chrome.storage.local.get('letters');
   letters = r.letters && typeof r.letters === 'object' ? r.letters : {};
-  Object.values(letters).forEach((l) => { if (l && l.body === OLD_DEFAULT) l.body = DEFAULT_BODY; });
+  Object.values(letters).forEach((l) => { if (l && OLD_DEFAULTS.includes(l.body)) l.body = DEFAULT_BODY; });
   return letters;
 }
 
@@ -52,7 +55,7 @@ export function parseEmails(text) {
 /** Подставить в шаблон данные задачи: {тема} {номер} {языки} {коды} {срок} {продукт} {менеджер} {ссылка}. */
 export function fillTemplate(tpl, c) {
   const map = {
-    тема: c.subject, номер: c.id, языки: (c.languages || []).join(', '), коды: (c.codes || []).join(', '),
+    тема: c.subject, номер: c.id, языки: (c.languages || []).map((l) => l.toLowerCase()).join(', '), коды: (c.codes || []).join(', '),
     срок: c.due, продукт: c.product, менеджер: c.manager, ссылка: c.link,
   };
   return String(tpl || '').replace(/\{([а-яё]+)\}/gi, (m, k) => (k.toLowerCase() in map ? map[k.toLowerCase()] || '' : m));
@@ -114,6 +117,7 @@ function openEditor() {
   els.eTo.value = parseEmails(l.to).join('\n');
   els.eCc.value = parseEmails(l.cc).join('\n');
   els.eBody.value = l.body || DEFAULT_BODY;
+  els.remove.hidden = !letters[ctx.contractor];
   els.editor.hidden = false;
   els.view.hidden = true;
   els.empty.hidden = true;
@@ -137,4 +141,15 @@ els.save.addEventListener('click', async () => {
   closeEditor();
   render();
   toast(`✓ Письмо для ${ctx.contractor} сохранено`);
+});
+
+// Стереть почты и шаблон подрядчика целиком
+els.remove.addEventListener('click', async () => {
+  if (!confirm(`Удалить почты и шаблон письма для ${ctx.contractor}?`)) return;
+  await loadLetters();
+  delete letters[ctx.contractor];
+  await chrome.storage.local.set({ letters });
+  closeEditor();
+  render();
+  toast(`Почты и шаблон для ${ctx.contractor} удалены`);
 });
