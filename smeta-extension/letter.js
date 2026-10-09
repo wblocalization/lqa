@@ -6,6 +6,8 @@ import { toast, ask } from './core.js';
 import { OWA_ORIGIN } from './outlook.js';
 import { sendMail } from './owa-send.js';
 import { richEditor, htmlToRichText } from './richtext.js';
+import { playSound } from './sounds.js';
+import { soundPrefs } from './remind.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
@@ -423,6 +425,7 @@ els.send.addEventListener('click', async () => {
     files = [];
     renderFiles();
     els.send.textContent = '✓ Отправлено';
+    soundPrefs().then((p) => { if (p.sendSound) playSound('whoosh'); });
     const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
     els.sentText.textContent = `✓ Отправлено в ${time} → ${to.join(', ')}`;
     els.sent.hidden = false;

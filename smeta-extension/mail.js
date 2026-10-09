@@ -1,7 +1,8 @@
 // Вкладка «Почта»: своя почта для писем и включение рассылок (то же, что «⚙️ Настройки» в таблице).
 import { settings, isConfigured, call, toast, ask, getLists } from './core.js';
 import { renderLetterList, renderSignatureCard } from './letter.js';
-import { remindOn, remindDue } from './remind.js';
+import { remindOn, remindDue, soundPrefs } from './remind.js';
+import { SOUNDS, playSound } from './sounds.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
@@ -39,7 +40,7 @@ $('#mlRemindTest').addEventListener('click', async (e) => {
   e.target.disabled = true;
   try {
     const r = await call({ action: 'myTasks', manager: settings.manager, filter: 'open' });
-    await remindDue(r, { force: true });
+    await remindDue(r, { force: true, play: playSound });
     toast('Уведомление показано — оно в углу экрана');
   } catch (err) {
     toast(`Не получилось: ${err.message}`, 'err');
@@ -47,6 +48,19 @@ $('#mlRemindTest').addEventListener('click', async (e) => {
     e.target.disabled = false;
   }
 });
+
+// Звуки: для напоминаний — на выбор; «фьюх» при отправке письма — вкл/выкл
+const soundSel = $('#mlSound');
+soundSel.innerHTML = Object.entries(SOUNDS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
+const sendSoundBox = $('#mlSendSound');
+soundPrefs().then((p) => { soundSel.value = p.sound; sendSoundBox.checked = p.sendSound; });
+async function saveSound(patch) {
+  const st = (await chrome.storage.local.get('remind')).remind || {};
+  await chrome.storage.local.set({ remind: { ...st, ...patch } });
+}
+soundSel.addEventListener('change', () => { saveSound({ sound: soundSel.value }); playSound(soundSel.value); });
+$('#mlSoundPlay').addEventListener('click', () => playSound(soundSel.value));
+sendSoundBox.addEventListener('change', () => { saveSound({ sendSound: sendSoundBox.checked }); if (sendSoundBox.checked) playSound('whoosh'); });
 
 async function loadLetterList() {
   let contractors = [];

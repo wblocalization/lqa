@@ -6,6 +6,15 @@ import { remindDue } from './remind.js';
 
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(console.error);
 
+// Звук напоминания: фоновая часть играть не умеет — через невидимую страницу offscreen.html
+async function playInBackground(sound) {
+  try {
+    const has = (await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] })).length > 0;
+    if (!has) await chrome.offscreen.createDocument({ url: 'offscreen.html', reasons: ['AUDIO_PLAYBACK'], justification: 'Звук напоминания о сроках' });
+    await chrome.runtime.sendMessage({ type: 'play-sound', sound });
+  } catch { /* без звука — уведомление всё равно покажется */ }
+}
+
 async function refreshBadge() {
   await loadSettings();
   if (!isConfigured() || !settings.manager) return;
@@ -16,7 +25,7 @@ async function refreshBadge() {
     if (r.manager) await chrome.storage.local.set({ [`mine:${r.manager}:open`]: { ...r, filter: 'open' } });
     chrome.action.setBadgeText({ text: r.overdue ? String(r.overdue) : '' });
     chrome.action.setBadgeBackgroundColor({ color: '#C0262D' });
-    await remindDue(r);
+    await remindDue(r, { play: playInBackground });
   } catch {
     // нет сети или таблица недоступна — попробуем в следующий раз
   }

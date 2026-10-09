@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Задачи и сметы",
-  "version": "1.17.0",
+  "version": "1.18.0",
   "description": "Добавляет задачи менеджеров в таблицу, показывает ваши открытые задачи и записывает сметы — без захода в таблицу.",
   "action": {
     "default_title": "Задачи и сметы",
@@ -25,6 +25,7 @@
     "clipboardWrite",
     "alarms",
     "notifications",
+    "offscreen",
     "scripting"
   ],
   "host_permissions": [
