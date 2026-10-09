@@ -2,6 +2,7 @@ import * as pdfjs from './vendor/pdf.min.mjs';
 import { parseEstimate, formatMoney, linesFromItems } from './parser.js';
 import { settings, isConfigured, api, esc, readClipboard, DEFAULT_DISK_FOLDER, setLink } from './core.js';
 import { uploadToDisk, listDiskPdfs, folderNameFromSubject } from './disk.js';
+import { fileFromOwaDrop } from './outlook.js';
 
 pdfjs.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('vendor/pdf.worker.min.mjs');
 
@@ -138,10 +139,20 @@ els.file.addEventListener('change', () => handleFile(els.file.files[0]));
   els.drop.classList.add('over');
 }));
 ['dragleave', 'drop'].forEach((t) => els.drop.addEventListener(t, () => els.drop.classList.remove('over')));
-els.drop.addEventListener('drop', (e) => {
-  e.preventDefault();
-  handleFile(e.dataTransfer.files[0]);
-});
+els.drop.addEventListener('drop', (e) => { e.preventDefault(); dropped(e.dataTransfer); });
+
+/** Брошенный файл: с компьютера — сразу; вложение из письма Outlook — скачиваем по ссылке. */
+async function dropped(dt) {
+  if (dt.files && dt.files[0]) return handleFile(dt.files[0]);
+  setStatus('Беру смету из письма…');
+  try {
+    const file = await fileFromOwaDrop(dt);
+    if (!file) return setStatus('Не вижу файла. Перетащите PDF с компьютера или вложение из открытого письма в Outlook', 'err');
+    handleFile(file);
+  } catch (err) {
+    setStatus(`Не получилось взять вложение из письма (${err.message}). Сохраните его на компьютер и перетащите оттуда`, 'err');
+  }
+}
 // Чтобы случайно брошенный мимо файл не открывался вместо панели.
 window.addEventListener('dragover', (e) => e.preventDefault());
 window.addEventListener('drop', (e) => e.preventDefault());

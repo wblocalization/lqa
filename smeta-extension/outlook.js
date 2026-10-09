@@ -131,3 +131,49 @@ async function owaOpenSentInPage() {
   location.hash = '#path=/mail/sentitems';
   return false;
 }
+
+/**
+ * Вложение, перетащенное из письма в Outlook: браузер отдаёт не файл, а ссылку на него.
+ * Скачиваем по ссылке на странице Outlook (там вход) и возвращаем как обычный файл. Не вышло — null.
+ */
+export async function fileFromOwaDrop(dt) {
+  const get = (t) => { try { return dt.getData(t) || ''; } catch { return ''; } };
+  // Chrome кладёт «тип:имя:адрес» в DownloadURL; иначе — адрес в uri-list / text, имя — из подписи ссылки
+  const dl = get('DownloadURL').match(/^([^:]*):([^:]*):(https?:.*)$/);
+  let url = dl ? dl[3] : (get('text/uri-list').split(/\r?\n/).find((l) => /^https?:/.test(l)) || get('text/plain').trim());
+  if (!/^https:\/\/mail\.rwb\.ru\/owa\//i.test(url)) return null;
+  url = url.replace(/isDocumentPreview=True/i, 'isDocumentPreview=False').replace(/isImagePreview=True/i, 'isImagePreview=False');
+  const html = get('text/html');
+  let name = dl ? dl[2] : '';
+  if (!name) {
+    const d = document.createElement('div'); d.innerHTML = html;
+    name = ((d.textContent || get('text/plain')).match(/[^\s/\\:*?"<>|]+[^\n/\\:*?"<>|]*?\.pdf/i) || [''])[0].trim();
+  }
+  const [tab] = await chrome.tabs.query({ url: `${OWA_ORIGIN}/owa/*` });
+  if (!tab) return null;
+  const [res] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: owaFetchFile, args: [url] });
+  const r = res && res.result;
+  if (!r || r.error) throw new Error((r && r.error) || 'Outlook не отдал файл');
+  const bytes = Uint8Array.from(atob(r.b64), (c) => c.charCodeAt(0));
+  if (String.fromCharCode(...bytes.slice(0, 4)) !== '%PDF') throw new Error('по ссылке не PDF');
+  if (!name && r.disposition) {
+    const m = r.disposition.match(/filename\*=UTF-8''([^;]+)/i) || r.disposition.match(/filename="?([^";]+)"?/i);
+    if (m) { try { name = decodeURIComponent(m[1]); } catch { name = m[1]; } }
+  }
+  return new File([bytes], name || 'смета.pdf', { type: 'application/pdf' });
+}
+
+/** Выполняется на странице Outlook: скачать вложение (с входом пользователя) и вернуть base64. */
+async function owaFetchFile(url) {
+  try {
+    const r = await fetch(url, { credentials: 'include' });
+    if (r.status === 440 || r.status === 401) return { error: 'Outlook просит войти заново' };
+    if (!r.ok) return { error: `Outlook ответил ${r.status}` };
+    const buf = new Uint8Array(await r.arrayBuffer());
+    let s = '';
+    for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+    return { b64: btoa(s), disposition: r.headers.get('content-disposition') || '' };
+  } catch (e) {
+    return { error: e.message };
+  }
+}
