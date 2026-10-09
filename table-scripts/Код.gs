@@ -272,9 +272,9 @@ function estimateLabelsToUrls_(sh) {
 /**
  * «⚙️ Настройки → 🔑 Разрешить письма и Excel»: Google сам спросит разрешения (расписания, Диск, внешние запросы),
  * а мы сразу проверяем, что они есть, и пишем, что делать дальше. Запускать тому, от чьего имени развёрнуто веб-приложение.
+ * Надёжнее всего — из редактора Apps Script: функция authorizeMail → ▶ Выполнить (там Google всегда спрашивает разрешения).
  */
 function authorizeMail() {
-  const ui = SpreadsheetApp.getUi();
   const lines = [];
   let ok = true;
   const check = (name, fn) => {
@@ -285,13 +285,19 @@ function authorizeMail() {
   check('Внешние запросы (Excel)', () => UrlFetchApp.getRequest('https://www.googleapis.com/'));
   let me = '';
   try { me = Session.getEffectiveUser().getEmail(); } catch (e) { /* не страшно */ }
-  ui.alert(ok ? '🔑 Разрешения есть' : '🔑 Не хватает разрешений',
-    lines.join('\n') + '\n\n' + (ok
+  const title = ok ? '🔑 Разрешения есть' : '🔑 Не хватает разрешений';
+  const text = lines.join('\n') + '\n\n' + (ok
       ? 'Теперь опубликуйте новую версию: Apps Script → Развернуть → Управление развёртываниями → ✏️ → Версия «Новая версия» → Развернуть.\n' +
         'Важно: в развёртывании «Выполнять как» должен стоять этот же аккаунт' + (me ? ' (' + me + ')' : '') + '.'
       : 'Если Google не спросил разрешения: Apps Script → ⚙️ Настройки проекта → «Показывать файл манифеста appsscript.json», ' +
-        'и если в нём есть "oauthScopes" — добавьте туда script.scriptapp, drive и script.external_request.'),
-    ui.ButtonSet.OK);
+        'и если в нём есть "oauthScopes" — добавьте туда script.scriptapp, drive и script.external_request.');
+  // Из меню таблицы — окном; из редактора Apps Script (▶ Выполнить) окна нет — пишем в «Журнал выполнения»
+  try {
+    const ui = SpreadsheetApp.getUi();
+    ui.alert(title, text, ui.ButtonSet.OK);
+  } catch (e) {
+    console.log(title + '\n' + text);
+  }
 }
 
 /**
