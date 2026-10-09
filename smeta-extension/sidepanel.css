@@ -519,3 +519,6 @@ select.delivery-sel option { background: var(--card); color: var(--ink); font-we
   :root:not([data-theme="light"]) select.delivery-sel[data-delivery="Сообщили о просрочке"] { background-color: #3A3115; color: #FCD34D; border-color: #6B5A1E; }
   :root:not([data-theme="light"]) select.delivery-sel[data-delivery="Не сообщили о просрочке"] { background-color: #3D1A24; color: #FDA4AF; border-color: #6E2C3C; }
 }
+.mine-item .meta-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.mine-item .meta-row .meta { min-width: 0; }
+.mine-item .mail-btn { flex: none; color: var(--accent); font-weight: 600; white-space: nowrap; }

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Задачи и сметы",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Добавляет задачи менеджеров в таблицу, показывает ваши открытые задачи и записывает сметы — без захода в таблицу.",
   "action": {
     "default_title": "Задачи и сметы",
@@ -29,7 +29,8 @@
   "host_permissions": [
     "https://script.google.com/*",
     "https://script.googleusercontent.com/*",
-    "https://disk.wb.ru/*"
+    "https://disk.wb.ru/*",
+    "https://mail.rwb.ru/*"
   ],
   "icons": {
     "16": "icons/icon16.png",

@@ -2,6 +2,7 @@
 import { settings, saveSettings, isConfigured, api, esc } from './core.js';
 import { openEditor } from './edit.js';
 import { fillSimilar } from './task.js';
+import { openMail } from './outlook.js';
 
 /** «＋ Ещё такую» — новая задача по образцу этой: открываем вкладку «Новая задача» и заполняем форму. */
 function createSimilar(ref) {
@@ -106,7 +107,8 @@ function render() {
     const title = t.link ? `<a href="${esc(t.link)}" target="_blank" rel="noopener">${esc(t.title)} 🔗</a>` : esc(t.title);
     return `<div class="mine-item${t.overdue ? ' overdue' : ''}">
       <div class="title">${title}</div>
-      <div class="meta">${esc(t.id || '—')}${t.ticket ? ' · ' + esc(t.ticket) : ''} · ${due}</div>
+      <div class="meta-row"><div class="meta">${esc(t.id || '—')}${t.ticket ? ' · ' + esc(t.ticket) : ''} · ${due}</div>
+        ${t.id ? `<button class="link-btn mail-btn" type="button" data-mail="${i}" title="Найти переписку в Outlook по номеру задачи">✉️ Переписка</button>` : ''}</div>
       <div class="row-actions">
         <select data-i="${i}" class="status-sel" data-status="${esc(t.status)}" aria-label="Статус">
           <option value="">— статус —</option>
@@ -177,6 +179,8 @@ async function deleteTask(ref) {
 }
 
 els.list.addEventListener('click', (e) => {
+  const mail = e.target.closest('button[data-mail]');
+  if (mail) return openMail(data.tasks[Number(mail.dataset.mail)].id);
   const sim = e.target.closest('button[data-similar]');
   if (sim) {
     const t = data.tasks[Number(sim.dataset.similar)];
@@ -208,6 +212,7 @@ function renderFound() {
   els.found.innerHTML = found.length
     ? found.map((t, i) => `<div class="mine-item">
         <div class="title">${esc(t.title)}</div>
+        ${t.id ? `<div class="meta-row"><span></span><button class="link-btn mail-btn" type="button" data-mail-found="${i}" title="Найти переписку в Outlook по номеру задачи">✉️ Переписка</button></div>` : ''}
         <div class="row-actions"><span class="meta" style="flex:1">${esc(t.id || '—')}${t.ticket ? ' · ' + esc(t.ticket) : ''} · ${esc(t.date)}${t.status ? ' · ' + esc(t.status) : ''}</span>
         <button class="btn ghost small" type="button" data-similar-found="${i}" title="Новая задача по образцу этой: тот же подрядчик, тикет, языки">＋ Ещё такую</button>
         <button class="btn ghost small" type="button" data-found="${i}">Изменить</button></div>
@@ -217,6 +222,8 @@ function renderFound() {
 els.searchForm.addEventListener('submit', (e) => { e.preventDefault(); runSearch(); });
 els.search.addEventListener('search', () => { if (!els.search.value) els.found.hidden = true; }); // крестик в поле
 els.found.addEventListener('click', (e) => {
+  const mail = e.target.closest('button[data-mail-found]');
+  if (mail) return openMail(found[Number(mail.dataset.mailFound)].id);
   const sim = e.target.closest('button[data-similar-found]');
   if (sim) {
     const t = found[Number(sim.dataset.similarFound)];
