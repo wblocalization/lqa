@@ -206,7 +206,16 @@ function findEditedRow_(sh, row, r) {
 
 // ==================== ДЕДЛАЙН ИЗ СРОКА СДАЧИ ====================
 // Сколько дней от даты получения (нет — от сегодня) до срока сдачи → значение из списка «Дедлайн».
-const DEADLINE_STEPS = [[0, 'ASAP'], [2, '1-2 дня'], [7, 'До недели'], [29, 'Больше недели'], [Infinity, 'Месяц и больше']];
+// Дедлайн — по рабочим дням (без субботы и воскресенья): с пятницы на понедельник — 1 день
+const DEADLINE_STEPS = [[0, 'ASAP'], [2, '1-2 дня'], [5, 'До недели'], [21, 'Больше недели'], [Infinity, 'Месяц и больше']];
+/** Рабочих дней от a до b (номера дней от 1970-01-01), пн–пт после a до b включительно. */
+function workDays_(a, b) {
+  if (b <= a) return b - a;
+  if (b - a > 60) return b - a; // больше двух месяцев — точно «месяц и больше»
+  let n = 0;
+  for (let d = a + 1; d <= b; d++) { const w = (d + 4) % 7; if (w !== 0 && w !== 6) n++; }
+  return n;
+}
 const DEADLINE_KEEP = ['Холд']; // такие ставят руками — не перебиваем
 
 function isDate_(d) {
@@ -217,7 +226,7 @@ function isDate_(d) {
 function deadlineFromDue_(due, received, current) {
   if (!isDate_(due) || DEADLINE_KEEP.indexOf(str_(current)) !== -1) return '';
   const day = d => Math.round(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 864e5);
-  const days = day(due) - day(isDate_(received) ? received : new Date());
+  const days = workDays_(day(isDate_(received) ? received : new Date()), day(due));
   const label = DEADLINE_STEPS.find(step => days <= step[0])[1].toLowerCase();
   // Пишем так, как значение записано в «Списках» (если его там переименовали — не трогаем)
   return getListsData().deadlines.find(v => v.toLowerCase() === label) || '';

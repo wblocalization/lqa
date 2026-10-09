@@ -424,6 +424,19 @@ test('Правка прямо в листе: цветные языки, нова
   sh.getRange(r, 9).setValue(new CDate(2026, 9, 2));
   G.onEdit({ range: sh.getRange(r, 9) });
   assert.equal(sh.getRange(r, 8).getValue(), '1-2 дня');
+  // по рабочим дням: получили в пятницу 02.10, сдать в понедельник 05.10 — 1 день, а не 3
+  sh.getRange(r, 4).setValue(new CDate(2026, 9, 2));
+  sh.getRange(r, 9).setValue(new CDate(2026, 9, 5));
+  G.onEdit({ range: sh.getRange(r, 9) });
+  assert.equal(sh.getRange(r, 8).getValue(), '1-2 дня');
+  // пт 02.10 → пт 09.10: 5 рабочих — «До недели»; → пн 12.10: 6 рабочих — «Больше недели»
+  sh.getRange(r, 9).setValue(new CDate(2026, 9, 9));
+  G.onEdit({ range: sh.getRange(r, 9) });
+  assert.equal(sh.getRange(r, 8).getValue(), 'До недели');
+  sh.getRange(r, 9).setValue(new CDate(2026, 9, 12));
+  G.onEdit({ range: sh.getRange(r, 9) });
+  assert.equal(sh.getRange(r, 8).getValue(), 'Больше недели');
+  sh.getRange(r, 9).setValue(new CDate(2026, 9, 6));
   sh.getRange(r, 4).setValue(new CDate(2026, 8, 1));
   G.onEdit({ range: sh.getRange(r, 4) });
   assert.equal(sh.getRange(r, 8).getValue(), 'Месяц и больше');

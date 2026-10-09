@@ -156,11 +156,19 @@
   }
 
   // Дедлайн из срока сдачи: сколько дней от даты получения (нет — от сегодня). Так же считает таблица (Код.gs).
-  const DEADLINE_STEPS = [[0, 'ASAP'], [2, '1-2 дня'], [7, 'До недели'], [29, 'Больше недели'], [Infinity, 'Месяц и больше']];
+  /* Дедлайн по рабочим дням (без субботы и воскресенья): с пятницы на понедельник — 1 день */
+  const DEADLINE_STEPS = [[0, 'ASAP'], [2, '1-2 дня'], [5, 'До недели'], [21, 'Больше недели'], [Infinity, 'Месяц и больше']];
+  function workDays(a, b) {
+    if (b <= a) return b - a;
+    if (b - a > 60) return b - a;
+    let n = 0;
+    for (let d = a + 1; d <= b; d++) { const w = (d + 4) % 7; if (w !== 0 && w !== 6) n++; }
+    return n;
+  }
   function deadlineFor(dueIso, dateIso, options, current) {
     if (!dueIso || current === 'Холд') return '';
     const day = s => { const p = s.split('-').map(Number); return Date.UTC(p[0], p[1] - 1, p[2]) / 864e5; };
-    const days = Math.round(day(dueIso) - day(dateIso || todayIso()));
+    const days = workDays(Math.round(day(dateIso || todayIso())), Math.round(day(dueIso)));
     const label = DEADLINE_STEPS.find(st => days <= st[0])[1].toLowerCase();
     return options.find(v => v.toLowerCase() === label) || '';
   }

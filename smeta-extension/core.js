@@ -98,14 +98,23 @@ export async function readClipboard() {
 
 // ---------- Дедлайн из срока сдачи ----------
 // Сколько дней от даты получения (нет — от сегодня) до срока сдачи. Так же считает таблица (Код.gs).
-const DEADLINE_STEPS = [[0, 'ASAP'], [2, '1-2 дня'], [7, 'До недели'], [29, 'Больше недели'], [Infinity, 'Месяц и больше']];
+// Дедлайн — по рабочим дням (без субботы и воскресенья): с пятницы на понедельник — 1 день
+const DEADLINE_STEPS = [[0, 'ASAP'], [2, '1-2 дня'], [5, 'До недели'], [21, 'Больше недели'], [Infinity, 'Месяц и больше']];
+/** Рабочих дней от a до b (номера дней от 1970-01-01): b не раньше a — считаем пн–пт после a до b включительно. */
+export function workDays(a, b) {
+  if (b <= a) return b - a;
+  if (b - a > 60) return b - a; // больше двух месяцев — точно «месяц и больше»
+  let n = 0;
+  for (let d = a + 1; d <= b; d++) { const w = (d + 4) % 7; if (w !== 0 && w !== 6) n++; }
+  return n;
+}
 
 export function deadlineFor(dueIso, dateIso, options, current) {
   if (!dueIso || current === 'Холд') return '';
   const day = (s) => { const [y, m, d] = s.split('-').map(Number); return Date.UTC(y, m - 1, d) / 864e5; };
   const now = new Date();
   const todayIso = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
-  const days = Math.round(day(dueIso) - day(dateIso || todayIso));
+  const days = workDays(Math.round(day(dateIso || todayIso)), Math.round(day(dueIso)));
   const label = DEADLINE_STEPS.find(([max]) => days <= max)[1].toLowerCase();
   return options.find((v) => v.toLowerCase() === label) || '';
 }
