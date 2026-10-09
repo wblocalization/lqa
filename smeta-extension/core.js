@@ -158,11 +158,12 @@ export function toast(text, kind = 'ok') {
  * Окно «Вы уверены?» вместо стандартного confirm. Возвращает true/false.
  * ask({ title, text, ok: 'Удалить', danger: true })
  */
-export function ask({ title, text = '', ok = 'Да', cancel = 'Отмена', danger = false, icon }) {
+export function ask({ title, text = '', ok = 'Да', cancel = 'Отмена', danger = false, icon, warnings = [] }) {
   return new Promise((resolve) => {
     const d = document.createElement('dialog');
     d.className = `ask${danger ? ' danger' : ''}`;
     d.innerHTML = `<div class="ask-ic">${icon || (danger ? '🗑' : '?')}</div><h3>${esc(title)}</h3>` +
+      (warnings.length ? `<ul class="ask-warn">${warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>` : '') +
       (text ? `<p>${esc(text)}</p>` : '') +
       `<div class="ask-btns"><button class="btn ghost" type="button" data-a="0">${esc(cancel)}</button>` +
       `<button class="btn ${danger ? 'danger' : 'primary'}" type="button" data-a="1" id="askOk">${esc(ok)}</button></div>`;

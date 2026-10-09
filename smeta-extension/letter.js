@@ -384,6 +384,23 @@ els.attachOpen.addEventListener('click', async () => {
   attachTo(tab.id);
 });
 
+/**
+ * Явные промахи перед отправкой: «во вложении», а файлов нет; пустой дедлайн; не те адреса; незаполненное.
+ * Возвращает список предупреждений (пустой — всё в порядке).
+ */
+function checkLetter(text, to) {
+  const out = [];
+  const t = plain(text);
+  if (!files.length && /вложени|прикрепл|attach/i.test(t)) out.push('В тексте про вложение, а файлов нет — добавьте их в «📎 Вложения»');
+  if (/(дедлайн|срок[а-я]*)\s*:\s*(\n|$)/i.test(t)) out.push('Дедлайн пустой — в задаче нет «Срока сдачи»');
+  if (/языки\s*:\s*(\n|$)/i.test(t)) out.push('Языки пустые — у подрядчика в задаче только штатные или ни одного');
+  if (/\{[а-яё]+\}/i.test(t)) out.push('В тексте осталась {переменная} в скобках');
+  const saved = parseEmails((letters[ctx.contractor] || {}).to);
+  if (saved.length && !saved.some((e) => to.includes(e))) out.push(`В «Кому» нет адресов ${ctx.contractor} из шаблона (${saved.join(', ')})`);
+  if (/^\s*\[/.test(ctx.subject) && !ctx.subject.includes(ctx.id || '')) out.push('В теме нет номера задачи');
+  return out;
+}
+
 // «📨 Отправить» — прямо отсюда, с рабочей почты; перед отправкой — ещё раз показать, что уйдёт, и спросить
 els.send.addEventListener('click', async () => {
   const to = parseEmails(els.to.value);
@@ -392,7 +409,9 @@ els.send.addEventListener('click', async () => {
   const text = bodyEd.get().trim();
   if (!text) return toast('Письмо пустое', 'err');
   const sigText = plain(sigToText(signature));
-  const ok = await ask({ title: 'Отправить письмо?', ok: 'Отправить', icon: '📨', text: `Кому: ${to.join(', ')}` + (cc.length ? `\nКопия: ${cc.join(', ')}` : '') +
+  const warnings = checkLetter(text, to);
+  const ok = await ask({ title: warnings.length ? 'Проверьте письмо' : 'Отправить письмо?', warnings,
+    ok: warnings.length ? 'Всё равно отправить' : 'Отправить', icon: warnings.length ? '!' : '📨', text: `Кому: ${to.join(', ')}` + (cc.length ? `\nКопия: ${cc.join(', ')}` : '') +
     `\nТема: ${ctx.subject}` + (files.length ? `\nВложения: ${files.map((f) => f.name).join(', ')}` : '') +
     `\n\n${plain(text.length > 400 ? `${text.slice(0, 400)}…` : text)}` + (sigText ? `\n\n${sigText}` : '\n\n(без подписи)') });
   if (!ok) return;

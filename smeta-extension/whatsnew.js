@@ -1,0 +1,52 @@
+// «Что нового» — после обновления панель один раз показывает, что поменялось с прошлой версии.
+// Новая версия → добавьте запись наверх CHANGES (коротко, по-человечески).
+import { esc } from './core.js';
+
+export const CHANGES = [
+  { v: '1.17.0', items: [
+    'Перед отправкой письма — проверка: «во вложении», а файлов нет; пустой дедлайн или языки; не те адреса',
+    'Напоминания о сроках в углу экрана по будням около 10:00 (вкладка «Почта» → «Напоминания в браузере»)',
+    'Это окно «Что нового» — после каждого обновления',
+  ] },
+  { v: '1.16.3', items: [
+    'Вкладка «Письма» теперь «Почта»: сверху подпись и письма подрядчикам, ниже рассылки',
+    'Подпись с жирным — можно выделить или вставить из Outlook',
+    'Смайлики 😊 в письме и шаблоне',
+    'Убрали всплывающую подсказку «Как в прошлый раз с подрядчиком»',
+  ] },
+  { v: '1.15.2', items: [
+    'После отправки — «✓ Отправлено в 17:23» и кнопка «Проверить в «Отправленных»»',
+    'Несколько строк одного заказа прямо в форме — «＋ Ещё строка в этот заказ»; тема — с языками всех строк',
+  ] },
+  { v: '1.12.0', items: [
+    'Плашки-уведомления и окно «Вы уверены?» перед удалением и отправкой',
+    'Шаблоны писем подрядчикам можно править во вкладке «Почта»',
+  ] },
+];
+
+const num = (v) => String(v).split('.').map(Number);
+const newer = (a, b) => { const x = num(a), y = num(b); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
+
+/** Показать окно. since — показать изменения новее этой версии (по умолчанию — последнюю запись). */
+export function showWhatsNew(since) {
+  const list = since ? CHANGES.filter((c) => newer(c.v, since)) : CHANGES.slice(0, 1);
+  if (!list.length) return;
+  const d = document.createElement('dialog');
+  d.className = 'ask whatsnew';
+  d.innerHTML = `<div class="ask-ic">✨</div><h3>Что нового</h3>` +
+    list.map((c) => `<div class="wn-ver">Версия ${esc(c.v)}</div><ul>${c.items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>`).join('') +
+    '<div class="ask-btns"><button class="btn primary" type="button">Понятно</button></div>';
+  document.body.appendChild(d);
+  d.querySelector('button').addEventListener('click', () => d.close());
+  d.addEventListener('close', () => d.remove());
+  d.showModal();
+}
+
+/** При открытии панели: версия поменялась с прошлого раза — показать, что нового (при первой установке — нет). */
+export async function whatsNewOnStart() {
+  const v = chrome.runtime.getManifest().version;
+  const { seenVersion } = await chrome.storage.local.get('seenVersion');
+  if (seenVersion === v) return;
+  await chrome.storage.local.set({ seenVersion: v });
+  if (seenVersion) showWhatsNew(seenVersion);
+}

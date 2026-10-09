@@ -5,6 +5,7 @@ import * as task from './task.js';
 import * as mine from './mine.js';
 import * as reports from './reports.js';
 import { loadMail } from './mail.js';
+import { showWhatsNew, whatsNewOnStart } from './whatsnew.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
@@ -135,6 +136,15 @@ window.addEventListener('resize', setHeadH);
 
 await loadSettings();
 showTableLink();
+// Нажали на напоминание о сроках — открыть «Мои задачи»
+async function openRequestedTab() {
+  const { openTab } = await chrome.storage.local.get('openTab');
+  if (!openTab) return false;
+  await chrome.storage.local.set({ openTab: '' });
+  showTab(openTab);
+  return true;
+}
+chrome.storage.onChanged.addListener((changes) => { if (changes.openTab && changes.openTab.newValue) openRequestedTab(); });
 if (!isConfigured() || !settings.manager) {
   fillSettings();
   els.settings.hidden = false;
@@ -142,5 +152,8 @@ if (!isConfigured() || !settings.manager) {
 let startTab = 'task';
 try { startTab = localStorage.getItem('tab') || 'task'; } catch { /* по умолчанию «Новая задача» */ }
 showTab(['smeta', 'mine', 'reports', 'mail'].includes(startTab) ? startTab : 'task');
+openRequestedTab().catch(() => {});
+whatsNewOnStart().catch(() => {});
+$('#whatsNew').addEventListener('click', () => showWhatsNew('0.0.0'));
 // Вкладка «Новая задача» и так грузит справочники; с других — подтянем их в фоне ради кнопки «Таблица ↗»
 if (isConfigured() && startTab !== 'task') getLists().catch(() => {});

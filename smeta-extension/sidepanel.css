@@ -673,3 +673,15 @@ b .var-pill, strong .var-pill { font-weight: 800; }
 .sig-rich { min-height: 84px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--ink); font-size: 13.5px; font-weight: 400; }
 .sig-rich:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
 .c-sig-text b { font-weight: 800; }
+
+/* Предупреждения в окне «Проверьте письмо» */
+.ask-warn { margin: 6px 0 10px; padding: 10px 12px 10px 28px; border-radius: 12px; background: color-mix(in srgb, var(--warn) 12%, var(--card)); color: var(--ink); font-size: 13px; font-weight: 600; text-align: left; }
+.ask-warn li + li { margin-top: 4px; }
+
+/* «Что нового» */
+dialog.whatsnew { width: min(380px, calc(100% - 24px)); text-align: left; max-height: 85vh; overflow: auto; }
+dialog.whatsnew h3 { text-align: center; }
+.wn-ver { margin: 12px 0 4px; font-size: 11.5px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: .03em; }
+dialog.whatsnew ul { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.45; }
+dialog.whatsnew li + li { margin-top: 4px; }
+.whatsnew-link { align-self: flex-start; }

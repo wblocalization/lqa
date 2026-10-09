@@ -1,7 +1,8 @@
 // Клик по иконке расширения открывает боковую панель — она не закрывается,
 // пока переключаешься между Outlook и ВБ Диском.
-// Раз в полчаса обновляет цифру просроченных задач на иконке.
+// Раз в полчаса обновляет цифру просроченных задач на иконке, а по будням около 10:00 напоминает о сроках (remind.js).
 import { loadSettings, isConfigured, settings, api } from './core.js';
+import { remindDue } from './remind.js';
 
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(console.error);
 
@@ -15,6 +16,7 @@ async function refreshBadge() {
     if (r.manager) await chrome.storage.local.set({ [`mine:${r.manager}:open`]: { ...r, filter: 'open' } });
     chrome.action.setBadgeText({ text: r.overdue ? String(r.overdue) : '' });
     chrome.action.setBadgeBackgroundColor({ color: '#C0262D' });
+    await remindDue(r);
   } catch {
     // нет сети или таблица недоступна — попробуем в следующий раз
   }
@@ -26,3 +28,13 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 chrome.runtime.onStartup.addListener(refreshBadge);
 chrome.alarms.onAlarm.addListener((a) => { if (a.name === 'badge') refreshBadge(); });
+
+// Нажали на напоминание — панель на «Моих задачах»
+chrome.notifications.onClicked.addListener(async (id) => {
+  chrome.notifications.clear(id);
+  await chrome.storage.local.set({ openTab: 'mine' });
+  try {
+    const [w] = await chrome.windows.getAll({ windowTypes: ['normal'] });
+    if (w) { await chrome.windows.update(w.id, { focused: true }); await chrome.sidePanel.open({ windowId: w.id }); }
+  } catch { /* Chrome не дал открыть панель сам — откроется на «Моих задачах», когда нажмёте на значок */ }
+});

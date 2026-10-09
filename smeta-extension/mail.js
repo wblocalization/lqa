@@ -1,6 +1,7 @@
 // Вкладка «Почта»: своя почта для писем и включение рассылок (то же, что «⚙️ Настройки» в таблице).
 import { settings, isConfigured, call, toast, ask, getLists } from './core.js';
 import { renderLetterList, renderSignatureCard } from './letter.js';
+import { remindOn, remindDue } from './remind.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
@@ -25,6 +26,28 @@ function render(st) {
 }
 
 /** Письма подрядчикам — список и редактор; подрядчики из справочника таблицы (не загрузился — только настроенные). */
+// Напоминания в браузере — свои у каждого
+const remindBox = $('#mlRemind');
+remindOn().then((on) => { remindBox.checked = on; });
+remindBox.addEventListener('change', async () => {
+  const st = (await chrome.storage.local.get('remind')).remind || {};
+  await chrome.storage.local.set({ remind: { ...st, off: !remindBox.checked } });
+  toast(remindBox.checked ? 'Напоминания включены — по будням около 10:00' : 'Напоминания выключены');
+});
+$('#mlRemindTest').addEventListener('click', async (e) => {
+  if (!isConfigured() || !settings.manager) return toast('Выберите себя в настройках (⚙️ → «Кто вы»)', 'err');
+  e.target.disabled = true;
+  try {
+    const r = await call({ action: 'myTasks', manager: settings.manager, filter: 'open' });
+    await remindDue(r, { force: true });
+    toast('Уведомление показано — оно в углу экрана');
+  } catch (err) {
+    toast(`Не получилось: ${err.message}`, 'err');
+  } finally {
+    e.target.disabled = false;
+  }
+});
+
 async function loadLetterList() {
   let contractors = [];
   try { if (isConfigured()) contractors = ((await getLists()) || {}).contractors || []; } catch { /* только настроенные */ }

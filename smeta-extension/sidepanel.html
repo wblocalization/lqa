@@ -49,6 +49,7 @@
     <label>Папка для смет на ВБ Диске <span class="opt">путь или ссылка на папку из адресной строки диска; внутри — папка с темой письма</span>
       <input id="setDiskFolder" type="text" placeholder="localization/Сметы">
     </label>
+    <button id="whatsNew" class="link-btn whatsnew-link" type="button">✨ Что нового</button>
     <div class="row-btns">
       <button id="closeSettings" class="btn ghost" type="button">Отмена</button>
       <button id="saveSettings" class="btn" type="button">Сохранить</button>
@@ -405,6 +406,10 @@
     <div class="r-sec">Письма подрядчикам</div>
     <p class="field-note">Почты и текст письма для каждого подрядчика — то же, что «✏️ Настроить» после добавления задачи. Хранятся в этом браузере — у каждого свои.</p>
     <div id="mlLetters" class="ml-list"></div>
+    <div class="r-sec">Напоминания в браузере</div>
+    <div class="ml-item"><div class="ml-head"><b>Сроки на сегодня</b><label class="switch"><input id="mlRemind" type="checkbox" checked><span></span></label></div>
+      <span class="ml-when">по будням около 10:00 — уведомление в углу экрана: что сдать сегодня и что просрочено. Нажмёте — откроются «Мои задачи»</span>
+      <button id="mlRemindTest" class="link-btn" type="button">Показать сейчас</button></div>
     <div class="r-sec">Рассылки — куда присылать вам</div>
     <div class="ml-card">
       <label>Куда присылать письма — <span id="mlWho"></span> <span class="opt">колонка M в «Списках»; пусто — писем не будет</span>
