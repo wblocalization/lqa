@@ -494,17 +494,29 @@ function checkForm() {
 // В строке что-то заполнено (или это единственная строка) — значит, её надо добавить
 const rowFilled = (t) => Boolean(t.link || t.customer || t.languages.length || t.exactDeadline || t.comment || t.estimateLink || t.total);
 
+// Пока задача (или строки заказа) добавляется — всё, что может отправить её ещё раз, недоступно
+let busy = false;
+function setBusy(on, text = '') {
+  busy = on;
+  [els.submit, els.moreRow].forEach((b) => { b.disabled = on; });
+  els.rows.querySelectorAll('.or-del').forEach((b) => { b.disabled = on; });
+  els.form.classList.toggle('busy', on);
+  if (on && text) els.submit.textContent = text;
+  if (!on) updateSubmitLabel();
+}
+
 // ---------- Добавление ----------
 els.form.addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (busy) return; // уже добавляем — второй раз не отправляем
   const bad = checkForm();
   if (bad) return setMsg(bad, 'err');
   const current = taskFromForm();
   const rows = [...pendingRows];
   if (!rows.length || rowFilled(current)) rows.push(current);
 
-  els.submit.disabled = true;
-  if (rowOrder) return addOrderRows(rowOrder, rows);
+  setBusy(true, 'Добавляю…');
+  if (rowOrder) return await addOrderRows(rowOrder, rows);
   setMsg('Проверяю, нет ли такой задачи…');
   try {
     const task = rows[0];
@@ -515,6 +527,7 @@ els.form.addEventListener('submit', async (e) => {
       setMsg('Не добавлено — похожая задача уже есть.', 'err');
       return;
     }
+    if (rows.length > 1) els.submit.textContent = `Добавляю строку 1 из ${rows.length}…`;
     setMsg(rows.length > 1 ? `Добавляю строку 1 из ${rows.length}…` : 'Добавляю…');
     const r = await api({ action: 'addTask', task });
     if (!r.ok) throw new Error(r.error);
@@ -527,15 +540,14 @@ els.form.addEventListener('submit', async (e) => {
     els.doneCopied.hidden = true;
     navigator.clipboard.writeText(lastSubject).then(() => { els.doneCopied.hidden = false; }).catch(() => {});
     if (rows.length > 1) {
-      els.submit.disabled = false;
-      return addOrderRows(lastOrder, rows.slice(1), { first: r, all: rows });
+      return await addOrderRows(lastOrder, rows.slice(1), { first: r, all: rows });
     }
     showDone(r, [task], `Задача ${r.id} добавлена`); // заодно убирает предупреждение о предварительном номере
   } catch (err) {
     setMsg(`Не добавилось: ${err.message}`, 'err');
     toast('Задача не добавилась — причина под кнопкой', 'err');
   } finally {
-    els.submit.disabled = false;
+    setBusy(false);
   }
 });
 
@@ -675,14 +687,16 @@ els.rowCancel.addEventListener('click', () => { exitRowMode(); resetForm(); setM
  * info.all — все строки заказа вместе с первой. Не добавилась какая-то — форма остаётся в этом заказе с недобавленными строками.
  */
 async function addOrderRows(order, rows, info = {}) {
-  els.submit.disabled = true;
+  setBusy(true);
   const all = info.all || rows;
   const offset = all.length - rows.length;
   let r = info.first || null;
   let i = 0;
   try {
     for (; i < rows.length; i++) {
-      setMsg(all.length > 1 ? `Добавляю строку ${offset + i + 1} из ${all.length} в ${order.id}…` : `Добавляю строку в ${order.id}…`);
+      const step = all.length > 1 ? `Добавляю строку ${offset + i + 1} из ${all.length}…` : 'Добавляю строку…';
+      els.submit.textContent = step;
+      setMsg(`${step.replace('…', '')} в ${order.id}…`);
       r = await api({ action: 'addTaskRow', id: order.id, task: rows[i] });
       if (!r.ok) throw new Error(/Неизвестное действие/.test(r.error || '') ? 'веб-приложение ещё старое: нужна новая версия развёртывания' : r.error);
       rememberTask(rows[i]).catch(() => {});
@@ -703,7 +717,7 @@ async function addOrderRows(order, rows, info = {}) {
     }
     toast('Не все строки добавились — причина под кнопкой', 'err');
   } finally {
-    els.submit.disabled = false;
+    setBusy(false);
   }
 }
 
