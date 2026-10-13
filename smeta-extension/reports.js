@@ -1,6 +1,8 @@
 // Вкладка «Отчёты»: те же отчёты, что в таблице («📈 Отчёты»), и сверка с подрядчиками.
 // Excel собирает таблица и присылает сюда — файл сразу ложится в «Загрузки».
 import { settings, isConfigured, call, esc, saveXlsx, copyRich, money, toast } from './core.js';
+import { parseAct, repairIdBreaks, linesFromItems } from './parser.js';
+import { readPdfTexts } from './smeta.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
@@ -81,7 +83,15 @@ const REPORTS = {
       Рядом — «Итоги» (подрядчики, менеджеры, языки) и «Проверить».</p>
       <div class="two">${monthSel('Всё время')}${bySel()}</div>
       <div class="two">${select('rfContractor', 'Подрядчик', lists.contractors, '', 'Все')}${select('rfMgr', 'Менеджер', lists.managers, '', 'Все')}</div>
-      ${select('rfLang', 'Язык', lists.langs, '', 'Все языки')}`,
+      ${select('rfLang', 'Язык', lists.langs, '', 'Все языки')}
+      <div id="actBox" class="act-box">
+        <b>Акт или счёт подрядчика за месяц</b>
+        <span>Загрузите PDF — строки с одним номером сложатся (по сумме с НДС) и сравнятся с таблицей.
+          Выберите выше месяц и подрядчика — тогда покажем и задачи, которых в акте нет.</span>
+        <button id="actPick" class="btn ghost" type="button">📄 Загрузить акт подрядчика (PDF)</button>
+        <input id="actFile" type="file" accept="application/pdf,.pdf" hidden>
+        <div id="actOut"></div>
+      </div>`,
     opts: () => ({ month: val('rfMonth'), by: val('rfBy'), contractor: val('rfContractor'), manager: val('rfMgr'), lang: val('rfLang') }),
     run: () => call({ action: 'moneyPreview', opts: REPORTS.money.opts() }),
     render: renderMoney, live: true, excel: () => ({ kind: 'money', opts: REPORTS.money.opts() }),
@@ -106,9 +116,10 @@ function open(name) {
   setMsg('');
   // Сверка пересчитывается сама при смене фильтра
   if (r.live) {
-    els.form.querySelectorAll('select').forEach((s) => s.addEventListener('change', run));
+    els.form.querySelectorAll('select').forEach((s) => s.addEventListener('change', () => { run(); if (act) compareAct(); }));
     run();
   }
+  if (name === 'money') initAct();
 }
 
 let seq = 0;
@@ -269,3 +280,95 @@ els.excel.addEventListener('click', async () => {
     els.excel.textContent = label;
   }
 });
+
+// ---------- Сверка с актом подрядчика ----------
+let act = null;      // { name, items, total, unread } — разобранный PDF
+let actResult = null; // строки для таблицы и CSV
+
+function initAct() {
+  act = null;
+  actResult = null;
+  const box = $('#actBox'), file = $('#actFile');
+  $('#actPick').addEventListener('click', () => file.click());
+  file.addEventListener('change', () => { if (file.files[0]) loadAct(file.files[0]); file.value = ''; });
+  ['dragenter', 'dragover'].forEach((t) => box.addEventListener(t, (e) => { e.preventDefault(); box.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach((t) => box.addEventListener(t, () => box.classList.remove('over')));
+  box.addEventListener('drop', (e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) loadAct(f); });
+}
+
+async function loadAct(file) {
+  const out = $('#actOut');
+  if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') { out.innerHTML = '<p class="r-note warn">Это не PDF</p>'; return; }
+  out.innerHTML = '<p class="muted center">Читаю акт…</p>';
+  try {
+    const pdf = await readPdfTexts(file);
+    const r = parseAct(linesFromItems(repairIdBreaks(pdf.items)));
+    if (!r.items.length) {
+      out.innerHTML = `<p class="r-note warn">В «${esc(file.name)}» не нашлось строк с номером задачи вида LIT-26-2240 и суммой.
+        ${pdf.texts.length ? 'Возможно, номера в акте записаны иначе — пришлите разработчику скриншот одной строки.' : 'В PDF нет текста — похоже, это скан (картинка). Попросите у подрядчика PDF из 1С/Excel.'}</p>`;
+      return;
+    }
+    act = { name: file.name, ...r };
+    await compareAct();
+  } catch (e) {
+    out.innerHTML = `<p class="r-note warn">Не получилось прочитать PDF: ${esc(e.message)}</p>`;
+  }
+}
+
+const key = (id) => String(id).trim().toUpperCase().replace(/-0+(\d)/g, '-$1');
+const near = (a, b) => Math.abs(a - b) < 0.01;
+
+async function compareAct() {
+  const out = $('#actOut');
+  if (!out || !act) return;
+  out.innerHTML = '<p class="muted center">Сравниваю с таблицей…</p>';
+  let d;
+  try {
+    d = await call({ action: 'actCompare', ids: act.items.map((g) => g.id), opts: REPORTS.money.opts() });
+  } catch (e) {
+    out.innerHTML = `<p class="r-note warn">Не получилось: ${esc(e.message)}</p>`;
+    return;
+  }
+  const rows = act.items.map((g) => {
+    const t = d.found[key(g.id)];
+    const table = t && t.hasTotal ? t.sum : null;
+    const kind = !t ? 'none' : table == null ? 'nosum' : near(table, g.gross) ? 'ok' : 'diff';
+    return { id: g.id, act: g.gross, table, diff: table == null ? null : Math.round((g.gross - table) * 1000) / 1000, kind, t, g };
+  });
+  const extra = (d.extra || []).map((t) => ({ id: t.id, act: null, table: t.hasTotal ? t.sum : null, diff: null, kind: 'extra', t }));
+  const order = { diff: 0, none: 1, nosum: 2, extra: 3, ok: 4 };
+  actResult = rows.concat(extra).sort((a, b) => order[a.kind] - order[b.kind]);
+  const bad = actResult.filter((r) => r.kind !== 'ok').length;
+  const tableSum = rows.reduce((a, r) => a + (r.table || 0), 0);
+  const LABEL = { ok: '✅ сходится', diff: '⚠️ разница', none: '❓ номера нет в таблице', nosum: '❓ в таблице нет суммы', extra: '➕ в таблице есть, в акте нет' };
+  const line = (r) => `<details class="act-row ${r.kind}"><summary>
+      <span class="act-id">${esc(r.id)}</span>
+      <span class="act-st">${LABEL[r.kind]}${r.kind === 'diff' ? ` ${r.diff > 0 ? '+' : ''}${money(r.diff)} ₽` : ''}</span>
+      <span class="act-sum">${r.act != null ? `акт ${money(r.act)}` : ''}${r.act != null && r.table != null ? ' · ' : ''}${r.table != null ? `таблица ${money(r.table)}` : ''}</span></summary>
+      ${r.t ? `<p class="act-subj">${esc(r.t.subject)} · ${esc(r.t.contractor)} · ${esc(r.t.manager)} · строк в таблице: ${r.t.lines}${r.t.bad ? ` · в сумме не число: «${esc(r.t.bad)}»` : ''}</p>` : ''}
+      ${r.g ? r.g.lines.map((l) => `<p class="act-line">${esc(l.text)} → <b>${money(l.gross)}</b></p>`).join('') : ''}
+    </details>`;
+  out.innerHTML = `<p class="act-file">📄 ${esc(act.name)}</p>` +
+    tiles([[money(act.total), '₽ в акте'], [money(tableSum), '₽ в таблице'], [bad, bad ? 'проверить' : 'всё ок', bad > 0]]) +
+    (bad ? '' : '<p class="r-note ok">✓ Акт полностью сходится с таблицей.</p>') +
+    actResult.map(line).join('') +
+    (act.unread.length ? `<p class="r-note warn">Эти строки акта не разобрал — проверьте вручную:<br>${act.unread.map(esc).join('<br>')}</p>` : '') +
+    '<button id="actCsv" class="btn ghost" type="button">📥 Скачать сверку (Excel)</button>';
+  $('#actCsv').addEventListener('click', downloadAct);
+}
+
+/** CSV для Excel: «;» и запятая в копейках — открывается двойным кликом. */
+function downloadAct() {
+  const num = (x) => (x == null ? '' : String(x).replace('.', ','));
+  const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const KIND = { ok: 'сходится', diff: 'разница', none: 'нет в таблице', nosum: 'в таблице нет суммы', extra: 'нет в акте' };
+  const head = ['Номер', 'Итог', 'В акте, с НДС', 'В таблице', 'Разница (акт − таблица)', 'Тема', 'Подрядчик', 'Менеджер', 'Строк в акте', 'Строк в таблице'];
+  const lines = actResult.map((r) => [r.id, KIND[r.kind], num(r.act), num(r.table), num(r.diff), r.t ? r.t.subject : '', r.t ? r.t.contractor : '', r.t ? r.t.manager : '', r.g ? r.g.lines.length : '', r.t ? r.t.lines : '']);
+  const csv = '﻿' + [head, ...lines].map((l) => l.map(cell).join(';')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `Сверка с актом — ${act.name.replace(/\.pdf$/i, '')}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  toast('✓ Файл в «Загрузках»');
+}

@@ -1832,6 +1832,49 @@ function moneyExportPreview(opts) {
   return { lines: rows.length, orders: Object.keys(ids).length, total: exactMoney_(total), issues: moneyIssues_(rows).length };
 }
 
+/**
+ * Сверка с актом подрядчика: по каждому номеру из акта — сколько у него в таблице (все строки номера, за всё время).
+ * И наоборот: задачи по фильтрам (месяц, подрядчик), которых в акте нет.
+ */
+function actCompare(ids, opts) {
+  opts = opts || {};
+  // LIT-26-0075 и lit-26-75 — один номер
+  const key = id => String(id).trim().toUpperCase().replace(/-0+(\d)/g, '-$1');
+  const want = {};
+  (ids || []).forEach(id => { want[key(id)] = true; });
+  const found = {};
+  const sum = (g, r) => {
+    const t = r[COL.TOTAL - 1];
+    g.lines++;
+    if (typeof t === 'number') { g.sum += t; g.hasTotal = true; } else if (str_(t)) g.bad = str_(t);
+    if (!g.subject) g.subject = stripLinkMarkers_(r[COL.SUBJECT - 1]);
+    if (!g.contractor) g.contractor = str_(r[COL.CONTRACTOR - 1]);
+    if (!g.manager) g.manager = str_(r[COL.MANAGER - 1]);
+    if (!g.status) g.status = str_(r[COL.STATUS - 1]);
+  };
+  const blank = () => ({ lines: 0, sum: 0, hasTotal: false, subject: '', contractor: '', manager: '', status: '' });
+  moneyExportRows_({}).rows.forEach(r => {
+    const id = key(str_(r[COL.ID - 1]));
+    if (want[id]) sum(found[id] || (found[id] = blank()), r);
+  });
+  Object.keys(found).forEach(id => { found[id].sum = exactMoney_(found[id].sum); });
+  // В таблице за этот месяц есть, в акте нет
+  const extra = {};
+  if (opts.month) {
+    moneyExportRows_(opts).rows.forEach(r => {
+      const id = key(str_(r[COL.ID - 1]));
+      if (!id || want[id] || str_(r[COL.STATUS - 1]) === 'Отменено') return;
+      sum(extra[id] || (extra[id] = Object.assign(blank(), { id: str_(r[COL.ID - 1]) })), r);
+    });
+  }
+  return {
+    found: found,
+    extra: Object.keys(extra).map(id => Object.assign({}, extra[id], { sum: exactMoney_(extra[id].sum) })),
+    // ключи found — в таком виде: LIT-26-75
+    keyed: true,
+  };
+}
+
 /** В новом файле Google всего 1000 строк — добавим, если данных больше. */
 function ensureRows_(sheet, n) {
   const max = sheet.getMaxRows();

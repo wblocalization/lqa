@@ -477,6 +477,21 @@ main { padding-bottom: 84px; } /* место под нижней панелью 
 .kv div { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
 .kv div:last-child { border-bottom: none; }
 
+/* Сверка с актом подрядчика */
+.act-box { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; padding: 12px; border: 1.5px dashed var(--line); border-radius: 14px; background: var(--card); }
+.act-box.over { border-color: var(--accent); background: var(--soft); }
+.act-box > span { font-size: 12px; color: var(--ink-soft); }
+.act-file { margin: 4px 0; font-size: 12px; color: var(--ink-soft); word-break: break-all; }
+.act-row { border-bottom: 1px solid var(--line); font-size: 12.5px; }
+.act-row summary { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; padding: 6px 0; cursor: pointer; list-style: none; }
+.act-row summary::-webkit-details-marker { display: none; }
+.act-id { font-weight: 700; }
+.act-st { text-align: right; }
+.act-row.diff .act-st, .act-row.none .act-st, .act-row.nosum .act-st { color: var(--warn); font-weight: 600; }
+.act-row.ok .act-st { color: var(--ok); }
+.act-sum { grid-column: 1 / -1; color: var(--ink-soft); font-size: 12px; }
+.act-subj, .act-line { margin: 0 0 6px; font-size: 11.5px; color: var(--ink-soft); word-break: break-word; }
+
 /* ---------- Письма ---------- */
 .ml-card { padding: 12px; border-radius: 16px; background: var(--soft); }
 .ml-card label { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; font-weight: 600; }

@@ -80,7 +80,7 @@ els.reset.addEventListener('click', resetToEmpty);
 els.again.addEventListener('click', resetToEmpty);
 
 // ---------- Чтение PDF ----------
-async function readPdfTexts(file) {
+export async function readPdfTexts(file) {
   const doc = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
   const texts = [], items = [];
   for (let i = 1; i <= doc.numPages; i++) {
@@ -91,7 +91,7 @@ async function readPdfTexts(file) {
       items.push({ str: item.str, x: item.transform[4], y: item.transform[5], page: i });
     }
   }
-  return { texts, lines: linesFromItems(items) };
+  return { texts, items, lines: linesFromItems(items) };
 }
 
 async function handleFile(file) {

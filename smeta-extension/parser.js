@@ -244,3 +244,122 @@ export function parseSum(input) {
   const total = round3(parts.reduce((a, b) => a + b, 0));
   return { parts, total, formula: parts.length > 1 ? parts.map((p) => String(round3(p))).join('+') : '' };
 }
+
+// ---------- Акт / счёт подрядчика за месяц ----------
+// Кириллица, похожая на латиницу (в PDF «LIT» иногда набрано русскими буквами)
+const LOOKALIKE = { А: 'A', В: 'B', Е: 'E', К: 'K', М: 'M', Н: 'H', О: 'O', Р: 'P', С: 'C', Т: 'T', Х: 'X', У: 'Y', а: 'a', е: 'e', о: 'o', р: 'p', с: 'c', х: 'x', у: 'y' };
+const ACT_ID_RE = /(?<![A-Za-zА-Яа-яЁё])([A-Za-zА-Яа-яЁё]{2,6})\s?[-–—]\s?(\d{2})\s?[-–—]\s?(\d{1,6})(?!\d)/;
+const ACT_SKIP_RE = /итого|всего|в\s+том\s+числе|к\s+оплате|сумма\s+ндс/i;
+
+function actId(line) {
+  const m = String(line).match(ACT_ID_RE);
+  if (!m) return null;
+  const pref = m[1].replace(/[А-Яа-яЁё]/g, (c) => LOOKALIKE[c] || c);
+  if (/[^A-Za-z]/.test(pref)) return null; // настоящее русское слово, а не номер
+  return `${pref}-${m[2]}-${m[3]}`;
+}
+const lineMilli = (line) => [...String(line).matchAll(MONEY_RE)].map((m) => toMilli(m[0]));
+
+/**
+ * Сумма с НДС из строки акта: самая большая сумма, для которой в строке есть «без НДС» (с НДС = без НДС × 1,2 и т. п.)
+ * или «без НДС + НДС». Так количество «1» перед ценой «386,00» (читается как 1 386,00) не собьёт итог.
+ * Пары нет (акт без НДС) — самая большая сумма.
+ */
+function grossOf(milli) {
+  const c = milli.map((m) => Math.round(m / 10));
+  let best = null;
+  for (const g of c) {
+    const ok = c.some((n) => n < g && (VAT_RATES.some((r) => Math.abs(n * (1 + r) - g) <= 2) || c.some((v) => v < g && Math.abs(n + v - g) <= 1 && VAT_RATES.some((r) => Math.abs(n * r - v) <= 2))));
+    if (ok && (best == null || g > best)) best = g;
+  }
+  return best != null ? milli[c.indexOf(best)] : Math.max(...milli);
+}
+
+/**
+ * Номер, разорванный переносом в узкой колонке: «Перевод LIT-26-» и строкой ниже в той же колонке «2240 китайский».
+ * Склеиваем по координатам (items из PDF: { str, x, y, page }), иначе между частями влезет «1» из колонки «№».
+ */
+export function repairIdBreaks(items) {
+  const out = items.map((it) => ({ ...it }));
+  for (const it of out) {
+    if (!/[A-Za-zА-Яа-я]{2,6}-(?:\d{2}-)?\s*$/.test(it.str)) continue;
+    let next = null;
+    for (const o of out) {
+      if (o === it || o.page !== it.page || o.y >= it.y - 1 || Math.abs(o.x - it.x) > 4 || !/^\s*\d/.test(o.str)) continue;
+      if (!next || o.y > next.y) next = o;
+    }
+    if (!next || it.y - next.y > 30) continue;
+    const m = next.str.match(/^\s*(\d+(?:-\d+)?)/);
+    it.str = it.str.replace(/\s+$/, '') + m[1];
+    next.str = next.str.slice(m[0].length);
+  }
+  return out.filter((it) => it.str.trim());
+}
+
+/**
+ * Акт / счёт за месяц: строки с номером задачи (LIT-26-2240) → сумма С НДС по каждой строке акта,
+ * строки одного номера складываются. В строке акта обычно «без НДС … НДС … с НДС» — берём с НДС.
+ * В узкой колонке название переносится («Перевод LIT-26-» / «2240 китайский»), а суммы стоят на одной из строк.
+ * Поэтому строка акта = строка с суммами + текст над и под ней (до соседней строки с суммами).
+ * → { items: [{ id, gross, lines: [{ text, gross }] }], total, unread: [что не разобрали — показать человеку] }
+ */
+export function parseAct(lines) {
+  const L = lines.map(String);
+  const anchors = [];
+  L.forEach((l, i) => { if (lineMilli(l).length) anchors.push(i); });
+  const blocks = new Map(anchors.map((a) => [a, []]));
+  const orphans = [], ties = [];
+  L.forEach((l, i) => {
+    if (blocks.has(i)) { blocks.get(i).push(i); return; }
+    const up = anchors.filter((a) => a < i).pop(), down = anchors.find((a) => a > i);
+    const du = up == null ? Infinity : i - up, dd = down == null ? Infinity : down - i;
+    if (Math.min(du, dd) > 4) { if (actId(l)) orphans.push(l); return; }
+    if (du === dd) ties.push([i, up, down]);
+    else blocks.get(du < dd ? up : down).push(i);
+  });
+  // Ровно посередине: если у верхней строки номер уже есть — это начало следующей
+  const hasId = (a) => blocks.get(a).some((j) => ACT_ID_RE.test(L[j]));
+  ties.forEach(([i, up, down]) => blocks.get(hasId(up) ? down : up).push(i));
+  const byId = new Map();
+  const unread = [];
+  const add = (id, a, text) => {
+    const gross = grossOf(lineMilli(L[a]));
+    const g = byId.get(id) || { id, milli: 0, lines: [] };
+    g.milli += gross;
+    g.lines.push({ text, gross: gross / 1000 });
+    byId.set(id, g);
+  };
+  const finish = () => {
+    orphans.forEach((l) => unread.push(`номер без суммы: ${l}`));
+    const groups = [...byId.values()];
+    const items = groups.map((g) => ({ id: g.id, gross: g.milli / 1000, lines: g.lines }));
+    return { items, total: groups.reduce((a, g) => a + g.milli, 0) / 1000, unread };
+  };
+
+  // 1) Главный способ: номера и строки с суммами идут в одном порядке — k-й номер ↔ k-я строка с суммами.
+  //    Не важно, где в ячейке стоит текст (сверху, по центру), и сколько строк занимает название.
+  const occ = [];
+  L.forEach((l, i) => {
+    if (ACT_SKIP_RE.test(l)) return;
+    [...new Set([...l.matchAll(new RegExp(ACT_ID_RE.source, 'g'))].map((m) => actId(m[0])).filter(Boolean))].forEach((id) => occ.push({ i, id }));
+  });
+  if (occ.length) {
+    const lo = occ[0].i - 4, hi = occ[occ.length - 1].i + 4;
+    const rowsA = anchors.filter((a) => a >= lo && a <= hi && !ACT_SKIP_RE.test(L[a]));
+    if (rowsA.length === occ.length && occ.every((o, k) => Math.abs(o.i - rowsA[k]) <= 6)) {
+      occ.forEach((o, k) => add(o.id, rowsA[k], o.i === rowsA[k] ? L[o.i].trim() : `${L[Math.min(o.i, rowsA[k])].trim()} ${L[Math.max(o.i, rowsA[k])].trim()}`));
+      return finish();
+    }
+  }
+
+  // 2) Запасной: строка акта = строка с суммами + ближайший текст над и под ней
+  for (const a of anchors) {
+    if (ACT_SKIP_RE.test(L[a])) continue;
+    const text = blocks.get(a).sort((x, y) => x - y).map((i) => L[i].trim()).join(' ');
+    const ids = [...new Set([...text.matchAll(new RegExp(ACT_ID_RE.source, 'g'))].map((m) => actId(m[0])).filter(Boolean))];
+    if (!ids.length) { if (/перев|редакт|локализ|услуг|работ/i.test(text)) unread.push(`без номера: ${text}`); continue; }
+    if (ids.length > 1) { unread.push(`несколько номеров в одной строке: ${text}`); continue; }
+    add(ids[0], a, text);
+  }
+  return finish();
+}

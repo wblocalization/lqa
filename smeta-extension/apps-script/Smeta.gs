@@ -59,6 +59,7 @@ function doPost(e) {
     if (req.action === 'trackerReport') { requireTableScript_(); return smetaJson_(Object.assign({ ok: true }, getTrackerReportText(String(req.ticket || '')))); }
     if (req.action === 'customReport') { requireTableScript_(); return smetaJson_(Object.assign({ ok: true }, getCustomReport(req.year || '', req.month || '', req.by))); }
     if (req.action === 'moneyPreview') { requireTableScript_(); return smetaJson_(Object.assign({ ok: true }, moneyExportPreview(req.opts || {}))); }
+    if (req.action === 'actCompare') { requireTableScript_(); return smetaJson_(Object.assign({ ok: true }, actCompare(req.ids || [], req.opts || {}))); }
     if (req.action === 'exportXlsx') return smetaJson_(exportXlsx_(req));
     if (req.action === 'mailStatus') return smetaJson_(mailStatus_(req));
     if (req.action === 'mailTest') return smetaJson_(mailTest_(req));
@@ -96,7 +97,7 @@ function doPost(e) {
 
 /** Проверка: открыть адрес веб-приложения в браузере — должно написать, что скрипт работает. */
 function doGet() {
-  return ContentService.createTextOutput('Скрипт работает. Адрес правильный — вставьте его в настройки расширения.\n\nВерсия: 13 октября (суммы через плюс пишутся формулой).');
+  return ContentService.createTextOutput('Скрипт работает. Адрес правильный — вставьте его в настройки расширения.\n\nВерсия: 13 октября, вечер (суммы через плюс — формулой, сверка с актом подрядчика).');
 }
 
 function smetaLookup_(req) {
