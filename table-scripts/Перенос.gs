@@ -59,18 +59,18 @@ function oldTableIdFromLink_(url) {
 function planSummary_(plan) {
   return {
     count: plan.rows.length, skippedExisting: plan.skippedExisting, skippedEmpty: plan.skippedEmpty,
-    from: plan.from, to: plan.to
+    skippedOld: plan.skippedOld || 0, since: plan.since || '', from: plan.from, to: plan.to
   };
 }
 
 /** Окно переноса, способ «ссылка»: сначала сколько перенесётся, потом перенос. */
-function migrationPreviewFromLink(url) {
-  return planSummary_(planMigration_(SpreadsheetApp.openById(oldTableIdFromLink_(url))));
+function migrationPreviewFromLink(url, since) {
+  return planSummary_(planMigration_(SpreadsheetApp.openById(oldTableIdFromLink_(url)), since));
 }
 
-function migrationApplyFromLink(url) {
+function migrationApplyFromLink(url, since) {
   const id = oldTableIdFromLink_(url);
-  const plan = planMigration_(SpreadsheetApp.openById(id));
+  const plan = planMigration_(SpreadsheetApp.openById(id), since);
   // Запоминаем старую таблицу: новые номера будут сверяться с ней
   PropertiesService.getDocumentProperties().setProperty(OLD_TABLE_PROP, id);
   if (plan.rows.length) applyMigration_(plan);
@@ -79,11 +79,11 @@ function migrationApplyFromLink(url) {
 
 /** Способ «файл»: окно само читает .xlsx и присылает лист «Localization Misc» (см. MigrateDialog). */
 function migrationPreviewFromData(src) {
-  return planSummary_(planFromSource_(sourceFromUpload_(src)));
+  return planSummary_(planFromSource_(sourceFromUpload_(src), src && src.since));
 }
 
 function migrationApplyFromData(src) {
-  const plan = planFromSource_(sourceFromUpload_(src));
+  const plan = planFromSource_(sourceFromUpload_(src), src && src.since);
   if (plan.rows.length) applyMigration_(plan);
   return { added: plan.rows.length };
 }
@@ -129,16 +129,24 @@ function readOldSheet_(oldSs) {
 }
 
 /** Читает старый лист и готовит строки для новой таблицы (ничего не записывает). */
-function planMigration_(oldSs) {
-  return planFromSource_(readOldSheet_(oldSs));
+function planMigration_(oldSs, since) {
+  return planFromSource_(readOldSheet_(oldSs), since);
+}
+
+/** «2026-07-01» из окна → Date (полночь); пусто — переносим всё. */
+function sinceDate_(since) {
+  const m = String(since || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
 }
 
 /**
  * source: { values: строки листа с шапкой (A..S), links: ссылка на Band для каждой строки,
  *           merges: [[строка, колонка, строк, колонок], …] — с 1, как в таблице }.
  */
-function planFromSource_(src) {
+function planFromSource_(src, since) {
   const values = src.values, links = src.links.slice();
+  const sinceD = sinceDate_(since); // «Переносить с даты»: строки раньше неё (и без даты) — пропускаем
+  const now = new Date(), tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   const lastRow = values.length;
 
   // Раскопировать объединённые ячейки на все их строки
@@ -158,13 +166,15 @@ function planFromSource_(src) {
   const existing = idx.ids, existingKeys = idx.keys, keyOf = taskKey_;
 
   const rows = [];
-  let skippedExisting = 0, skippedEmpty = 0, from = null, to = null;
+  let skippedExisting = 0, skippedEmpty = 0, skippedOld = 0, from = null, to = null;
   for (let i = lastRow; i >= 2; i--) { // снизу вверх — свежие задачи первыми, как в новой таблице
     const v = values[i - 1];
     const get = c => str_(v[c - 1]);
     const id = get(OLD.ID), subject = get(OLD.SUBJECT), taskText = get(OLD.TASK);
     if (!id && !subject && !taskText && !get(OLD.BAND)) { skippedEmpty++; continue; }
     if (subject === 'Тема письма в аутлуке' || get(OLD.STATUS) === 'Статус') { skippedEmpty++; continue; }
+    // с даты по сегодня: даты «из будущего» — опечатки в годе (2026 вместо 2025), их не берём
+    if (sinceD && !(v[OLD.DATE - 1] instanceof Date && v[OLD.DATE - 1] >= sinceD && v[OLD.DATE - 1] < tomorrow)) { skippedOld++; continue; }
     if (id && existing[id]) { skippedExisting++; continue; }
 
     // «Задача» в старой таблице — чаще номер тикета (LOCAL-493), иначе описание
@@ -201,6 +211,7 @@ function planFromSource_(src) {
   }
   return {
     rows: rows, skippedExisting: skippedExisting, skippedEmpty: skippedEmpty,
+    skippedOld: skippedOld, since: sinceD ? fmtDate_(sinceD, 'dd.MM.yyyy') : '',
     from: fmtDate_(from, 'dd.MM.yyyy') || '—', to: fmtDate_(to, 'dd.MM.yyyy') || '—'
   };
 }

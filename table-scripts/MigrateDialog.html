@@ -23,6 +23,8 @@
     <div class="or">— или —</div>
     <label class="field">Ссылка на старую таблицу
       <input type="url" id="link" placeholder="https://docs.google.com/spreadsheets/d/…"></label>
+    <label class="field">Переносить с даты по сегодня <span class="small">(необязательно; пусто — всё)</span>
+      <input type="date" id="since"></label>
     <div id="plan" class="preview" hidden></div>
     <div id="msg" class="msg"></div>
   </div>
@@ -151,17 +153,20 @@
     if (!mode || (mode === 'file' && !source)) return setMsg($('#msg'), fileError || 'Выберите файл или вставьте ссылку', 'err');
     setMsg($('#msg'), 'Считаю, что перенести…');
     if (source && source.kind === 'tasks') return checkTasksFile();
-    const call = mode === 'file' ? run('migrationPreviewFromData', source) : run('migrationPreviewFromLink', $('#link').value);
+    const since = $('#since').value;
+    const call = mode === 'file' ? run('migrationPreviewFromData', Object.assign({}, source, { since: since })) : run('migrationPreviewFromLink', $('#link').value, since);
     call.then(p => {
       $('#plan').hidden = false;
       if (!p.count) {
-        $('#plan').innerHTML = 'Переносить нечего: ' + p.skippedExisting + ' задач уже есть в новой таблице.';
+        $('#plan').innerHTML = 'Переносить нечего: ' + p.skippedExisting + ' задач уже есть в новой таблице' +
+          (p.since ? ', ' + p.skippedOld + ' — раньше ' + esc(p.since) : '') + '.';
         return setMsg($('#msg'), '');
       }
       $('#plan').innerHTML =
         '<b>Будет добавлено задач: ' + p.count + '</b> (с ' + esc(p.from) + ' по ' + esc(p.to) + ')<br>' +
         '<span class="small">Уже есть в новой таблице — пропущу: ' + p.skippedExisting +
-        '. Пустые строки — пропущу: ' + p.skippedEmpty + '.</span><br>' +
+        '. Пустые строки — пропущу: ' + p.skippedEmpty + '.' +
+        (p.since ? ' Раньше ' + esc(p.since) + ', позже сегодня или без даты — пропущу: ' + p.skippedOld + '.' : '') + '</span><br>' +
         '<span class="small">После переноса весь лист отсортируется по дате: свежие сверху.</span>';
       $('#goBtn').disabled = false;
       setMsg($('#msg'), '');
@@ -193,6 +198,7 @@
     $('#fileName').textContent = 'Выберите файл Excel';
   });
   $('#checkBtn').addEventListener('click', check);
+  $('#since').addEventListener('change', resetPlan); // дату поменяли — сначала снова «Проверить»
 
   $('#goBtn').addEventListener('click', () => {
     const btn = $('#goBtn');
@@ -200,7 +206,8 @@
     btn.textContent = 'Переношу… (до пары минут)';
     const tasksFile = source && source.kind === 'tasks';
     const call = tasksFile ? run('migrationApplyFromTasksFile', source)
-      : mode === 'file' ? run('migrationApplyFromData', source) : run('migrationApplyFromLink', $('#link').value);
+      : mode === 'file' ? run('migrationApplyFromData', Object.assign({}, source, { since: $('#since').value }))
+      : run('migrationApplyFromLink', $('#link').value, $('#since').value);
     call.then(r => {
       btn.textContent = 'Готово';
       if (tasksFile) {
