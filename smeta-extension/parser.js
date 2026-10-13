@@ -4,16 +4,23 @@
 // Ставки НДС, которые встречаются в сметах (доли от суммы без НДС).
 const VAT_RATES = [0.22, 0.2, 0.1, 0.07, 0.05];
 
-// «110 929,150», «5 937,50», «90 925,53» — пробелы (в т.ч. неразрывные) между тысячами, запятая перед копейками.
-const MONEY_RE = /(?<![\d,])\d{1,3}(?:[   ]\d{3})*,\d{2,3}(?![\d,])/g;
+// Русский формат: «110 929,150», «5 937,50», «26134,40» — пробелы (в т.ч. неразрывные) между тысячами, запятая перед копейками.
+const MONEY_RE = /(?<![\d,.])(?:\d{1,3}(?:[   ]\d{3})+|\d+),\d{2,3}(?![\d,])/g;
+// Английский формат (Logrus Global): «21,262.50», «1,012.50» — запятая между тысячами, точка перед копейками.
+const MONEY_EN_RE = /(?<![\d,.])(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2,3}(?![\d.])/g;
+// Смета в английском формате — если в ней есть хоть одна сумма вида «1,012.50» (иначе «22.09» — это дата, а не деньги)
+const isEnglishMoney = (texts) => texts.some((t) => /\d,\d{3}\.\d{2}(?!\d)/.test(String(t)));
 
 export function parseMoney(s) {
-  return Number(s.replace(/[   ]/g, '').replace(',', '.'));
+  s = String(s).replace(/[   ]/g, '');
+  if (/\.\d{2,3}$/.test(s)) return Number(s.replace(/,/g, '')); // 21,262.50
+  return Number(s.replace(',', '.'));
 }
 
 /** «110 929,155» → 110929155 тысячных рубля — целым числом, без ошибок дробей вроде 1,005 × 100 = 100,4999… */
-function toMilli(s) {
-  const [int, frac = ''] = s.replace(/[   ]/g, '').split(',');
+function toMilli(s, english = false) {
+  const clean = s.replace(/[   ]/g, '');
+  const [int, frac = ''] = english ? clean.replace(/,/g, '').split('.') : clean.split(',');
   return Number(int) * 1000 + Number((frac + '000').slice(0, 3));
 }
 const milliToCents = (m) => Math.round(m / 10); // целые — округление точное, половинка вверх
@@ -21,8 +28,9 @@ const milliToCents = (m) => Math.round(m / 10); // целые — округле
 /** Суммы в тысячных рубля, как напечатаны в PDF (уникальные). */
 function extractMilli(texts) {
   const milli = new Set();
+  const english = isEnglishMoney(texts);
   for (const t of texts) {
-    for (const m of String(t).matchAll(MONEY_RE)) milli.add(toMilli(m[0]));
+    for (const m of String(t).matchAll(english ? MONEY_EN_RE : MONEY_RE)) milli.add(toMilli(m[0], english));
   }
   return [...milli].filter((x) => x > 0);
 }
@@ -68,7 +76,12 @@ export function linesFromItems(items) {
 /** «Версия 2» из шапки сметы. */
 export function versionFromTexts(texts) {
   const m = texts.join(' ').match(/Версия\s*:?\s*(\d{1,3})(?!\d)/i);
-  return m ? Number(m[1]) : null;
+  if (m) return Number(m[1]);
+  // Logrus Global: в шапке «Дата Версия», а значения — ниже: «2026-09-30 01»
+  if (texts.some((t) => /Версия/i.test(t))) {
+    for (const t of texts) { const d = String(t).match(/\b\d{4}-\d{2}-\d{2}\s+0?(\d{1,2})\s*$/); if (d) return Number(d[1]); }
+  }
+  return null;
 }
 
 /**
@@ -93,8 +106,26 @@ export function findTotalWithVat(amountsCents) {
       }
     }
   }
+  if (best) return { net: best.net / 100, vat: best.vat / 100, gross: best.gross / 100, rate: best.rate };
+  return findVatIncluded(amountsCents);
+}
+
+/**
+ * «Итого 26134,40 · в том числе НДС 5% 1244,50» (Janus): суммы без НДС в смете нет — НДС уже внутри итога.
+ * Ищем пару «итог + НДС», где НДС = итог × ставка / (1 + ставка). Берём самый большой итог.
+ */
+function findVatIncluded(amountsCents) {
+  let best = null;
+  for (const gross of amountsCents) {
+    for (const rate of VAT_RATES) {
+      const vat = Math.round(gross * rate / (1 + rate));
+      for (const v of amountsCents) {
+        if (v !== gross && Math.abs(v - vat) <= 1 && (!best || gross > best.gross)) best = { gross, vat: v, rate };
+      }
+    }
+  }
   if (!best) return null;
-  return { net: best.net / 100, vat: best.vat / 100, gross: best.gross / 100, rate: best.rate };
+  return { net: (best.gross - best.vat) / 100, vat: best.vat / 100, gross: best.gross / 100, rate: best.rate, included: true };
 }
 
 // Код подрядчика — 2–6 латинских букв перед номером: LIT-26, GLB-5.
@@ -132,12 +163,32 @@ export function taskFromTexts(texts) {
   return null;
 }
 
+// Номер задачи из таблицы: префикс подрядчика, год двумя цифрами, номер — LIT-26-2217, LoG-26-75, JWW-26-29
+const STRICT_ID_RE = /(?<![A-Za-z])([A-Za-z]{2,6})-(\d{2})-(\d+)(?!\d)/;
+const strictId = (s) => { const m = String(s).match(STRICT_ID_RE); return m ? `${m[1]}-${m[2]}-${m[3]}` : null; };
+
+/**
+ * Номер задачи для сметы любого подрядчика. По порядку:
+ * 1) имя файла с «-РВБ» (как раньше: всё до него); 2) номер вида LoG-26-75 в имени файла;
+ * 3) номер в квадратных скобках в тексте — «[JWW-26-29] [Janus] …» (у Janus имя файла — «Смета_Janus_LSP_480_00030»);
+ * 4) такой же номер просто в тексте; 5) прежние запасные варианты.
+ */
+export function taskFor(fileName, texts = []) {
+  const name = String(fileName).replace(/\.pdf$/i, '').trim();
+  if (RWB_SUFFIX_RE.test(name)) return taskFromFileName(name);
+  const inName = strictId(name);
+  if (inName) return inName;
+  for (const t of texts) { const m = String(t).match(/\[\s*([A-Za-z]{2,6}-\d{2}-\d+)\s*\]/); if (m) return m[1]; }
+  for (const t of texts) { const id = strictId(t); if (id) return id; }
+  return taskFromFileName(name) || taskFromTexts(texts);
+}
+
 /**
  * Главная функция: принимает куски текста PDF и имя файла.
- * Номер задачи берём из имени файла, а если его там нет — из номера сметы в тексте.
+ * Номер задачи — см. taskFor; сумма — «без НДС + НДС = с НДС» или «итог, в том числе НДС».
  */
 export function parseEstimate(texts, fileName = '', lines = []) {
-  const task = taskFromFileName(fileName) || taskFromTexts(texts);
+  const task = taskFor(fileName, [...lines, ...texts]);
   const found = findTotalWithVat(extractAmounts(texts));
   let total = null;
   if (found) {
@@ -145,6 +196,7 @@ export function parseEstimate(texts, fileName = '', lines = []) {
     const milli = extractMilli(texts);
     const exact = (x) => exactOf(Math.round(x * 100), milli);
     total = { net: exact(found.net), vat: exact(found.vat), gross: exact(found.gross), rate: found.rate };
+    if (found.included) total.included = true; // НДС уже внутри итога («в том числе НДС»)
     total.extraDigits = hasExtraDigits(total.gross);
   }
   return { task, total, version: versionFromTexts(lines) ?? versionFromTexts(texts) };

@@ -120,7 +120,8 @@ async function handleFile(file) {
   els.total.value = parsed.total ? formatMoney(parsed.total.gross) : '';
   const t = parsed.total;
   els.totalHint.textContent = t
-    ? `без НДС ${formatMoney(t.net)} + НДС ${Math.round(t.rate * 100)}% ${formatMoney(t.vat)}` +
+    ? (t.included ? `в том числе НДС ${Math.round(t.rate * 100)}% ${formatMoney(t.vat)} (без НДС ${formatMoney(t.net)})`
+      : `без НДС ${formatMoney(t.net)} + НДС ${Math.round(t.rate * 100)}% ${formatMoney(t.vat)}`) +
       (t.extraDigits ? ' · ⚠ в смете доли копейки — записываю как есть, без округления. Сверьте со счётом подрядчика' : '')
     : 'Итог с НДС не нашёлся — впишите вручную.';
   els.totalHint.classList.toggle('bad', !t || t.extraDigits);

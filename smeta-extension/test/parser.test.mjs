@@ -89,3 +89,18 @@ test('версия сметы — по строке, даже если знач�
   assert.deepEqual(linesFromItems(items), ['Дата 25.09.2026 Версия 1', 'Проект(ы)']);
   assert.equal(parseEstimate(['Версия', 'Проект(ы)', '1'], 'x.pdf', linesFromItems(items)).version, 1);
 });
+
+test('сметы других подрядчиков: Janus (НДС внутри итога), Logrus Global (английский формат сумм)', async () => {
+  const { taskFor } = await import('../parser.js');
+  // Janus: номер — в квадратных скобках в тексте, в имени файла его нет; «Итого … в том числе НДС 5%»
+  const janus = ['[JWW-26-29] [Janus] [en] [Материалы для поддержки]', 'Перевод 3,2руб. слово 8167,00 26134,40руб.', 'Итого 26134,40руб.', 'в том числе НДС 5% 1244,50руб.', 'Итого с НДС 26134,40руб.', 'Дата начала: 22.09.2026', '30.09 18:00 МСК'];
+  const j = parseEstimate(janus, 'Смета_Janus_LSP_480_00030.pdf');
+  assert.equal(j.task, 'JWW-26-29');
+  assert.deepEqual(j.total, { net: 24889.9, vat: 1244.5, gross: 26134.4, rate: 0.05, included: true, extraDigits: false });
+  // Logrus Global: «21,262.50 руб», номер в начале имени файла (регистр как в таблице)
+  const log = ['[LoG-26-75][logrusGlobal][tg][kk_сyr][ky][uz][Маркетинг]Перевод пушей', 'Итого без НДС 20,250.00 руб', 'НДС 5% 1,012.50 руб', 'Итого с НДС 21,262.50 руб', '2,000.00 руб 4,000.00 руб', '2026-09-30 01'];
+  const l = parseEstimate(log, 'LoG-26-75logrusGlobaltgkk_сyrkyuz Перевод пушей.pdf');
+  assert.equal(l.task, 'LoG-26-75');
+  assert.deepEqual(l.total, { net: 20250, vat: 1012.5, gross: 21262.5, rate: 0.05, extraDigits: false });
+  assert.equal(taskFor('Смета без номера.pdf', ['WB-2063', 'текст [JWW-26-29] ещё']), 'JWW-26-29');
+});
