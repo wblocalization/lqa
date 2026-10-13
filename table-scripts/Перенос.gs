@@ -57,35 +57,38 @@ function oldTableIdFromLink_(url) {
 }
 
 function planSummary_(plan) {
+  const sh = getTasksSheet();
   return {
+    replace: !!plan.replace, currentRows: plan.replace ? Math.max(0, sh.getLastRow() - 1) : 0,
+    samples: plan.rows.slice(0, 5).map(r => ({
+      id: str_(r.values[COL.ID - 1]), date: fmtDate_(r.values[COL.DATE - 1], 'dd.MM.yyyy') || str_(r.values[COL.DATE - 1]),
+      due: fmtDate_(r.values[COL.DUE - 1], 'dd.MM.yyyy') || str_(r.values[COL.DUE - 1]), deadline: str_(r.values[COL.DEADLINE - 1])
+    })),
     count: plan.rows.length, skippedExisting: plan.skippedExisting, skippedEmpty: plan.skippedEmpty,
     skippedOld: plan.skippedOld || 0, since: plan.since || '', from: plan.from, to: plan.to
   };
 }
 
 /** Окно переноса, способ «ссылка»: сначала сколько перенесётся, потом перенос. */
-function migrationPreviewFromLink(url, since) {
-  return planSummary_(planMigration_(SpreadsheetApp.openById(oldTableIdFromLink_(url)), since));
+function migrationPreviewFromLink(url, since, replace) {
+  return planSummary_(planMigration_(SpreadsheetApp.openById(oldTableIdFromLink_(url)), since, replace));
 }
 
-function migrationApplyFromLink(url, since) {
+function migrationApplyFromLink(url, since, replace) {
   const id = oldTableIdFromLink_(url);
-  const plan = planMigration_(SpreadsheetApp.openById(id), since);
+  const plan = planMigration_(SpreadsheetApp.openById(id), since, replace);
   // Запоминаем старую таблицу: новые номера будут сверяться с ней
   PropertiesService.getDocumentProperties().setProperty(OLD_TABLE_PROP, id);
-  if (plan.rows.length) applyMigration_(plan);
-  return { added: plan.rows.length };
+  return applyMigration_(plan);
 }
 
 /** Способ «файл»: окно само читает .xlsx и присылает лист «Localization Misc» (см. MigrateDialog). */
 function migrationPreviewFromData(src) {
-  return planSummary_(planFromSource_(sourceFromUpload_(src), src && src.since));
+  return planSummary_(planFromSource_(sourceFromUpload_(src), src && src.since, src && src.replace));
 }
 
 function migrationApplyFromData(src) {
-  const plan = planFromSource_(sourceFromUpload_(src), src && src.since);
-  if (plan.rows.length) applyMigration_(plan);
-  return { added: plan.rows.length };
+  return applyMigration_(planFromSource_(sourceFromUpload_(src), src && src.since, src && src.replace));
 }
 
 /** Даты из окна приходят как { d: 'yyyy-MM-dd' }: google.script.run не передаёт Date. */
@@ -129,8 +132,8 @@ function readOldSheet_(oldSs) {
 }
 
 /** Читает старый лист и готовит строки для новой таблицы (ничего не записывает). */
-function planMigration_(oldSs, since) {
-  return planFromSource_(readOldSheet_(oldSs), since);
+function planMigration_(oldSs, since, replace) {
+  return planFromSource_(readOldSheet_(oldSs), since, replace);
 }
 
 /** «2026-07-01» из окна → Date (полночь); пусто — переносим всё. */
@@ -143,7 +146,8 @@ function sinceDate_(since) {
  * source: { values: строки листа с шапкой (A..S), links: ссылка на Band для каждой строки,
  *           merges: [[строка, колонка, строк, колонок], …] — с 1, как в таблице }.
  */
-function planFromSource_(src, since) {
+// replace — «заменить всё»: лист задач очищается (копия остаётся), поэтому уже имеющиеся номера не пропускаем
+function planFromSource_(src, since, replace) {
   const values = src.values, links = src.links.slice();
   const sinceD = sinceDate_(since); // «Переносить с даты»: строки раньше неё (и без даты) — пропускаем
   const now = new Date(), tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
@@ -162,7 +166,7 @@ function planFromSource_(src, since) {
     }
   });
 
-  const idx = existingTaskIndex_(getTasksSheet());
+  const idx = replace ? { ids: {}, keys: {} } : existingTaskIndex_(getTasksSheet());
   const existing = idx.ids, existingKeys = idx.keys, keyOf = taskKey_;
 
   const rows = [];
@@ -211,7 +215,7 @@ function planFromSource_(src, since) {
   }
   return {
     rows: rows, skippedExisting: skippedExisting, skippedEmpty: skippedEmpty,
-    skippedOld: skippedOld, since: sinceD ? fmtDate_(sinceD, 'dd.MM.yyyy') : '',
+    replace: !!replace, skippedOld: skippedOld, since: sinceD ? fmtDate_(sinceD, 'dd.MM.yyyy') : '',
     from: fmtDate_(from, 'dd.MM.yyyy') || '—', to: fmtDate_(to, 'dd.MM.yyyy') || '—'
   };
 }
@@ -312,11 +316,26 @@ function writeArchiveSheet_(name, rows) {
 }
 
 /** Дописывает строки под текущими задачами и оформляет лист. */
+/**
+ * Запись перенесённых строк. plan.replace — сначала копия листа задач («Копия задач до переноса …»),
+ * потом лист очищается. После записи сверяем дату и срок сдачи с тем, что было в источнике.
+ * → { added, backup, checked, mismatches: [{ id, field, want, got }] }
+ */
 function applyMigration_(plan) {
+  const n = plan.rows.length;
+  let backup = '';
+  if (!n && !plan.replace) return { added: 0, backup: '', checked: 0, mismatches: [] };
   withScriptLock_(() => {
+    const ss = SpreadsheetApp.getActive();
     const sh = getTasksSheet();
-    const start = sh.getLastRow() + 1;
-    const n = plan.rows.length;
+    if (plan.replace) {
+      backup = 'Копия задач до переноса ' + fmtDate_(new Date(), 'dd.MM HH:mm');
+      const copy = sh.copyTo(ss).setName(backup);
+      ss.setActiveSheet(sh);
+      copy.hideSheet();
+      if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, TASK_COLS).clearContent();
+    }
+    const start = plan.replace ? 2 : sh.getLastRow() + 1;
     const need = start + n - 1 - sh.getMaxRows();
     if (need > 0) sh.insertRowsAfter(sh.getMaxRows(), need);
 
@@ -331,7 +350,29 @@ function applyMigration_(plan) {
     // Весь лист — по дате, свежие сверху. Сортировка устойчивая: строки одной задачи
     // (одна дата) остаются рядом и в прежнем порядке. Строки без даты уходят вниз.
     SpreadsheetApp.flush();
-    sh.getRange(2, 1, sh.getLastRow() - 1, TASK_COLS).sort({ column: COL.DATE, ascending: false });
+    if (sh.getLastRow() > 2) sh.getRange(2, 1, sh.getLastRow() - 1, TASK_COLS).sort({ column: COL.DATE, ascending: false });
   });
   designTasksSheet_(getTasksSheet());
+  const check = n ? checkMigratedDates_(plan.rows) : { checked: 0, mismatches: [] };
+  return { added: n, backup: backup, checked: check.checked, mismatches: check.mismatches };
+}
+
+/**
+ * Перечитываем лист: у перенесённых задач дата получения и срок сдачи должны совпасть с источником день в день.
+ * У заказа из нескольких строк даты разные — сравниваем все строки номера вместе.
+ */
+function checkMigratedDates_(rows) {
+  const day = v => (v instanceof Date ? fmtDate_(v, 'dd.MM.yyyy') : str_(v));
+  const pair = r => day(r[COL.DATE - 1]) + ' → ' + day(r[COL.DUE - 1]);
+  const want = {}, got = {};
+  rows.forEach(r => { const id = str_(r.values[COL.ID - 1]); if (id) (want[id] = want[id] || []).push(pair(r.values)); });
+  readRows_(getTasksSheet(), COL.DUE).forEach(r => { const id = str_(r[COL.ID - 1]); if (want[id]) (got[id] = got[id] || []).push(pair(r)); });
+  const mismatches = [];
+  let checked = 0;
+  Object.keys(want).forEach(id => {
+    checked++;
+    const a = want[id].slice().sort().join('; '), b = (got[id] || []).slice().sort().join('; ');
+    if (a !== b && mismatches.length < 20) mismatches.push({ id: id, field: 'дата → срок сдачи', want: a, got: b || 'строки нет' });
+  });
+  return { checked: checked, mismatches: mismatches };
 }

@@ -138,6 +138,12 @@ class Sheet {
   getFilter() { return this.filter; }
   setFrozenRows(n) { this.frozenRows = n; }
   hideSheet() { this.hidden = true; return this; }
+  copyTo(ss) {
+    const sh = ss.insertSheet('Копия ' + this.name);
+    sh.cells = this.cells.map(row => row.map(c => (c ? Object.assign({}, c) : c)));
+    sh.maxRows = this.maxRows; sh.maxCols = this.maxCols;
+    return sh;
+  }
   setFrozenColumns(n) { this.frozenCols = n; }
   getColumnGroupDepth(c) { return this.groups[c] ? 1 : 0; }
   getColumnGroup(c) { return chain({ collapse: () => { this.groups[c + ':collapsed'] = true; } }); }

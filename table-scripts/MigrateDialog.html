@@ -10,6 +10,10 @@
   .drop b { color: var(--ink); }
   .drop input { display: none; }
   .or { text-align: center; font-size: 12px; color: var(--soft); }
+  .replace-box { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; font-weight: 400; padding: 8px 10px; border-radius: 10px; background: #FFF4EC; }
+  .replace-box input { margin-top: 3px; }
+  .samples { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 12px; }
+  .samples td, .samples th { padding: 2px 6px; border-bottom: 1px solid var(--field); text-align: left; }
 </style>
 </head>
 <body class="has-foot">
@@ -25,6 +29,9 @@
       <input type="url" id="link" placeholder="https://docs.google.com/spreadsheets/d/…"></label>
     <label class="field">Переносить с даты по сегодня <span class="small">(необязательно; пусто — всё)</span>
       <input type="date" id="since"></label>
+    <label class="check replace-box"><input type="checkbox" id="replace">
+      <span><b>Заменить всё на листе задач</b> — лист очистится, останутся только задачи из файла (за выбранный период).
+      Перед этим сделаю копию листа «Копия задач до переноса …» — из неё всё можно вернуть.</span></label>
     <div id="plan" class="preview" hidden></div>
     <div id="msg" class="msg"></div>
   </div>
@@ -153,8 +160,9 @@
     if (!mode || (mode === 'file' && !source)) return setMsg($('#msg'), fileError || 'Выберите файл или вставьте ссылку', 'err');
     setMsg($('#msg'), 'Считаю, что перенести…');
     if (source && source.kind === 'tasks') return checkTasksFile();
-    const since = $('#since').value;
-    const call = mode === 'file' ? run('migrationPreviewFromData', Object.assign({}, source, { since: since })) : run('migrationPreviewFromLink', $('#link').value, since);
+    const since = $('#since').value, replace = $('#replace').checked;
+    const call = mode === 'file' ? run('migrationPreviewFromData', Object.assign({}, source, { since: since, replace: replace }))
+      : run('migrationPreviewFromLink', $('#link').value, since, replace);
     call.then(p => {
       $('#plan').hidden = false;
       if (!p.count) {
@@ -162,8 +170,13 @@
           (p.since ? ', ' + p.skippedOld + ' — раньше ' + esc(p.since) : '') + '.';
         return setMsg($('#msg'), '');
       }
+      const samples = (p.samples || []).length
+        ? '<table class="samples"><tr><th>№</th><th>Дата</th><th>Срок сдачи</th><th>Дедлайн</th></tr>' +
+          p.samples.map(x => '<tr><td>' + esc(x.id) + '</td><td>' + esc(x.date) + '</td><td>' + esc(x.due) + '</td><td>' + esc(x.deadline) + '</td></tr>').join('') +
+          '</table><span class="small">Самые свежие задачи — сверьте сроки со старой таблицей.</span><br>' : '';
       $('#plan').innerHTML =
-        '<b>Будет добавлено задач: ' + p.count + '</b> (с ' + esc(p.from) + ' по ' + esc(p.to) + ')<br>' +
+        (p.replace ? '<b style="color:#C2410C">Лист задач будет очищен: сейчас на нём ' + p.currentRows + ' строк (уйдут в копию).</b><br>' : '') +
+        '<b>Будет ' + (p.replace ? 'вставлено' : 'добавлено') + ' задач: ' + p.count + '</b> (с ' + esc(p.from) + ' по ' + esc(p.to) + ')<br>' + samples +
         '<span class="small">Уже есть в новой таблице — пропущу: ' + p.skippedExisting +
         '. Пустые строки — пропущу: ' + p.skippedEmpty + '.' +
         (p.since ? ' Раньше ' + esc(p.since) + ', позже сегодня или без даты — пропущу: ' + p.skippedOld + '.' : '') + '</span><br>' +
@@ -199,22 +212,29 @@
   });
   $('#checkBtn').addEventListener('click', check);
   $('#since').addEventListener('change', resetPlan); // дату поменяли — сначала снова «Проверить»
+  $('#replace').addEventListener('change', resetPlan);
 
   $('#goBtn').addEventListener('click', () => {
+    if ($('#replace').checked && !confirm('Очистить лист задач и вставить только задачи из файла? Копия прежнего листа сохранится.')) return;
     const btn = $('#goBtn');
     btn.disabled = true; $('#checkBtn').disabled = true;
     btn.textContent = 'Переношу… (до пары минут)';
     const tasksFile = source && source.kind === 'tasks';
     const call = tasksFile ? run('migrationApplyFromTasksFile', source)
-      : mode === 'file' ? run('migrationApplyFromData', Object.assign({}, source, { since: $('#since').value }))
-      : run('migrationApplyFromLink', $('#link').value, $('#since').value);
+      : mode === 'file' ? run('migrationApplyFromData', Object.assign({}, source, { since: $('#since').value, replace: $('#replace').checked }))
+      : run('migrationApplyFromLink', $('#link').value, $('#since').value, $('#replace').checked);
     call.then(r => {
       btn.textContent = 'Готово';
       if (tasksFile) {
         $('#plan').innerHTML = '<b>Готово: в задачи — ' + r.added + ', в архив — ' + r.archived + '.</b> Цвета, списки и ссылки обновлены.';
         return setMsg($('#msg'), '');
       }
+      const bad = r.mismatches || [];
       $('#plan').innerHTML = '<b>Перенесено задач: ' + r.added + '.</b> Лист отсортирован по дате, цвета и списки обновлены.' +
+        (r.backup ? '<br>Прежний лист сохранён (скрыт): «' + esc(r.backup) + '» — Вид → Скрытые листы.' : '') +
+        (r.checked ? (bad.length
+          ? '<br><b style="color:#B91C1C">Сроки не совпали с источником у ' + bad.length + ':</b><br>' + bad.map(m => esc(m.id) + ' — ' + esc(m.field) + ': в старой ' + esc(m.want) + ', стало ' + esc(m.got)).join('<br>')
+          : '<br>✓ Проверила ' + r.checked + ' задач: дата и срок сдачи совпадают со старой таблицей день в день.') : '') +
         (mode === 'link' ? '<br><span class="small">Новые номера теперь сверяются со старой таблицей. Появятся там новые задачи — запустите перенос ещё раз, он добавит только новые.</span>'
                          : '<br><span class="small">Появятся в старой таблице новые задачи — скачайте файл заново и перенесите ещё раз: добавятся только новые.</span>');
       setMsg($('#msg'), '');
