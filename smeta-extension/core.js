@@ -1,6 +1,9 @@
 // Общее для вкладок: настройки и связь с Apps Script таблицы.
 
+import { parseSum } from './parser.js';
+
 // Куда класть сметы на ВБ Диске: общая папка команды локализации
+
 export const DEFAULT_DISK_FOLDER = 'localization/Сметы';
 export const settings = { url: '', token: '', user: '', manager: '', diskFolder: DEFAULT_DISK_FOLDER };
 
@@ -218,6 +221,41 @@ export async function copyRich(html, text) {
   } catch {
     await navigator.clipboard.writeText(text);
   }
+}
+
+/**
+ * Поле суммы, куда можно вписать «5263+5336» или вставить кусок письма с суммами в ₽.
+ * Под полем — подсказка «= 10 599 ₽ · в таблицу запишется формулой». Возвращает { read }:
+ * read() → '' | '4538' | '5263+5336' (что отправить в таблицу) или бросает ошибку.
+ */
+export function sumField(input) {
+  const hint = document.createElement('p');
+  hint.className = 'hint sum-hint';
+  (input.closest('.two') || input.closest('label')).after(hint);
+  const show = () => {
+    const r = parseSum(input.value);
+    hint.classList.toggle('bad', Boolean(r && r.error));
+    hint.textContent = !r ? 'Можно «5263+5336» или вставить текст письма с суммами в ₽'
+      : r.error ? r.error
+      : r.formula ? `= ${money(r.total)} ₽ · в таблицу запишется формулой =${r.formula}`
+      : input.value.trim() !== String(r.total) ? `= ${money(r.total)} ₽` : '';
+  };
+  input.addEventListener('input', show);
+  // вставили текст письма — в поле оставляем только суммы: «5263+5336»
+  input.addEventListener('change', () => {
+    const r = parseSum(input.value);
+    if (r && !r.error && /[^\d\s+.,=₽]/.test(input.value)) { input.value = r.formula || String(r.total); show(); }
+  });
+  show();
+  return {
+    show,
+    read() {
+      const r = parseSum(input.value);
+      if (!r) return '';
+      if (r.error) throw new Error(`Итого: ${r.error.toLowerCase()}`);
+      return r.formula || String(r.total);
+    },
+  };
 }
 
 /** «102 641,64» */

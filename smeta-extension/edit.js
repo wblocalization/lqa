@@ -1,5 +1,5 @@
 // Правка задачи из расширения: то же, что «Поиск и правка» в таблице.
-import { api, esc, getLists, autoDeadline, ask } from './core.js';
+import { api, esc, getLists, autoDeadline, ask, sumField } from './core.js';
 import { makeLinkList } from './links.js';
 
 const $ = (s) => document.querySelector(s);
@@ -11,6 +11,8 @@ const els = {
   contractor: $('#eContractor'), manager: $('#eManager'), estimateLink: $('#eEstimateLink'),
   total: $('#eTotal'), sp: $('#eSp'), comment: $('#eComment'), complaints: $('#eComplaints'), save: $('#eSave'), del: $('#eDelete'), msg: $('#eMsg'), top: $('#eTop'),
 };
+// «Итого»: «5263+5336» или текст письма с суммами → в таблицу формулой
+const totalSum = sumField(els.total);
 autoDeadline(els.deadline, els.exactDeadline, els.date);
 
 let lists = null;    // справочники из таблицы — один раз
@@ -101,7 +103,8 @@ function fill(t) {
   els.customer.value = t.customer;
   els.exactDeadline.value = t.exactDeadline;
   els.estimateLink.value = t.estimateLink;
-  els.total.value = t.total;
+  els.total.value = t.totalFormula || t.total;
+  totalSum.show();
   els.sp.value = t.sp;
   els.comment.value = t.comment;
   els.complaints.value = t.complaints || '';
@@ -125,6 +128,8 @@ els.form.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!current) return;
   if (!els.subject.value.trim()) return setMsg('Тема не может быть пустой', 'err');
+  let total;
+  try { total = totalSum.read(); } catch (err) { return setMsg(err.message, 'err'); }
   const ticketNum = els.ticketNum.value.trim().replace(/^local-?\s*/i, '');
   if (ticketNum && !/^\d+$/.test(ticketNum)) return setMsg('В тикете — только цифры, LOCAL- подставится сам', 'err');
   const task = {
@@ -134,7 +139,7 @@ els.form.addEventListener('submit', async (e) => {
     ticket: ticketNum ? `LOCAL-${ticketNum}` : '', date: els.date.value, product: els.product.value,
     customer: els.customer.value.trim(), deadline: els.deadline.value, exactDeadline: els.exactDeadline.value,
     status: els.status.value, deliveryStatus: els.deliveryStatus.value, contractor: els.contractor.value,
-    manager: els.manager.value, estimateLink: els.estimateLink.value.trim(), total: els.total.value,
+    manager: els.manager.value, estimateLink: els.estimateLink.value.trim(), total,
     sp: els.sp.value, comment: els.comment.value.trim(), complaints: els.complaints.value.trim(),
     languages: keepOrder(String(current.languages || '').split(',').map((x) => x.trim()).filter(Boolean),
       [...els.langs.querySelectorAll('input:checked')].map((cb) => cb.value)).join(', '),

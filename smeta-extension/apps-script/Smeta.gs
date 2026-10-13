@@ -144,6 +144,10 @@ function smetaWrite_(req) {
   const exact = Math.round(total * 1000) / 1000;
   const cell = sheet.getRange(t.row, t.col.total + 1);
   cell.setValue(exact).setNumberFormat(smetaMoneyFormat_(exact));
+  // «3000+2500» из письма подрядчика — формулой, если её сумма совпадает с итогом
+  if (req.formula && typeof moneyInput_ === 'function') {
+    try { const m = moneyInput_(req.formula); if (m.formula && m.value === exact) cell.setFormula(m.formula); } catch (e) { /* только число */ }
+  }
   // Подрядчик обновил смету — прежняя сумма и ссылка остаются в заметке к ячейке (для сверки)
   if (req.overwrite && (oldLink || oldTotal !== '')) {
     const changed = oldTotal === '' || Number(oldTotal) !== exact || (oldLink && oldLink !== link);

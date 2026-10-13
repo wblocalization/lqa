@@ -1,5 +1,5 @@
 // Вкладка «Новая задача»: то же, что окно «➕ Добавить задачу» в таблице, только без захода в таблицу.
-import { settings, isConfigured, api, esc, readClipboard, getLists, autoDeadline, setLink, toast, ask } from './core.js';
+import { settings, isConfigured, api, esc, readClipboard, getLists, autoDeadline, setLink, toast, ask, sumField } from './core.js';
 import { makeLinkList } from './links.js';
 import { showLetter, lettersForExport, importLetters, loadLetters, listTexts, textsForExport, importTexts } from './letter.js';
 
@@ -20,6 +20,9 @@ const els = {
   clearTpl: $('#tClearTpl'),
   letterText: $('#tLetterText'), letterTextRow: $('#tLetterTextRow'), rows: $('#tRows'), moreRow: $('#tMoreRow'), rowMode: $('#tRowMode'), rowId: $('#tRowId'), rowCancel: $('#tRowCancel'), addRow: $('#taskAddRow'), tplBox: $('.tpl'), tplIoMsg: $('#tTplIoMsg'), openRow: $('#taskOpenRow'),
 };
+// «Итого»: «5263+5336» или текст письма с суммами → в таблицу формулой
+const totalSum = sumField(els.total);
+const totalValue = () => { try { return totalSum.read(); } catch { return els.total.value; } };
 autoDeadline(els.deadline, els.exactDeadline, els.date);
 loadLetters().catch(() => {}); // для «Скачать файлом» в настройках
 
@@ -480,13 +483,14 @@ function taskFromForm() {
     date: els.date.value, product: els.product.value, customer: els.customer.value.trim(),
     deadline: els.deadline.value, exactDeadline: els.exactDeadline.value,
     status: els.status.value, deliveryStatus: els.deliveryStatus.value,
-    estimateLink: els.estimateLink.value.trim(), total: els.total.value, sp: els.sp.value,
+    estimateLink: els.estimateLink.value.trim(), total: totalValue(), sp: els.sp.value,
     manager: els.manager.value, comment: els.comment.value.trim(), complaints: els.complaints.value.trim(),
     languages: checkedLangInputs().map((cb) => cb.value), letterText: els.letterText.value,
   };
 }
 function checkForm() {
   if (!els.contractor.value) return 'Выберите подрядчика';
+  try { totalSum.read(); } catch (e) { return e.message; }
   if (!els.subject.value.trim()) return 'Впишите тему';
   if (els.ticketNum.value.trim() && !/^\d+$/.test(els.ticketNum.value.trim())) return 'В тикете — только цифры, LOCAL- подставится сам';
   return '';
@@ -647,6 +651,7 @@ function renderRows() {
 }
 function clearRowFields() {
   [els.link, els.customer, els.exactDeadline, els.comment, els.complaints, els.estimateLink, els.total, els.sp].forEach((el) => { el.value = ''; });
+  totalSum.show();
   els.link2.value = '';
   checkedLangInputs().forEach((cb) => { cb.checked = false; });
   els.exactDeadline.dispatchEvent(new Event('change', { bubbles: true }));

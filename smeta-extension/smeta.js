@@ -1,5 +1,5 @@
 import * as pdfjs from './vendor/pdf.min.mjs';
-import { parseEstimate, formatMoney, linesFromItems } from './parser.js';
+import { parseEstimate, formatMoney, linesFromItems, parseSum } from './parser.js';
 import { settings, isConfigured, api, esc, readClipboard, DEFAULT_DISK_FOLDER, setLink } from './core.js';
 import { uploadToDisk, listDiskPdfs, folderNameFromSubject } from './disk.js';
 import { fileFromOwaDrop } from './outlook.js';
@@ -254,13 +254,14 @@ els.form.addEventListener('submit', async (e) => {
     }
     setStatus('Записываю в таблицу…');
     const fileName = current?.fileName || '';
-    let r = await api({ action: 'write', task, total, link, fileName, version, overwrite });
+    const formula = formulaOf(els.total.value);
+    let r = await api({ action: 'write', task, total, formula, link, fileName, version, overwrite });
     if (!r.ok && r.error === 'exists') {
       if (!confirm(replaceQuestion(task, r.total, total))) {
         setStatus('Отменено — в таблице ничего не менялось.');
         return;
       }
-      r = await api({ action: 'write', task, total, link, fileName, version, overwrite: true });
+      r = await api({ action: 'write', task, total, formula, link, fileName, version, overwrite: true });
     }
     if (!r.ok && uploaded) {
       // PDF уже на диске — ссылку не теряем, даже если в таблицу записать не вышло
@@ -328,10 +329,13 @@ function showDone(title, text, link, rowUrl) {
   showScreen('done');
 }
 
-/** «102 641,64» → 102641.64 */
+/** «102 641,64» → 102641.64; «5263+5336» или текст письма с суммами в ₽ → их сумма */
 function parseTotal(s) {
-  return Number(String(s).replace(/[\s  ₽]/g, '').replace(',', '.'));
+  const r = parseSum(s);
+  return r && !r.error ? r.total : NaN;
 }
+/** Несколько сумм — в таблицу запишется формулой «=5263+5336» */
+const formulaOf = (s) => { const r = parseSum(s); return (r && r.formula) || ''; };
 
 /** Сумма для вставки в Excel / Google Таблицы: «102641,64» — без пробелов и ₽, запятая перед копейками. */
 function totalForPaste(x) {
@@ -383,3 +387,13 @@ function normTask(s) {
 export function onSettingsSaved() {
   if (els.task.value) lookup();
 }
+
+// Сумма руками: «5263+5336» или кусок письма («английский — 5.263₽, китайский — 5.336₽») → итог и формула
+els.total.addEventListener('input', () => {
+  const r = parseSum(els.total.value);
+  if (!r || (!r.formula && !r.error && !/[а-яё₽]/i.test(els.total.value))) return;
+  els.totalHint.classList.toggle('bad', Boolean(r.error));
+  els.totalHint.textContent = r.error || (r.formula
+    ? `= ${formatMoney(r.total)} ₽ · в таблицу запишется формулой =${r.formula}`
+    : `= ${formatMoney(r.total)} ₽`);
+});

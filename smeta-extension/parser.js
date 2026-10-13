@@ -207,3 +207,40 @@ export function formatMoney(x) {
   const digits = hasExtraDigits(x) ? 3 : 2;
   return x.toLocaleString('ru-RU', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
+
+/**
+ * Одно число, как его пишут люди и подрядчики: «4.538» и «4.538₽» (точка — тысячи), «5 263,50», «21,262.50», «3000.5».
+ * Точка ровно с тремя цифрами после неё — это тысячи, а не копейки: так пишет «Бюро переводов».
+ */
+export function parseNumber(s) {
+  let t = String(s).replace(/[\s  ₽]|руб\.?|р\./gi, '');
+  if (!t) return NaN;
+  if (/^\d{1,3}(?:\.\d{3})+(?:,\d{1,3})?$/.test(t)) t = t.replace(/\./g, '').replace(',', '.'); // 4.538 / 1.234.567,50
+  else if (/^\d{1,3}(?:,\d{3})+(?:\.\d{1,3})?$/.test(t)) t = t.replace(/,/g, ''); // 21,262.50
+  else t = t.replace(',', '.');
+  return /^\d+(?:\.\d+)?$/.test(t) ? Number(t) : NaN;
+}
+
+const round3 = (x) => Math.round(x * 1000) / 1000;
+
+/**
+ * Сумма из поля «Итого»: «5263+5336», «=3000+2500,50» или кусок письма
+ * «английский — 5.263₽, китайский — 5.336₽» (берём все суммы с ₽ / руб).
+ * → { parts: [5263, 5336], total: 10599, formula: '5263+5336' } · пусто → null · непонятно → { error }.
+ */
+export function parseSum(input) {
+  const s = String(input ?? '').trim().replace(/^=/, '');
+  if (!s) return null;
+  let pieces;
+  const withRub = [...s.matchAll(/(\d[\d\s  .,]*?)\s*(?:₽|руб|р\.)/gi)].map((m) => m[1]);
+  if (/[а-яё]/i.test(s.replace(/руб\.?|р\./gi, '')) || (withRub.length > 1 && !s.includes('+'))) {
+    if (!withRub.length) return { error: 'Не нашла сумм с ₽' };
+    pieces = withRub;
+  } else {
+    pieces = s.split('+');
+  }
+  const parts = pieces.map(parseNumber);
+  if (parts.some((p) => !isFinite(p))) return { error: 'Сумма не похожа на число' };
+  const total = round3(parts.reduce((a, b) => a + b, 0));
+  return { parts, total, formula: parts.length > 1 ? parts.map((p) => String(round3(p))).join('+') : '' };
+}

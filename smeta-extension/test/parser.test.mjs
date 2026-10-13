@@ -104,3 +104,15 @@ test('сметы других подрядчиков: Janus (НДС внутри
   assert.deepEqual(l.total, { net: 20250, vat: 1012.5, gross: 21262.5, rate: 0.05, extraDigits: false });
   assert.equal(taskFor('Смета без номера.pdf', ['WB-2063', 'текст [JWW-26-29] ещё']), 'JWW-26-29');
 });
+
+test('суммы из письма и через плюс', async () => {
+  const { parseSum, parseNumber } = await import('../parser.js');
+  assert.equal(parseNumber('4.538₽'), 4538);
+  assert.equal(parseNumber('102 641,64'), 102641.64);
+  assert.equal(parseNumber('21,262.50'), 21262.5);
+  assert.deepEqual(parseSum('Стоимость перевода составит 4.538₽'), { parts: [4538], total: 4538, formula: '' });
+  assert.deepEqual(parseSum('английский — 5.263₽, китайский — 5.336₽'), { parts: [5263, 5336], total: 10599, formula: '5263+5336' });
+  assert.deepEqual(parseSum('=3000+2500,50'), { parts: [3000, 2500.5], total: 5500.5, formula: '3000+2500.5' });
+  assert.equal(parseSum(''), null);
+  assert.ok(parseSum('12+x').error);
+});

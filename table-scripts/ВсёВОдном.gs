@@ -419,6 +419,27 @@ function exactMoney_(v) {
   return Math.round(Number(v) * 1000) / 1000;
 }
 
+/**
+ * Сумма из поля: число или «3000+2500,50» — как суммы присылают по языкам (Бюро переводов).
+ * → { value, formula }: formula «=3000+2500.5» — в ячейку пишем формулой, чтобы разбивка оставалась видна.
+ */
+function moneyInput_(v) {
+  if (v === '' || v == null) return { value: '' };
+  if (typeof v === 'number') return { value: exactMoney_(v) };
+  const s = String(v).replace(/[\s\u00a0\u202f₽]/g, '').replace(/^=/, '');
+  if (!s) return { value: '' };
+  const parts = s.split('+').map(p => Number(p.replace(',', '.')));
+  if (!parts.length || parts.some(p => !isFinite(p) || p < 0)) throw new Error('Сумма не похожа на число: ' + v);
+  const value = exactMoney_(parts.reduce((a, b) => a + b, 0));
+  return parts.length > 1 ? { value: value, formula: '=' + parts.map(p => String(exactMoney_(p))).join('+') } : { value: value };
+}
+
+/** Формула суммы из ячейки («=3000+2500.5» → «3000+2500.5»), если это простое сложение — для правки в расширении. */
+function moneyFormulaOf_(range) {
+  const f = String(range.getFormula() || '');
+  return /^=\s*[\d.]+(\s*\+\s*[\d.]+)+\s*$/.test(f) ? f.replace(/^=\s*/, '').replace(/\s+/g, '') : '';
+}
+
 /** 102641.64 → «102 641,64»; доли копейки не прячем: 110929.155 → «110 929,155». Текст — как есть. */
 function rub_(x) {
   if (x === '' || x == null || !isFinite(Number(x))) return String(x == null ? '' : x);
@@ -1127,18 +1148,20 @@ function submitNewTaskFromDialog(task) {
     const id = generateNextTaskId(sh, task.contractor);
     const subject = buildTaskSubject_(id, task);
     const row = insertTopRow_(sh, TASK_COLS, () => applyTaskValidations_(sh, 2, 1));
+    const totalIn = moneyInput_(task.total);
     if (!task.deadline) task.deadline = deadlineFromDue_(parseIsoDate_(task.exactDeadline), parseIsoDate_(task.date), '');
 
     const values = [
       id, normTicket_(task.ticket), subject,
       parseIsoDate_(task.date), task.product, task.customer, (task.languages || []).join(', '),
       task.deadline, parseIsoDate_(task.exactDeadline), task.status,
-      task.estimateLink, task.total ? exactMoney_(task.total) : '', task.contractor, task.manager,
+      task.estimateLink, totalIn.value, task.contractor, task.manager,
       task.deliveryStatus, task.sp ? Number(task.sp) : '', task.comment, task.complaints
     ];
     sh.getRange(row, 1, 1, TASK_COLS).setValues([values]);
     if (task.link || task.link2) sh.getRange(row, COL.SUBJECT).setRichTextValue(buildSubjectRich_(subject, task.link, task.link2));
     if (task.estimateLink) sh.getRange(row, COL.ESTIMATE).setRichTextValue(estimateRich_(task.estimateLink));
+    if (totalIn.formula) sh.getRange(row, COL.TOTAL).setFormula(totalIn.formula);
     if (values[COL.TOTAL - 1] !== '') sh.getRange(row, COL.TOTAL).setNumberFormat(moneyFormat_(values[COL.TOTAL - 1]));
     if (values[COL.LANGS - 1]) colorizeLanguagesCell(sh, row);
     colorizeRowDirectly(sh, row);
@@ -1260,7 +1283,8 @@ function getTaskForEdit(row) {
     customer: str_(r[COL.CUSTOMER - 1]), languages: str_(r[COL.LANGS - 1]),
     deadline: str_(r[COL.DEADLINE - 1]), exactDeadline: fmtDate_(r[COL.DUE - 1], 'yyyy-MM-dd'),
     status: str_(r[COL.STATUS - 1]), estimateLink: estimateUrl_(sh.getRange(row, COL.ESTIMATE).getRichTextValue(), r[COL.ESTIMATE - 1]),
-    total: r[COL.TOTAL - 1] === '' ? '' : r[COL.TOTAL - 1], contractor: str_(r[COL.CONTRACTOR - 1]),
+    total: r[COL.TOTAL - 1] === '' ? '' : r[COL.TOTAL - 1], totalFormula: moneyFormulaOf_(sh.getRange(row, COL.TOTAL)),
+    contractor: str_(r[COL.CONTRACTOR - 1]),
     manager: str_(r[COL.MANAGER - 1]), deliveryStatus: str_(r[COL.DELIVERY - 1]),
     sp: r[COL.SP - 1] === '' ? '' : r[COL.SP - 1], comment: str_(r[COL.COMMENT - 1]),
     complaints: str_(r[COL.COMPLAINTS - 1])
@@ -1310,7 +1334,8 @@ function saveTaskEdits(task) {
     set(COL.DEADLINE, str_(task.deadline) || deadlineFromDue_(next[COL.DUE - 1], next[COL.DATE - 1], ''));
     set(COL.STATUS, str_(task.status));
     set(COL.ESTIMATE, str_(task.estimateLink));
-    set(COL.TOTAL, task.total === '' || task.total == null ? '' : exactMoney_(task.total));
+    const totalIn = moneyInput_(task.total);
+    set(COL.TOTAL, totalIn.value);
     set(COL.CONTRACTOR, str_(task.contractor));
     set(COL.MANAGER, str_(task.manager));
     set(COL.DELIVERY, str_(task.deliveryStatus));
@@ -1322,6 +1347,7 @@ function saveTaskEdits(task) {
     sh.getRange(row, COL.TICKET).setValue(next[COL.TICKET - 1]);
     sh.getRange(row, COL.DATE, 1, TASK_COLS - COL.DATE + 1).setValues([next.slice(COL.DATE - 1)]);
     if (next[COL.ESTIMATE - 1]) sh.getRange(row, COL.ESTIMATE).setRichTextValue(estimateRich_(next[COL.ESTIMATE - 1]));
+    if (totalIn.formula) sh.getRange(row, COL.TOTAL).setFormula(totalIn.formula); // «3000+2500» — формулой, как вписывают руками
     noteMoneyEdit_(sh.getRange(row, COL.TOTAL), old[COL.TOTAL - 1], next[COL.TOTAL - 1], old[COL.ESTIMATE - 1], next[COL.ESTIMATE - 1]);
 
     // Тема со ссылками: пишем, только если что-то поменялось, чтобы не трогать лишнее
@@ -3415,6 +3441,10 @@ function smetaWrite_(req) {
   const exact = Math.round(total * 1000) / 1000;
   const cell = sheet.getRange(t.row, t.col.total + 1);
   cell.setValue(exact).setNumberFormat(smetaMoneyFormat_(exact));
+  // «3000+2500» из письма подрядчика — формулой, если её сумма совпадает с итогом
+  if (req.formula && typeof moneyInput_ === 'function') {
+    try { const m = moneyInput_(req.formula); if (m.formula && m.value === exact) cell.setFormula(m.formula); } catch (e) { /* только число */ }
+  }
   // Подрядчик обновил смету — прежняя сумма и ссылка остаются в заметке к ячейке (для сверки)
   if (req.overwrite && (oldLink || oldTotal !== '')) {
     const changed = oldTotal === '' || Number(oldTotal) !== exact || (oldLink && oldLink !== link);
