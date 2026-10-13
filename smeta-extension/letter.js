@@ -472,7 +472,7 @@ els.send.addEventListener('click', async () => {
     files = [];
     renderFiles();
     els.send.textContent = '✓ Отправлено';
-    soundPrefs().then((p) => { if (p.sendSound) playSound('whoosh'); });
+    soundPrefs().then((p) => playSound(p.sendSound));
     const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
     els.sentText.textContent = `✓ Отправлено в ${time} → ${to.join(', ')}`;
     els.sent.hidden = false;

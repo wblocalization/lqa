@@ -2,7 +2,7 @@
 import { settings, isConfigured, call, toast, ask, getLists } from './core.js';
 import { renderLetterList, renderSignatureCard, renderTextList } from './letter.js';
 import { remindOn, remindDue, soundPrefs } from './remind.js';
-import { SOUNDS, playSound } from './sounds.js';
+import { soundOptions, playSound } from './sounds.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
@@ -51,9 +51,10 @@ $('#mlRemindTest').addEventListener('click', async (e) => {
 
 // Звуки: для напоминаний — на выбор; «фьюх» при отправке письма — вкл/выкл
 const soundSel = $('#mlSound');
-soundSel.innerHTML = Object.entries(SOUNDS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
-const sendSoundBox = $('#mlSendSound');
-soundPrefs().then((p) => { soundSel.value = p.sound; sendSoundBox.checked = p.sendSound; });
+soundSel.innerHTML = soundOptions();
+const sendSoundSel = $('#mlSendSound');
+sendSoundSel.innerHTML = soundOptions();
+soundPrefs().then((p) => { soundSel.value = p.sound; sendSoundSel.value = p.sendSound; });
 // Время напоминания и дни — свои у каждого
 const timeIn = $('#mlRemindTime'), weekdaysBox = $('#mlRemindWeekdays');
 chrome.storage.local.get('remind').then(({ remind: st = {} }) => { timeIn.value = st.time || '10:00'; weekdaysBox.checked = st.weekdays !== false; });
@@ -71,7 +72,8 @@ async function saveSound(patch) {
 }
 soundSel.addEventListener('change', () => { saveSound({ sound: soundSel.value }); playSound(soundSel.value); });
 $('#mlSoundPlay').addEventListener('click', () => playSound(soundSel.value));
-sendSoundBox.addEventListener('change', () => { saveSound({ sendSound: sendSoundBox.checked }); if (sendSoundBox.checked) playSound('whoosh'); });
+sendSoundSel.addEventListener('change', () => { saveSound({ sendSound: sendSoundSel.value }); playSound(sendSoundSel.value); });
+$('#mlSendSoundPlay').addEventListener('click', () => playSound(sendSoundSel.value));
 
 async function loadLetterList() {
   let contractors = [];

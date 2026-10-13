@@ -119,7 +119,7 @@ function onGesture(name) {
     return;
   }
   if (name === 'ILoveYou') { celebrate(nextCheer()); return; }
-  if (name === 'Thumb_Down') toast('👎 Понимаю. Может, кофе? ☕', 'warn');
+  if (name === 'Thumb_Down') { playSound('trombone'); toast('👎 Понимаю. Может, кофе? ☕', 'warn'); }
 }
 
 async function start() {

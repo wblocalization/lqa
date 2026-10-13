@@ -18,10 +18,12 @@ export async function nextRemindAt() {
   return d.getTime();
 }
 
-/** Настройки звука: sound — для напоминаний (по умолчанию колокольчик), sendSound — «фьюх» при отправке письма. */
+/** Настройки звука: sound — для напоминаний (по умолчанию колокольчик), sendSound — при отправке письма (по умолчанию «фьюх»). */
 export async function soundPrefs() {
   const st = (await chrome.storage.local.get('remind')).remind || {};
-  return { sound: st.sound || 'chime', sendSound: st.sendSound !== false };
+  // раньше sendSound был вкл/выкл
+  const send = st.sendSound === false ? 'off' : (typeof st.sendSound === 'string' ? st.sendSound : 'whoosh');
+  return { sound: st.sound || 'chime', sendSound: send };
 }
 
 /** Включены ли напоминания (по умолчанию — да). */
