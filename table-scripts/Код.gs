@@ -1627,6 +1627,19 @@ function getMonthsList() {
   return months;
 }
 
+/** Свой период «с … по …» (yyyy-MM-dd, обе даты включительно). Нет дат — null. */
+function rangeOf_(opts) {
+  const d = s => { const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null; };
+  const from = d(opts && opts.from), to = d(opts && opts.to);
+  if (!from && !to) return null;
+  return { from: from, to: to ? new Date(to.getFullYear(), to.getMonth(), to.getDate() + 1) : null };
+}
+function inRange_(date, range) {
+  if (!range) return true;
+  if (!(date instanceof Date)) return false;
+  return (!range.from || date >= range.from) && (!range.to || date < range.to);
+}
+
 function parseMonth_(monthStr) {
   const m = String(monthStr || '').match(/^(\d{4})-(\d{2})$/);
   return m ? { year: Number(m[1]), month: Number(m[2]) } : { year: null, month: null };
@@ -1737,11 +1750,13 @@ function moneyExportRows_(opts) {
   const head = sh.getRange(1, 1, 1, TASK_COLS).getValues()[0];
   if (!n) return { head: head, rows: [] };
   const values = sh.getRange(2, 1, n, TASK_COLS).getValues();
-  const p = parseMonth_(opts.month);
+  const range = rangeOf_(opts); // свой период «с … по …» — вместо месяца
+  const p = range ? { year: null, month: null } : parseMonth_(opts.month);
   const rows = [], labels = [];
   values.forEach((r, i) => {
     if (!str_(r[COL.ID - 1]) && !str_(r[COL.SUBJECT - 1])) return; // пустая строка
     if (p.year && !inPeriod_(periodDate_(r, opts.by), p.year, p.month)) return;
+    if (range && !inRange_(periodDate_(r, opts.by), range)) return;
     if (opts.contractor && str_(r[COL.CONTRACTOR - 1]) !== opts.contractor) return;
     if (opts.manager && str_(r[COL.MANAGER - 1]) !== opts.manager) return;
     if (opts.lang && rowLangs_(r).indexOf(opts.lang.toLowerCase()) === -1) return;
@@ -1860,7 +1875,7 @@ function actCompare(ids, opts) {
   Object.keys(found).forEach(id => { found[id].sum = exactMoney_(found[id].sum); });
   // В таблице за этот месяц есть, в акте нет
   const extra = {};
-  if (opts.month) {
+  if (opts.month || rangeOf_(opts)) {
     moneyExportRows_(opts).rows.forEach(r => {
       const id = key(str_(r[COL.ID - 1]));
       if (!id || want[id] || str_(r[COL.STATUS - 1]) === 'Отменено') return;
@@ -1887,7 +1902,9 @@ function exportMoneyExcel(opts) {
   const data = moneyExportRows_(opts);
   const rows = data.rows;
   const p = parseMonth_(opts.month);
-  const monthName = p.year ? (getMonthsList().filter(m => m.value === opts.month).map(m => m.label.toLowerCase())[0] || opts.month) + ' ' + periodByLabel_(opts.by) : 'всё время';
+  const fmtIso = s => String(s || '').split('-').reverse().join('.');
+  const monthName = rangeOf_(opts) ? (opts.from ? 'с ' + fmtIso(opts.from) : '') + (opts.to ? ' по ' + fmtIso(opts.to) : '') + ' ' + periodByLabel_(opts.by)
+    : p.year ? (getMonthsList().filter(m => m.value === opts.month).map(m => m.label.toLowerCase())[0] || opts.month) + ' ' + periodByLabel_(opts.by) : 'всё время';
   const label = [opts.contractor || 'все подрядчики', opts.manager || 'все менеджеры'].concat(opts.lang ? [opts.lang] : []).concat([monthName]).join(' · ');
   const ss = SpreadsheetApp.create('Сверка — ' + label);
 

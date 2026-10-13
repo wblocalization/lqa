@@ -81,18 +81,26 @@ const REPORTS = {
     title: 'Сверка с подрядчиками',
     form: () => `<p class="field-note">В Excel — все колонки таблицы в том же порядке: № задачи, языки, ссылка на смету, сумма с НДС…
       Рядом — «Итоги» (подрядчики, менеджеры, языки) и «Проверить».</p>
-      <div class="two">${monthSel('Всё время')}${bySel()}</div>
+      <div class="two">${monthSel('Всё время').replace('</select>', '<option value="range">📅 Свой период…</option></select>')}${bySel()}</div>
+      <div id="rfRange" class="two" hidden>
+        <label>С <input id="rfFrom" type="date"></label>
+        <label>По <input id="rfTo" type="date"></label>
+      </div>
       <div class="two">${select('rfContractor', 'Подрядчик', lists.contractors, '', 'Все')}${select('rfMgr', 'Менеджер', lists.managers, '', 'Все')}</div>
       ${select('rfLang', 'Язык', lists.langs, '', 'Все языки')}
       <div id="actBox" class="act-box">
         <b>Акт или счёт подрядчика за месяц</b>
         <span>Загрузите PDF — строки с одним номером сложатся (по сумме с НДС) и сравнятся с таблицей.
-          Выберите выше месяц и подрядчика — тогда покажем и задачи, которых в акте нет.</span>
+          Выберите выше месяц (или свой период) и подрядчика — тогда покажем и задачи, которых в акте нет.</span>
         <button id="actPick" class="btn ghost" type="button">📄 Загрузить акт подрядчика (PDF)</button>
         <input id="actFile" type="file" accept="application/pdf,.pdf" hidden>
         <div id="actOut"></div>
       </div>`,
-    opts: () => ({ month: val('rfMonth'), by: val('rfBy'), contractor: val('rfContractor'), manager: val('rfMgr'), lang: val('rfLang') }),
+    // «📅 Свой период…» — даты «с» и «по» вместо месяца
+    opts: () => ({
+      ...(val('rfMonth') === 'range' ? { month: '', from: val('rfFrom'), to: val('rfTo') } : { month: val('rfMonth') }),
+      by: val('rfBy'), contractor: val('rfContractor'), manager: val('rfMgr'), lang: val('rfLang'),
+    }),
     run: () => call({ action: 'moneyPreview', opts: REPORTS.money.opts() }),
     render: renderMoney, live: true, excel: () => ({ kind: 'money', opts: REPORTS.money.opts() }),
   },
@@ -115,6 +123,7 @@ function open(name) {
   els.run.hidden = !!r.live;
   setMsg('');
   // Сверка пересчитывается сама при смене фильтра
+  if (name === 'money') initRange(); // раньше общего обработчика: даты «с/по» ставятся до пересчёта
   if (r.live) {
     els.form.querySelectorAll('select').forEach((s) => s.addEventListener('change', () => { run(); if (act) compareAct(); }));
     run();
@@ -280,6 +289,25 @@ els.excel.addEventListener('click', async () => {
     els.excel.textContent = label;
   }
 });
+
+// ---------- Свой период «с … по …» ----------
+function initRange() {
+  const month = $('#rfMonth'), box = $('#rfRange'), from = $('#rfFrom'), to = $('#rfTo');
+  month.addEventListener('change', () => {
+    box.hidden = month.value !== 'range';
+    if (month.value === 'range' && !from.value) {
+      // по умолчанию — с начала текущего месяца по сегодня
+      const d = new Date(), iso = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+      from.value = iso(new Date(d.getFullYear(), d.getMonth(), 1));
+      to.value = iso(d);
+    }
+  });
+  [from, to].forEach((i) => i.addEventListener('change', () => {
+    if (from.value && to.value && from.value > to.value) return setMsg('«С» позже, чем «по» — поменяйте даты', 'err');
+    run();
+    if (act) compareAct();
+  }));
+}
 
 // ---------- Сверка с актом подрядчика ----------
 let act = null;      // { name, items, total, unread } — разобранный PDF
