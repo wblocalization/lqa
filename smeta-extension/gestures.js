@@ -3,6 +3,14 @@
 // Включается в «Настройки» → «Жесты»; камера работает, только пока панель открыта и переключатель включён.
 import { FilesetResolver, GestureRecognizer } from './vendor/mediapipe/vision_bundle.mjs';
 
+// Модель пишет в консоль служебные строки вида «W1013 07:04:15… gl_context.cc… OpenGL error checking is disabled».
+// Это не ошибки — прячем их, чтобы не пугали в «Ошибках» на странице расширений.
+const SERVICE_LOG = /^[IWE]\d{4} \d\d:\d\d:\d\d|gl_context\.cc|OpenGL error checking|Created TensorFlow Lite|XNNPACK|Graph successfully started/;
+['log', 'info', 'warn', 'error'].forEach((k) => {
+  const orig = console[k].bind(console);
+  console[k] = (...args) => { if (typeof args[0] === 'string' && SERVICE_LOG.test(args[0])) return; orig(...args); };
+});
+
 const HOLD_MS = 700;      // сколько держать жест
 const COOLDOWN_MS = 1500; // после срабатывания — пауза
 const MIN_SCORE = 0.6;
