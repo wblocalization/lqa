@@ -58,6 +58,7 @@ export function parseOrder(md) {
   const body = lines.filter((l) => !GREETING.test(l) && !/^[А-Яа-яЁёA-Za-z ]{2,40}:/.test(l)).join(' ');
   const verb = /провер|вычит|ревью|lqa/i.test(body) && !/перев[оеё]д|перевест/i.test(body) ? 'проверка'
     : /перев[оеё]д|перевест/i.test(body) ? 'переводы' : 'локализация';
+  const due = parseDue(field(lines, 'дедлайн', 'срок', 'срок сдачи', 'deadline', 'дедлайн (если есть)'));
   const codes = languages.map((l) => l.code).join(', ');
   let title = '';
   if (product) title = `${product}: ${verb}${codes ? ` — ${codes}` : ''}`;
@@ -68,7 +69,23 @@ export function parseOrder(md) {
     if (codes && !title.includes(codes)) title += ` — ${codes}`;
   }
   if (title.length > 120) title = `${title.slice(0, 117).replace(/\s+\S*$/, '')}…`;
-  return { product, languages, links, verb, title, text };
+  return { product, languages, links, verb, title, text, due };
+}
+
+/**
+ * «28.10», «28.10.2026», «до 28.10.26» → '2026-10-28T00:00:00+03:00' (так трекер хранит дедлайн). Нет даты — ''.
+ * Год не указан — ближайшая такая дата не в прошлом.
+ */
+export function parseDue(s, now = new Date()) {
+  const m = String(s || '').match(/(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?/);
+  if (!m) return '';
+  const d = Number(m[1]), mo = Number(m[2]);
+  if (d < 1 || d > 31 || mo < 1 || mo > 12) return '';
+  let y = m[3] ? Number(m[3]) : now.getFullYear();
+  if (y < 100) y += 2000;
+  if (!m[3] && new Date(y, mo - 1, d) < new Date(now.getFullYear(), now.getMonth(), now.getDate())) y += 1;
+  const p2 = (n) => String(n).padStart(2, '0');
+  return `${y}-${p2(mo)}-${p2(d)}T00:00:00+03:00`;
 }
 
 /** Название подзадачи для одного языка: «Tracker: перевод — ka». */

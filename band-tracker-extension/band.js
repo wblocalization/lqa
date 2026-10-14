@@ -216,16 +216,21 @@
     renderForm(plan, existing);
   }
   function body(html) { $('card').querySelector('.body').innerHTML = html; }
+  // «Страны Грузия, Казахстан?» — подставится / ещё не знаю код в трекере
+  function fieldLine(label, ok, miss) {
+    if (!ok.length && !miss.length) return '';
+    return `<span>${label} <b>${ok.map(esc).join(', ')}</b>${miss.length ? `${ok.length ? ', ' : ''}<s title="Ещё не знаю этот вариант в трекере — выберите в задаче сами" style="color:#A79DC0">${miss.map(esc).join(', ')}</s>` : ''}</span>`;
+  }
   function closeCard() { $('card').hidden = true; active = null; }
 
   function renderForm(plan, existing) {
     const o = plan.order;
-    const countries = [...new Set(o.languages.map((l) => l.country))];
     body(`
       ${existing.length ? `<div class="warn">По этому треду уже есть: <b>${existing.map(esc).join(', ')}</b>. Создать ещё — только если это другая задача.</div>` : ''}
       <span class="lbl">Основная задача</span>
       <input type="text" id="title" value="${esc(o.title)}" aria-label="Название задачи">
-      <div class="meta">${o.product ? `<span>БЗ <b>${esc(o.product)}</b></span>` : ''}${countries.length ? `<span>Страны <b>${esc(countries.join(', '))}</b></span>` : ''}<span>Тип <b>${esc(plan.board || '—')}</b></span></div>
+      <div class="meta">${fieldLine('БЗ', plan.picked.bz ? [plan.picked.bz] : [], plan.missing.bz ? [plan.missing.bz] : [])}${fieldLine('Страны', plan.picked.countries || [], plan.missing.countries || [])}${o.due ? `<span>Дедлайн <b>${esc(o.due.slice(8, 10) + '.' + o.due.slice(5, 7))}</b></span>` : ''}<span>Тип <b>${esc(plan.board || '—')}</b></span></div>
+      ${(plan.missing.bz || (plan.missing.countries || []).length) ? '<p class="note">Серым — что трекер ещё «не показал» расширению: эти значения выберите в задаче сами. Откройте в трекере выпадающий список «БЗ» или «Страны» — расширение запомнит варианты.</p>' : ''}
       ${o.languages.length ? `<span class="lbl">Подзадачи по языкам</span><div class="langs">${o.languages.map((l) => `<label class="lang"><input type="checkbox" value="${l.code}"${plan.subLangs.includes(l.code) ? ' checked' : ''}>${esc(l.code)} · ${esc(l.name)}</label>`).join('')}</div>
         <p class="note">Отметьте языки штатных переводчиков — на каждый будет своя подзадача. Расширение запомнит выбор.</p>` : ''}
       <label class="chk"><input type="checkbox" id="reply"${plan.replyInThread ? ' checked' : ''}><span>Ответить в тред со ссылками на тикеты (по этому ответу видно, что тикет уже есть)</span></label>

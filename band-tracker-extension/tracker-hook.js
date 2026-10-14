@@ -13,7 +13,10 @@
       if (el.children.length || el.textContent.trim() !== label) continue;
       for (let n = el; n && n !== document.body; n = n.parentElement) {
         const next = n.nextElementSibling;
-        if (next && next.textContent.trim()) return next.textContent.trim().slice(0, 60);
+        const v = next && next.textContent.trim();
+        // соседний элемент — это уже следующая подпись («Проект», «Тип задачи»), а не значение
+        if (v && !/^(пространство|проект|тип( задачи)?)$/i.test(v)) return v.slice(0, 60);
+        if (v) return '';
       }
     }
     return '';
@@ -63,6 +66,23 @@
   const isCreate = (method, url, body) => String(method || 'GET').toUpperCase() === 'POST' &&
     (CREATE.test(pathOf(url)) || (API.test(pathOf(url)) && typeof body === 'string' && /"title"\s*:/.test(body) && /"issue"|"fields"/.test(body)));
 
+  // Списки вариантов (БЗ, страны…), которые трекер загружает для выпадающих списков: [{ id, label }].
+  // Ищем в любом JSON-ответе массивы объектов с id и названием — расширение потом узнает по id, к какому полю они относятся.
+  function scanOptions(text) {
+    if (typeof text !== 'string' || text.length > 2e6 || !/"id"/.test(text)) return;
+    let j; try { j = JSON.parse(text); } catch { return; }
+    const lists = [];
+    (function walk(o, depth) {
+      if (!o || typeof o !== 'object' || depth > 7 || lists.length > 20) return;
+      if (Array.isArray(o)) {
+        const items = o.filter((x) => x && typeof x === 'object' && typeof x.id === 'string' && typeof (x.label || x.name || x.title || x.value) === 'string');
+        if (items.length >= 2 && items.length >= o.length / 2) lists.push(items.slice(0, 500).map((x) => ({ id: x.id, label: String(x.label || x.name || x.title || x.value).slice(0, 80) })));
+        o.slice(0, 200).forEach((x) => walk(x, depth + 1));
+      } else Object.values(o).forEach((x) => walk(x, depth + 1));
+    })(j, 0);
+    if (lists.length) window.postMessage({ __bandTracker: 'options', lists }, location.origin);
+  }
+
   const origFetch = window.fetch;
   window.fetch = function (input, init) {
     // тело запроса — из init или из самого Request (его читаем копией до отправки)
@@ -73,6 +93,7 @@
       const url = typeof input === 'string' ? input : (input && input.url) || String(input);
       const method = (init && init.method) || (input && input.method) || 'GET';
       // задачи, которые создаёт само расширение, помечены — тип из них не запоминаем
+      if (API.test(pathOf(url))) p.then((r) => r.clone().text()).then(scanOptions).catch(() => {});
       if (String(method).toUpperCase() === 'POST' && API.test(pathOf(url)) && !(init && init.bandTrackerOwn)) {
         const names = snapshot();
         Promise.all([reqBody, p.then((r) => r.clone().text().then((t) => [r.status, t]))]).then(([body, [status, t]]) => {
@@ -90,6 +111,9 @@
   };
   XMLHttpRequest.prototype.send = function (body) {
     const m = this.__bandTracker;
+    if (m && API.test(pathOf(m.url))) {
+      this.addEventListener('load', () => { try { scanOptions(this.responseType === 'json' ? JSON.stringify(this.response) : this.responseText); } catch { /* пропустим */ } });
+    }
     if (m && isCreate(m.method, m.url, body)) {
       const names = snapshot();
       this.addEventListener('load', () => {

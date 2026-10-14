@@ -40,3 +40,13 @@ test('номера задач трекера из ответа в треде', (
 test('«перевести» — тоже переводы', () => {
   assert.equal(parseOrder('**Продукт:** Магазин\n**Языки:** uz\nПрошу перевести пуши').title, 'Магазин: переводы — uz');
 });
+
+test('дедлайн из заказа — как его хранит трекер', async () => {
+  const { parseDue } = await import('../parse.js');
+  const now = new Date(2026, 9, 14);
+  assert.equal(parseDue('28.10', now), '2026-10-28T00:00:00+03:00');
+  assert.equal(parseDue('до 3.01', now), '2027-01-03T00:00:00+03:00');
+  assert.equal(parseDue('28.10.26', now), '2026-10-28T00:00:00+03:00');
+  assert.equal(parseDue('нет', now), '');
+  assert.equal(parseOrder('**Продукт:** X\n**Дедлайн:** 28.10.2026').due, '2026-10-28T00:00:00+03:00');
+});

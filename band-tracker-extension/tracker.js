@@ -13,8 +13,66 @@ export const PRESETS = [{
     'b5fd258b-fe14-45d0-b877-f38c585f6e38': [],
     '7f54c34c-2992-4817-b86c-03310905c8d1': [],
     '883735ab-be95-4d44-a830-62740ae23fcb': [],
+    'c907e2d8-c109-4147-ae67-f78fbdc3bdfb': [],
   },
 }];
+
+// Поля трекера, которые заполняем по заказу (коды — из «Скопировать для разработчика», тип «Локализация»).
+// Остальные поля берём из запомненного типа как есть (приоритет и т. п.).
+export const ROLE = {
+  due: '63f946ab-d7d0-4b5f-a0d6-a1f5982c3448',       // дедлайн: ['2026-10-28T00:00:00+03:00']
+  bz: '883735ab-be95-4d44-a830-62740ae23fcb',        // БЗ: один вариант [{ id, label }]
+  countries: 'c907e2d8-c109-4147-ae67-f78fbdc3bdfb', // страны: несколько [{ id, label }]
+};
+// Как страна может называться в трекере
+const COUNTRY_ALIASES = { кыргызстан: ['киргизия', 'киргизстан'], беларусь: ['белоруссия'], молдова: ['молдавия'], оаэ: ['объединённые арабские эмираты'] };
+
+/** Варианты полей, которые расширение уже видело в трекере: { [поле]: { [название в нижнем регистре]: { id, label } } }. */
+// Что уже известно из трекера (от первой задачи, созданной руками) — у всех сразу; остальное расширение выучит само
+export const SEED_OPTIONS = {
+  'c907e2d8-c109-4147-ae67-f78fbdc3bdfb': { беларусь: { id: 'PQYSAXgqcl3w8Gxcoas1s', label: 'Беларусь' }, грузия: { id: '_3TyyGB7ox9s9H5-KNumf', label: 'Грузия' } },
+  '883735ab-be95-4d44-a830-62740ae23fcb': { межнар: { id: 'kp9u0p5qrqk60pkUJfeoG', label: 'Межнар' } },
+};
+export async function knownOptions() {
+  const { fieldOptions = {} } = await chrome.storage.local.get('fieldOptions');
+  const out = JSON.parse(JSON.stringify(SEED_OPTIONS));
+  for (const [fid, o] of Object.entries(fieldOptions)) out[fid] = { ...(out[fid] || {}), ...o };
+  return out;
+}
+const norm = (s) => String(s || '').trim().toLowerCase().replace(/ё/g, 'е');
+
+/**
+ * Поля задачи по заказу: страны (по языкам), БЗ (по продукту), дедлайн. Чего трекер ещё не «показал» — оставляем пустым
+ * и сообщаем в missing, чтобы человек видел. → { fields, missing: { countries: [...], bz: '' }, picked: { countries: [...], bz } }
+ */
+export async function fieldsFor(board, { countries = [], bz = '', due = '' } = {}) {
+  const opts = await knownOptions();
+  const f = JSON.parse(JSON.stringify((board && board.fields) || {}));
+  const find = (fid, label) => {
+    const o = opts[fid] || {};
+    const n = norm(label);
+    if (o[n]) return o[n];
+    for (const alias of COUNTRY_ALIASES[n] || []) if (o[norm(alias)]) return o[norm(alias)];
+    return null;
+  };
+  const missing = { countries: [], bz: '' };
+  const picked = { countries: [], bz: '' };
+  if (ROLE.countries in f) {
+    const real = countries.filter((c) => norm(c) !== 'международный');
+    f[ROLE.countries] = real.map((c) => { const o = find(ROLE.countries, c); if (!o) missing.countries.push(c); return o; }).filter(Boolean).map(({ id, label }) => ({ id, label }));
+    picked.countries = f[ROLE.countries].map((o) => o.label);
+  }
+  if (ROLE.bz in f) {
+    let o = bz ? find(ROLE.bz, bz) : null;
+    // «Tracker» ↔ «Tracker (трекер задач)» — похожее название тоже подходит
+    if (!o && bz) o = Object.values(opts[ROLE.bz] || {}).find((x) => norm(x.label).includes(norm(bz)) || norm(bz).includes(norm(x.label))) || null;
+    f[ROLE.bz] = o ? [{ id: o.id, label: o.label }] : [];
+    if (bz && !o) missing.bz = bz;
+    picked.bz = o ? o.label : '';
+  }
+  if (ROLE.due in f) f[ROLE.due] = due ? [due] : [];
+  return { fields: f, missing, picked };
+}
 export const issueUrl = (board, key) => `${TRACKER}/i/${encodeURIComponent((board && board.ws) || 'EDITORS')}/${encodeURIComponent(key)}`;
 
 /** Типы задач: запомненные + встроенные; выбранный — первым. */
@@ -51,11 +109,11 @@ async function trackerTab() {
 }
 
 /** Создать задачу этого типа. Возвращает номер, например «LOCAL-1817». */
-export async function createIssue(board, title, description) {
+export async function createIssue(board, title, description, fields) {
   const body = {
     executorId: null,
     issue: { initId: crypto.randomUUID(), title, description },
-    fields: board.fields || {},
+    fields: fields || board.fields || {},
     files: { add: [], remove: [] },
     agile: { sprintIds: [] },
   };
@@ -116,12 +174,12 @@ export async function journalFor(postId) {
  * Возвращает { main: { key, url }, subs: [{ key, url, lang }] }.
  */
 export async function createPlan(plan) {
-  const key = await createIssue(plan.board, plan.title, plan.description);
+  const key = await createIssue(plan.board, plan.title, plan.description, plan.fields);
   const main = { key, url: issueUrl(plan.board, key) };
   const subs = [];
   for (const s of plan.subs || []) {
     const desc = `Основная задача: [${main.key}](${main.url})\n\n${s.description || ''}`.trim();
-    const k = await createIssue(plan.board, s.title, desc);
+    const k = await createIssue(plan.board, s.title, desc, s.fields || plan.fields);
     subs.push({ key: k, url: issueUrl(plan.board, k), lang: s.lang || '' });
   }
   return { main, subs };

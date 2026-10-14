@@ -2,7 +2,7 @@
 // панель открывается с готовой формой (текст, автор и ссылка на сообщение).
 // Кнопка «Создать тикет» прямо в треде (band.js) присылает сюда сообщения: разобрать заказ, создать задачи, открыть панель.
 import { parseOrder, subtaskTitle, orderSummary } from './parse.js';
-import { loadBoards, createPlan, logCreated, journalFor } from './tracker.js';
+import { loadBoards, createPlan, logCreated, journalFor, fieldsFor } from './tracker.js';
 
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(console.error);
 
@@ -46,6 +46,9 @@ async function saveDraft(info, tab) {
 }
 
 // ---------- Кнопка «Создать тикет» в треде Band ----------
+/** Что из заказа идёт в поля трекера: страны (по языкам), БЗ (по продукту), дедлайн. */
+export const roleValues = (order) => ({ countries: [...new Set(order.languages.map((l) => l.country))], bz: order.product, due: order.due });
+
 /** Описание задачи: что из заказа (продукт, языки, страны, ссылки) + текст сообщения + ссылка на него. */
 export function describe(order, post) {
   const parts = [orderSummary(order), order.text.trim()];
@@ -70,7 +73,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       const order = parseOrder(msg.post.text);
       const { current } = await loadBoards();
       const { subLangs = [], replyInThread = true } = await chrome.storage.local.get(['subLangs', 'replyInThread']);
-      return { order, board: current && current.name, subLangs, replyInThread, journal: await journalFor(msg.post.postId) };
+      const f = current ? await fieldsFor(current, roleValues(order)) : { picked: {}, missing: {} };
+      return { order, board: current && current.name, subLangs, replyInThread, journal: await journalFor(msg.post.postId), picked: f.picked, missing: f.missing };
     }
     if (msg.type === 'create') {
       const { boards, current } = await loadBoards();
@@ -79,7 +83,11 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       const langs = order.languages.filter((l) => (msg.subLangs || []).includes(l.code));
       const plan = {
         board: current, title: (msg.title || order.title).trim(), description: describe(order, msg.post),
-        subs: langs.map((l) => ({ lang: l.code, title: subtaskTitle(order, l), description: describe({ ...order, languages: [l] }, msg.post) })),
+        fields: (await fieldsFor(current, roleValues(order))).fields,
+        subs: await Promise.all(langs.map(async (l) => ({
+          lang: l.code, title: subtaskTitle(order, l), description: describe({ ...order, languages: [l] }, msg.post),
+          fields: (await fieldsFor(current, roleValues({ ...order, languages: [l] }))).fields, // у подзадачи — страна её языка
+        }))),
       };
       const res = await createPlan(plan);
       await chrome.storage.local.set({ subLangs: msg.subLangs || [], replyInThread: !!msg.reply });

@@ -2,7 +2,7 @@
 // Трекер пускает запросы только со своей страницы (вход + csrf_token из cookie), поэтому задачу создаём
 // во вкладке tracker.wb.ru — от имени того, кто в ней вошёл. Нет открытой вкладки — откроем в фоне.
 
-import { PRESETS, issueUrl, createPlan, logCreated, journalFor } from './tracker.js';
+import { PRESETS, issueUrl, createPlan, logCreated, journalFor, fieldsFor } from './tracker.js';
 import { parseOrder, subtaskTitle, orderSummary } from './parse.js';
 
 const DRAFT_TTL = 10 * 60 * 1000; // черновик из Band старше 10 минут уже не подхватываем
@@ -185,8 +185,12 @@ async function renderOrderExtras() {
   els.meta.hidden = !(order && (order.product || countries.length));
   els.meta.innerHTML = '';
   const metaItem = (label, value) => { const sp = document.createElement('span'); const b = document.createElement('b'); b.textContent = value; sp.append(`${label} `, b); els.meta.append(sp); };
-  if (order && order.product) metaItem('БЗ', order.product);
-  if (countries.length) metaItem('Страны', countries.join(', '));
+  const board = currentBoard();
+  const f = board && order ? await fieldsFor(board, roleOf(order)) : { picked: {}, missing: {} };
+  const showField = (label, ok, miss) => { if (ok.length || miss.length) metaItem(label, ok.join(', ') + (miss.length ? `${ok.length ? ', ' : ''}${miss.join(', ')} — выберите в задаче сами` : '')); };
+  showField('БЗ', f.picked.bz ? [f.picked.bz] : [], f.missing.bz ? [f.missing.bz] : []);
+  showField('Страны', f.picked.countries || [], f.missing.countries || []);
+  if (order && order.due) metaItem('Дедлайн', `${order.due.slice(8, 10)}.${order.due.slice(5, 7)}.${order.due.slice(0, 4)}`);
   const { subLangs = [], replyInThread = true } = await chrome.storage.local.get(['subLangs', 'replyInThread']);
   els.subsBox.hidden = !langs.length;
   els.subs.innerHTML = '';
@@ -217,6 +221,7 @@ async function renderOrderExtras() {
     els.exists.hidden = false;
   }
 }
+const roleOf = (o) => ({ countries: [...new Set(o.languages.map((l) => l.country))], bz: o.product, due: o.due });
 const checkedLangs = () => [...els.subs.querySelectorAll('input:checked')].map((i) => i.value);
 function updateSubmit() {
   const n = checkedLangs().length;
@@ -246,7 +251,11 @@ els.form.addEventListener('submit', async (e) => {
     const one = (l) => buildDescription(order.text, source, { ...order, languages: [l] });
     const res = await createPlan({
       board, title, description: hardBreaks(els.desc.value.trim()),
-      subs: langs.map((l) => ({ lang: l.code, title: subtaskTitle(order, l), description: hardBreaks(one(l)) })),
+      fields: (await fieldsFor(board, roleOf(order))).fields,
+      subs: await Promise.all(langs.map(async (l) => ({
+        lang: l.code, title: subtaskTitle(order, l), description: hardBreaks(one(l)),
+        fields: (await fieldsFor(board, roleOf({ ...order, languages: [l] }))).fields,
+      }))),
     });
     created = res.main;
     await chrome.storage.local.set({ subLangs: checkedLangs(), replyInThread: els.reply.checked });
