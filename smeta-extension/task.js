@@ -1,5 +1,5 @@
 // Вкладка «Новая задача»: то же, что окно «➕ Добавить задачу» в таблице, только без захода в таблицу.
-import { settings, isConfigured, api, esc, readClipboard, getLists, autoDeadline, setLink, toast, ask, sumField } from './core.js';
+import { settings, isConfigured, api, esc, readClipboard, getLists, autoDeadline, setLink, toast, ask, sumField, langGroupsHtml, bindLangCounts, updateLangCounts } from './core.js';
 import { makeLinkList } from './links.js';
 import { showLetter, lettersForExport, importLetters, loadLetters, listTexts, textsForExport, importTexts } from './letter.js';
 
@@ -83,14 +83,8 @@ function buildForm() {
   fillSelect(els.deliveryStatus, lists.deliveryStatuses);
   fillSelect(els.manager, lists.managers);
 
-  const titles = { regular: 'Подрядчики', shtat: 'Штат', rare: 'Подрядчики · редкие' };
-  els.langs.innerHTML = ['regular', 'shtat', 'rare']
-    .filter((g) => (lists.languages[g] || []).length)
-    .map((g) => `<div class="lang-group"><span class="lang-title">${titles[g]}</span><div class="chips">` +
-      lists.languages[g].map((l) =>
-        `<label class="chip"><input type="checkbox" value="${esc(l)}"><span>${esc(l.replace(/^ШТАТ /, ''))}</span></label>`).join('') +
-      '</div></div>')
-    .join('');
+  els.langs.innerHTML = langGroupsHtml(lists.languages);
+  bindLangCounts(els.langs);
 
   resetForm();
   loadTemplates();
@@ -434,6 +428,7 @@ els.subject.addEventListener('blur', () => {
 els.date.addEventListener('change', () => { els.subject.value = withToday(els.subject.value); updatePreview(); });
 
 function updatePreview() {
+  updateLangCounts(els.langs); // «выбрано: N» у групп языков — и после шаблона, и после сброса
   if (!lists) return;
   if (rowOrder) { els.preview.textContent = rowOrder.subject; return; }
   if (pendingRows.length) { els.preview.textContent = subjectFor(nextId || '…', mergeRows(pendingRows)); return; }

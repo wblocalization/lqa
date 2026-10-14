@@ -258,6 +258,40 @@ export function sumField(input) {
   };
 }
 
+// ---------- Языки: группы с заметными заголовками ----------
+const LANG_GROUPS = [
+  ['regular', '🏢', 'Подрядчики', 'уйдут в письмо подрядчику'],
+  ['shtat', '👥', 'Штат', 'переводим сами — в письмо подрядчику не попадут'],
+  ['rare', '🔸', 'Редкие', 'тоже подрядчикам, реже'],
+];
+/**
+ * Чипы языков по группам. languages — { regular, shtat, rare }, checked — выбранные,
+ * extra — выбранные, которых нет в справочнике (покажем группой «Другие»).
+ */
+export function langGroupsHtml(languages, checked = [], extra = []) {
+  const groups = LANG_GROUPS.map(([k, icon, title, note]) => [k, icon, title, note, (languages && languages[k]) || []]);
+  if (extra.length) groups.push(['other', '•', 'Другие', 'нет в справочнике', extra]);
+  return groups.filter((g) => g[4].length).map(([k, icon, title, note, items]) =>
+    `<div class="lang-group lg-${k}"><div class="lang-head"><span class="lang-title">${icon} ${esc(title)}</span>` +
+    `<span class="lang-count" hidden></span><span class="lang-note">${esc(note)}</span></div><div class="chips">` +
+    items.map((l) => `<label class="chip"><input type="checkbox" value="${esc(l)}"${checked.includes(l) ? ' checked' : ''}>` +
+      `<span>${esc(l.replace(/^ШТАТ /, ''))}</span></label>`).join('') + '</div></div>').join('');
+}
+/** «выбрано: 2» у заголовка группы — обновляется при каждом клике. */
+export function updateLangCounts(box) {
+  box.querySelectorAll('.lang-group').forEach((g) => {
+    const n = g.querySelectorAll('input:checked').length;
+    const c = g.querySelector('.lang-count');
+    c.hidden = !n;
+    c.textContent = `выбрано: ${n}`;
+  });
+}
+export function bindLangCounts(box) {
+  if (box.dataset.counts) return;
+  box.dataset.counts = '1';
+  box.addEventListener('change', () => updateLangCounts(box));
+}
+
 /** «102 641,64» */
 export function money(x) {
   return Number(x || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 3 });

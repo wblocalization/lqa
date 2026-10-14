@@ -1,5 +1,5 @@
 // Правка задачи из расширения: то же, что «Поиск и правка» в таблице.
-import { api, esc, getLists, autoDeadline, ask, sumField } from './core.js';
+import { api, esc, getLists, autoDeadline, ask, sumField, langGroupsHtml, bindLangCounts, updateLangCounts } from './core.js';
 import { makeLinkList } from './links.js';
 
 const $ = (s) => document.querySelector(s);
@@ -33,14 +33,10 @@ function fillSelect(el, items, value) {
 }
 
 function renderLangs(checked) {
-  const groups = [['Основные', lists.languages.regular], ['ШТАТ', lists.languages.shtat], ['Редкие', lists.languages.rare]];
-  const known = groups.flatMap((g) => g[1]);
-  const other = checked.filter((l) => !known.includes(l));
-  if (other.length) groups.push(['Другие', other]);
-  els.langs.innerHTML = groups.filter((g) => g[1].length).map(([title, items]) =>
-    `<div class="lang-group"><span class="lang-title">${title}</span><div class="chips">` +
-    items.map((l) => `<label class="chip"><input type="checkbox" value="${esc(l)}"${checked.includes(l) ? ' checked' : ''}>` +
-      `<span>${esc(l.replace(/^ШТАТ /, ''))}</span></label>`).join('') + '</div></div>').join('');
+  const known = ['regular', 'shtat', 'rare'].flatMap((g) => lists.languages[g] || []);
+  els.langs.innerHTML = langGroupsHtml(lists.languages, checked, checked.filter((l) => !known.includes(l)));
+  bindLangCounts(els.langs);
+  updateLangCounts(els.langs);
 }
 
 makeLinkList(els.link2);

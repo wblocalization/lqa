@@ -271,7 +271,7 @@ form { display: flex; flex-direction: column; gap: 16px; }
 .langs { margin: 0; padding: 0; border: none; min-width: 0; }
 .langs legend { padding: 0; margin-bottom: 6px; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); }
 .lang-group + .lang-group { margin-top: 8px; }
-.lang-title { display: block; margin-bottom: 4px; font-size: 11.5px; color: var(--ink-soft); }
+.lang-title { font-size: 12.5px; font-weight: 700; color: var(--ink); }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { cursor: pointer; }
 .chip input { position: absolute; opacity: 0; pointer-events: none; }
@@ -788,15 +788,16 @@ dialog.whatsnew li + li { margin-top: 4px; }
   --g-who: #64748B; --g-who-bg: #F4F6F9;
   --g-money: #C08A00; --g-money-bg: #FFF9E5;
   --g-note: #DB2777; --g-note-bg: #FFF3F8;
+  --g-on: #FFFFFF; /* текст на цветной кнопке */
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --g-what: #B39DFA; --g-what-bg: #251E37; --g-from: #7EB0FF; --g-from-bg: #1A2335;
   --g-when: #F5A35C; --g-when-bg: #2C2118; --g-langs: #5ED48C; --g-langs-bg: #172A20;
-  --g-who: #A3AEC2; --g-who-bg: #22242C; --g-money: #F2C94C; --g-money-bg: #2A2614; --g-note: #F47BB5; --g-note-bg: #2E1A26; } }
+  --g-who: #A3AEC2; --g-who-bg: #22242C; --g-money: #F2C94C; --g-money-bg: #2A2614; --g-note: #F47BB5; --g-note-bg: #2E1A26; --g-on: #0F1A14; } }
 :root[data-theme="dark"] {
   --g-what: #B39DFA; --g-what-bg: #251E37; --g-from: #7EB0FF; --g-from-bg: #1A2335;
   --g-when: #F5A35C; --g-when-bg: #2C2118; --g-langs: #5ED48C; --g-langs-bg: #172A20;
-  --g-who: #A3AEC2; --g-who-bg: #22242C; --g-money: #F2C94C; --g-money-bg: #2A2614; --g-note: #F47BB5; --g-note-bg: #2E1A26; }
+  --g-who: #A3AEC2; --g-who-bg: #22242C; --g-money: #F2C94C; --g-money-bg: #2A2614; --g-note: #F47BB5; --g-note-bg: #2E1A26; --g-on: #0F1A14; }
 .g-what { --g: var(--g-what); --gbg: var(--g-what-bg); }
 .g-from { --g: var(--g-from); --gbg: var(--g-from-bg); }
 .g-when { --g: var(--g-when); --gbg: var(--g-when-bg); }
@@ -810,7 +811,20 @@ dialog.whatsnew li + li { margin-top: 4px; }
 .fgroup :is(input, select, textarea):focus { border-color: var(--g); box-shadow: 0 0 0 3px color-mix(in srgb, var(--g) 18%, transparent); outline: none; }
 /* обязательное и пустое — видно сразу */
 .fgroup :is(input, select, textarea)[required]:invalid { border-color: color-mix(in srgb, var(--warn) 55%, var(--line)); background: var(--warn-soft); }
-.g-langs .chip input:checked + span { background: var(--g); border-color: var(--g); color: #fff; }
+.g-langs .chip input:checked + span { background: var(--g); border-color: var(--g); color: var(--g-on); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .del-btn { opacity: .55; }
 .del-btn:hover { opacity: 1; }
+
+/* Группы языков: заголовок жирный, со счётчиком; штат — свой цвет, чтобы не путать с подрядчиками */
+.lang-group { padding: 8px 10px 10px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); }
+.lang-group + .lang-group { margin-top: 8px; }
+.lang-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin-bottom: 6px; }
+.lang-count { font-size: 11px; font-weight: 700; color: var(--g-on); background: var(--g, var(--accent)); border-radius: 999px; padding: 1px 8px; }
+.lang-note { flex-basis: 100%; font-size: 11.5px; color: var(--ink-soft); }
+.lg-shtat { --g: #0E9384; border-style: dashed; border-color: color-mix(in srgb, #0E9384 45%, var(--line)); }
+.lg-shtat .chip span { border-style: dashed; }
+.g-langs .lg-shtat .chip input:checked + span { background: var(--g); border-color: var(--g); border-style: solid; }
+.lg-rare .chip span { font-size: 12.5px; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .lg-shtat { --g: #2DD4BF; } }
+:root[data-theme="dark"] .lg-shtat { --g: #2DD4BF; }
