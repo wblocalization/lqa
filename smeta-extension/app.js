@@ -129,6 +129,8 @@ async function showTableLink() {
   let lists = null;
   try { lists = (await chrome.storage.local.get(key))[key]; } catch { /* нет — без кнопки */ }
   setLink($('#openTable'), lists && lists.tableUrl);
+  // в «Настройках» — та же таблица; таблица прислала свой адрес — берём его, иначе остаётся вписанный в разметку
+  if (lists && lists.tableUrl) $('#mlOpenTable').href = lists.tableUrl;
 }
 chrome.storage.onChanged.addListener((changes) => { if (changes[`lists:${settings.url}`]) showTableLink(); });
 
