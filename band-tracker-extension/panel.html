@@ -54,9 +54,16 @@
     <label class="field"><span class="lbl">Название <span class="req">*</span></span>
       <input id="title" type="text" required placeholder="Коротко: что нужно сделать">
     </label>
+    <p id="exists" class="warn" hidden></p>
+    <p id="meta" class="meta" hidden></p>
     <label class="field"><span class="lbl">Описание <span class="opt">**жирный** · [текст](ссылка)</span></span>
       <textarea id="desc" rows="8" placeholder="Подробности задачи"></textarea>
     </label>
+    <fieldset id="subsBox" class="field subs" hidden>
+      <legend class="lbl">Подзадачи по языкам <span class="opt">для штатных переводчиков</span></legend>
+      <div id="subs" class="langs"></div>
+    </fieldset>
+    <label id="replyRow" class="chk" hidden><input id="reply" type="checkbox" checked><span>Ответить в тред со ссылками на тикеты</span></label>
     <button id="submit" class="btn primary" type="submit">Создать в трекере</button>
     <button id="clear" class="btn ghost" type="button">Очистить</button>
   </form>
@@ -65,6 +72,8 @@
     <p class="kicker">Готово ✨</p>
     <a id="doneKey" class="key" href="#" target="_blank" rel="noopener"></a>
     <p id="doneTitle" class="done-title"></p>
+    <ul id="doneSubs" class="done-subs" hidden></ul>
+    <p id="doneReply" class="fine" hidden></p>
     <button id="copyLink" class="btn primary" type="button">Скопировать ссылку</button>
     <div class="two">
       <button id="copyKey" class="btn ghost" type="button">Номер</button>

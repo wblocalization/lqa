@@ -1,5 +1,9 @@
 // Клик по иконке — боковая панель. Правый клик по сообщению в Band → «📮 Создать задачу в трекере»:
 // панель открывается с готовой формой (текст, автор и ссылка на сообщение).
+// Кнопка «Создать тикет» прямо в треде (band.js) присылает сюда сообщения: разобрать заказ, создать задачи, открыть панель.
+import { parseOrder, subtaskTitle, orderSummary } from './parse.js';
+import { loadBoards, createPlan, logCreated, journalFor } from './tracker.js';
+
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(console.error);
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -34,7 +38,55 @@ async function saveDraft(info, tab) {
       text: (post && post.text) || '',
       author: (post && post.author) || '',
       link: (post && post.link) || '',
+      postId: (post && post.postId) || '',
+      tabId: tab.id,
       at: Date.now(),
     },
   });
 }
+
+// ---------- Кнопка «Создать тикет» в треде Band ----------
+/** Описание задачи: что из заказа (продукт, языки, страны, ссылки) + текст сообщения + ссылка на него. */
+export function describe(order, post) {
+  const parts = [orderSummary(order), order.text.trim()];
+  if (post.link) parts.push(`[Сообщение в Band](${post.link})${post.author ? ` — ${post.author}` : ''}`);
+  return hardBreaks(parts.filter(Boolean).join('\n\n'));
+}
+function hardBreaks(md) {
+  return String(md || '').split(/(```[\s\S]*?```)/).map((part, i) => (i % 2 ? part : part.replace(/([^\n])[ \t]*\n(?=[^\n])/g, '$1  \n'))).join('');
+}
+
+chrome.runtime.onMessage.addListener((msg, sender, reply) => {
+  if (!msg || !msg.type) return false;
+  if (msg.type === 'openPanel') {
+    // Открыть панель можно только сразу по клику — до любых await
+    const opened = chrome.sidePanel.open({ tabId: sender.tab.id }).then(() => true, () => false);
+    chrome.storage.local.set({ trackerDraft: { ...msg.draft, tabId: sender.tab.id, at: Date.now() } });
+    opened.then((ok) => reply({ ok }));
+    return true;
+  }
+  (async () => {
+    if (msg.type === 'plan') {
+      const order = parseOrder(msg.post.text);
+      const { current } = await loadBoards();
+      const { subLangs = [], replyInThread = true } = await chrome.storage.local.get(['subLangs', 'replyInThread']);
+      return { order, board: current && current.name, subLangs, replyInThread, journal: await journalFor(msg.post.postId) };
+    }
+    if (msg.type === 'create') {
+      const { boards, current } = await loadBoards();
+      if (!current) throw new Error('Нет типа задачи: создайте одну задачу нужного типа в tracker.wb.ru — расширение запомнит её');
+      const order = parseOrder(msg.post.text);
+      const langs = order.languages.filter((l) => (msg.subLangs || []).includes(l.code));
+      const plan = {
+        board: current, title: (msg.title || order.title).trim(), description: describe(order, msg.post),
+        subs: langs.map((l) => ({ lang: l.code, title: subtaskTitle(order, l), description: describe({ ...order, languages: [l] }, msg.post) })),
+      };
+      const res = await createPlan(plan);
+      await chrome.storage.local.set({ subLangs: msg.subLangs || [], replyInThread: !!msg.reply });
+      await logCreated({ postId: msg.post.postId, link: msg.post.link, title: plan.title, main: res.main, subs: res.subs, board: current.name });
+      return res;
+    }
+    throw new Error('Неизвестная команда');
+  })().then((r) => reply({ ok: true, ...r }), (e) => reply({ ok: false, error: e.message }));
+  return true;
+});

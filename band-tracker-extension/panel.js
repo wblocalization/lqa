@@ -2,19 +2,9 @@
 // Трекер пускает запросы только со своей страницы (вход + csrf_token из cookie), поэтому задачу создаём
 // во вкладке tracker.wb.ru — от имени того, кто в ней вошёл. Нет открытой вкладки — откроем в фоне.
 
-const TRACKER = 'https://tracker.wb.ru';
-// Тип задачи, который есть у всех сразу (Редакция / Локализация / Локализация). Остальные расширение запоминает само (tracker-hook.js).
-const PRESETS = [{
-  path: '/api/gateway/catalog/redaktsiya/lokalizatsiya/lokalizatsiya',
-  name: 'Локализация · Локализация', space: 'Редакция', ws: 'EDITORS', project: 'LOCAL', preset: true,
-  fields: {
-    '63f946ab-d7d0-4b5f-a0d6-a1f5982c3448': [],
-    '1ee7026d-8aae-4bb1-bf9c-3ebc9ea3a7bc': [{ id: 'DgqUHf16il6y12Jms6LPN', label: 'Normal' }],
-    'b5fd258b-fe14-45d0-b877-f38c585f6e38': [],
-    '7f54c34c-2992-4817-b86c-03310905c8d1': [],
-    '883735ab-be95-4d44-a830-62740ae23fcb': [],
-  },
-}];
+import { PRESETS, issueUrl, createPlan, logCreated, journalFor } from './tracker.js';
+import { parseOrder, subtaskTitle, orderSummary } from './parse.js';
+
 const DRAFT_TTL = 10 * 60 * 1000; // черновик из Band старше 10 минут уже не подхватываем
 
 const $ = (s) => document.querySelector(s);
@@ -24,10 +14,13 @@ const els = {
   copyLink: $('#copyLink'), copyKey: $('#copyKey'), again: $('#again'),
   boards: $('#boards'), boardsBtn: $('#boardsBtn'), boardList: $('#boardList'), boardsClose: $('#boardsClose'),
   msg: $('#msg'), toast: $('#toast'),
+  exists: $('#exists'), meta: $('#meta'), subsBox: $('#subsBox'), subs: $('#subs'), replyRow: $('#replyRow'), reply: $('#reply'),
+  doneSubs: $('#doneSubs'), doneReply: $('#doneReply'),
 };
 
 let boards = [];     // типы задач (адрес «пространство/проект/тип»): запомненные + встроенные
-let source = null;   // { link, author } — сообщение Band, из которого пришли
+let source = null;   // { link, author, postId, tabId } — сообщение Band, из которого пришли
+let order = null;    // разобранный заказ (продукт, языки, ссылки)
 let created = null;  // { key, url }
 
 // ---------- Мелочи ----------
@@ -42,7 +35,6 @@ function toast(text) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { els.toast.hidden = true; }, 2200);
 }
-const issueUrl = (board, key) => `${TRACKER}/i/${encodeURIComponent((board && board.ws) || 'EDITORS')}/${encodeURIComponent(key)}`;
 
 /** Название — первая строка сообщения, не длиннее 120 знаков. */
 export function titleFromText(text) {
@@ -67,9 +59,9 @@ export function hardBreaks(md) {
   return String(md || '').split(/(```[\s\S]*?```)/).map((part, i) => (i % 2 ? part : part.replace(/([^\n])[ \t]*\n(?=[^\n])/g, '$1  \n'))).join('');
 }
 
-/** Описание в Markdown (трекер хранит его так): текст сообщения и ссылка на него в Band. */
-export function buildDescription(text, src) {
-  const parts = [String(text || '').trim()];
+/** Описание в Markdown (трекер хранит его так): что из заказа, текст сообщения и ссылка на него в Band. */
+export function buildDescription(text, src, ord) {
+  const parts = [ord ? orderSummary(ord) : '', String(text || '').trim()];
   if (src && src.link) parts.push(`[Сообщение в Band](${src.link})${src.author ? ` — ${src.author}` : ''}`);
   return parts.filter(Boolean).join('\n\n');
 }
@@ -144,10 +136,13 @@ els.helpBtn.addEventListener('click', () => {
 /** Открыть форму: пустую или из черновика Band { selection, text, link, author }. */
 function openForm(draft = null) {
   created = null;
-  source = draft && (draft.link || draft.author) ? { link: draft.link || '', author: draft.author || '' } : null;
+  source = draft && (draft.link || draft.author) ? { link: draft.link || '', author: draft.author || '', postId: draft.postId || '', tabId: draft.tabId || 0 } : null;
   const text = draft ? (draft.selection || draft.text || '') : '';
-  els.title.value = titleFromText(text);
-  els.desc.value = buildDescription(text, source);
+  order = parseOrder(text);
+  // Заказ с полями («Продукт:», «Языки:») — название по сути; иначе как раньше (первая строка / сообщение бота)
+  els.title.value = (draft && draft.title) || (order.product ? order.title : titleFromText(text)) || order.title;
+  els.desc.value = buildDescription(text, source, order);
+  renderOrderExtras();
   els.from.hidden = !source;
   els.from.textContent = '';
   if (source) {
@@ -166,87 +161,57 @@ function openForm(draft = null) {
   (els.title.value ? els.desc : els.title).focus();
 }
 
+/** Подзадачи по языкам заказа, «ответить в тред», «уже есть». */
+async function renderOrderExtras() {
+  const langs = order ? order.languages : [];
+  const countries = [...new Set(langs.map((l) => l.country))];
+  els.meta.hidden = !(order && (order.product || countries.length));
+  els.meta.innerHTML = '';
+  const metaItem = (label, value) => { const sp = document.createElement('span'); const b = document.createElement('b'); b.textContent = value; sp.append(`${label} `, b); els.meta.append(sp); };
+  if (order && order.product) metaItem('БЗ', order.product);
+  if (countries.length) metaItem('Страны', countries.join(', '));
+  const { subLangs = [], replyInThread = true } = await chrome.storage.local.get(['subLangs', 'replyInThread']);
+  els.subsBox.hidden = !langs.length;
+  els.subs.innerHTML = '';
+  langs.forEach((l) => {
+    const lab = document.createElement('label'); lab.className = 'lang';
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = l.code; cb.checked = subLangs.includes(l.code);
+    cb.addEventListener('change', updateSubmit);
+    lab.append(cb, `${l.code} · ${l.name}`);
+    els.subs.append(lab);
+  });
+  els.replyRow.hidden = !(source && source.postId && source.tabId);
+  els.reply.checked = replyInThread;
+  updateSubmit();
+  // уже есть тикет по этому сообщению/треду — предупредить (журнал + ответы в треде)
+  els.exists.hidden = true;
+  if (!source || !source.postId) return;
+  const keys = new Set();
+  const j = await journalFor(source.postId);
+  if (j) [j.main, ...(j.subs || [])].forEach((x) => keys.add(x.key));
+  if (source.tabId) {
+    try {
+      const r = await chrome.tabs.sendMessage(source.tabId, { type: 'bandThread', postId: source.postId });
+      if (r && r.ok) r.keys.forEach((k) => keys.add(k));
+    } catch { /* вкладку Band закрыли — обойдёмся журналом */ }
+  }
+  if (keys.size) {
+    els.exists.textContent = `По этому треду уже есть: ${[...keys].join(', ')}. Создать ещё — только если это другая задача.`;
+    els.exists.hidden = false;
+  }
+}
+const checkedLangs = () => [...els.subs.querySelectorAll('input:checked')].map((i) => i.value);
+function updateSubmit() {
+  const n = checkedLangs().length;
+  els.submit.textContent = n ? `Создать ${n + 1} тикета` : 'Создать в трекере';
+}
+
 /** Свежий черновик из Band — забрать и стереть, чтобы не открылся второй раз. */
 async function pickDraft() {
   const { trackerDraft: d } = await chrome.storage.local.get('trackerDraft');
   if (!d) return;
   await chrome.storage.local.remove('trackerDraft');
   if (Date.now() - (d.at || 0) < DRAFT_TTL) openForm(d);
-}
-
-// ---------- Вкладка трекера ----------
-function waitLoaded(tabId, timeoutMs = 30000) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      chrome.tabs.onUpdated.removeListener(onUpdated);
-      reject(new Error('Трекер не открылся за 30 секунд — проверьте сеть/VPN'));
-    }, timeoutMs);
-    function onUpdated(id, info) {
-      if (id === tabId && info.status === 'complete') {
-        clearTimeout(timer);
-        chrome.tabs.onUpdated.removeListener(onUpdated);
-        resolve();
-      }
-    }
-    chrome.tabs.onUpdated.addListener(onUpdated);
-  });
-}
-
-async function trackerTab() {
-  const [tab] = await chrome.tabs.query({ url: `${TRACKER}/*` });
-  if (tab && tab.status === 'complete') return tab;
-  if (tab) { await waitLoaded(tab.id); return tab; }
-  const fresh = await chrome.tabs.create({ url: `${TRACKER}/`, active: false });
-  await waitLoaded(fresh.id);
-  return fresh;
-}
-
-/** Создать задачу этого типа. Возвращает номер, например «LOCAL-1817». */
-async function createIssue(board, title, description) {
-  const body = {
-    executorId: null,
-    issue: { initId: crypto.randomUUID(), title, description },
-    fields: board.fields || {},
-    files: { add: [], remove: [] },
-    agile: { sprintIds: [] },
-  };
-  const tab = await trackerTab();
-  let res;
-  try {
-    [res] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: createInPage, args: [board.path, body] });
-  } catch (e) {
-    if (/error page|Cannot access/i.test(e.message)) throw new Error('Трекер не открылся во вкладке — проверьте сеть/VPN и что tracker.wb.ru открывается');
-    throw e;
-  }
-  const r = res && res.result;
-  if (!r) throw new Error('Трекер не ответил');
-  if (r.error) throw new Error(r.error);
-  return r.key;
-}
-
-/** Выполняется на странице tracker.wb.ru: там вход и csrf_token. */
-async function createInPage(path, body) {
-  const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/);
-  if (!m) return { error: 'Не вижу входа в трекер — откройте tracker.wb.ru, войдите и попробуйте ещё раз' };
-  try {
-    const r = await fetch(path, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'content-type': 'application/json', accept: 'application/json', 'x-csrf-token': decodeURIComponent(m[1]) },
-      body: JSON.stringify(body),
-      bandTrackerOwn: true, // метка для tracker-hook.js: эту задачу создали мы, тип не перезаписывать
-    });
-    let j = {};
-    try { j = await r.json(); } catch { /* не JSON — ниже скажем код */ }
-    if (r.status === 401 || r.status === 403) return { error: `Трекер не пустил (код ${r.status}) — войдите в tracker.wb.ru заново` };
-    if (!r.ok || !j.success || typeof j.data !== 'string') {
-      const why = j.message || j.error || (j.errors && JSON.stringify(j.errors)) || '';
-      return { error: `Трекер не создал задачу (код ${r.status})${why ? `: ${why}` : ''}` };
-    }
-    return { key: j.data };
-  } catch (e) {
-    return { error: `Нет связи с трекером: ${e.message}` };
-  }
 }
 
 // ---------- Кнопки ----------
@@ -260,11 +225,33 @@ els.form.addEventListener('submit', async (e) => {
   els.submit.textContent = 'Создаю…';
   setMsg('');
   try {
-    const key = await createIssue(board, title, hardBreaks(els.desc.value.trim()));
-    created = { key, url: issueUrl(board, key) };
-    els.doneKey.textContent = key;
-    els.doneKey.href = created.url;
+    const langs = (order ? order.languages : []).filter((l) => checkedLangs().includes(l.code));
+    const one = (l) => buildDescription(order.text, source, { ...order, languages: [l] });
+    const res = await createPlan({
+      board, title, description: hardBreaks(els.desc.value.trim()),
+      subs: langs.map((l) => ({ lang: l.code, title: subtaskTitle(order, l), description: hardBreaks(one(l)) })),
+    });
+    created = res.main;
+    await chrome.storage.local.set({ subLangs: checkedLangs(), replyInThread: els.reply.checked });
+    await logCreated({ postId: source ? source.postId : '', link: source ? source.link : '', title, main: res.main, subs: res.subs, board: board.name });
+    els.doneKey.textContent = res.main.key;
+    els.doneKey.href = res.main.url;
     els.doneTitle.textContent = title;
+    els.doneSubs.innerHTML = '';
+    res.subs.forEach((x) => {
+      const li = document.createElement('li'); const a = document.createElement('a');
+      a.href = x.url; a.target = '_blank'; a.rel = 'noopener'; a.textContent = x.key;
+      li.append(a, ` — ${x.lang}`); els.doneSubs.append(li);
+    });
+    els.doneSubs.hidden = !res.subs.length;
+    els.doneReply.hidden = true;
+    if (source && source.postId && source.tabId && els.reply.checked) {
+      const text = `Завели в трекере: [${res.main.key}](${res.main.url})` + (res.subs.length ? ` — основная задача; подзадачи: ${res.subs.map((x) => `[${x.key}](${x.url}) (${x.lang})`).join(', ')}` : '');
+      let r = null;
+      try { r = await chrome.tabs.sendMessage(source.tabId, { type: 'bandReply', postId: source.postId, message: text }); } catch { /* вкладку закрыли */ }
+      els.doneReply.textContent = r && r.ok ? '✓ Ответ со ссылками отправлен в тред' : `В тред ответить не вышло${r && r.error ? ` (${r.error})` : ''} — скопируйте ссылку и вставьте сами`;
+      els.doneReply.hidden = false;
+    }
     els.form.hidden = true;
     els.done.hidden = false;
     els.intro.hidden = true;
@@ -272,7 +259,7 @@ els.form.addEventListener('submit', async (e) => {
     setMsg(err.message, 'err');
   } finally {
     els.submit.disabled = false;
-    els.submit.textContent = 'Создать в трекере';
+    updateSubmit();
   }
 });
 
