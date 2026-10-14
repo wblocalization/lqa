@@ -105,6 +105,7 @@ function onOpen() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('📋 Менеджеры')
     .addItem('➕ Добавить задачу', 'showAddTaskDialog')
+    .addItem('🙋 Мои задачи (видно только мне)', 'showMyTasks')
     .addItem('🔍 Поиск и правка', 'showSearchEditSidebar')
     .addItem('📊 Дашборд', 'showDashboard')
     .addToUi();
@@ -898,20 +899,21 @@ function showAllTasks() {
  */
 function filterTasksByManager_(name) {
   const sh = getTasksSheet();
-  let why = 'В Apps Script не включён сервис «Google Sheets API» (Сервисы → + → Google Sheets API).';
-  if (typeof Sheets !== 'undefined' && Sheets.Spreadsheets) {
-    try { return openManagerView_(sh, name); } catch (e) {
-      why = '';
-      SpreadsheetApp.getUi().alert('Личное представление не открылось',
-        'Google ответил:\n\n' + e.message + '\n\nПока показываю задачи общим фильтром — его видят все в таблице. ' +
-        'Вернуть: «👁 Показать все задачи». Пришлите, пожалуйста, скрин этого окна.', SpreadsheetApp.getUi().ButtonSet.OK);
-    }
+  const ui = SpreadsheetApp.getUi();
+  // Общий фильтр больше не ставим: он скрывает чужие задачи у всех, кто сейчас в таблице
+  if (typeof Sheets === 'undefined' || !Sheets.Spreadsheets) {
+    ui.alert('Мои задачи',
+      'Чтобы «Мои задачи» были видны только вам, владельцу таблицы нужно один раз включить сервис:\n' +
+      '«Расширения → Apps Script → слева «Сервисы» → «+» → Google Sheets API → «Добавить»».\n\n' +
+      'Пока можно смотреть свои задачи в расширении «Задачи и сметы» (вкладка «Мои») — там у каждого свой список.',
+      ui.ButtonSet.OK);
+    return;
   }
-  const values = readRows_(sh, TASK_COLS).map(r => str_(r[COL.MANAGER - 1])).filter(Boolean);
-  const hidden = values.filter((v, i) => v !== name && values.indexOf(v) === i);
-  const filter = resetFilter_(sh);
-  if (hidden.length) filter.setColumnFilterCriteria(COL.MANAGER, SpreadsheetApp.newFilterCriteria().setHiddenValues(hidden).build());
-  SpreadsheetApp.getActive().toast('Показаны задачи: ' + name + ' — общим фильтром, его видят все в таблице. Вернуть: «👁 Показать все задачи». ' + why, 'Фильтр', 15);
+  try {
+    return openManagerView_(sh, name);
+  } catch (e) {
+    ui.alert('Личный режим не открылся', 'Google ответил:\n\n' + e.message + '\n\nОбщий фильтр не ставила — у остальных ничего не поменялось. Пришлите, пожалуйста, скрин этого окна.', ui.ButtonSet.OK);
+  }
 }
 
 /** Номер представления фильтра с таким названием на листе (0 — нет). */
@@ -953,12 +955,17 @@ function ensureManagerView_(sh, name) {
 
 function openManagerView_(sh, name) {
   const view = ensureManagerView_(sh, name);
-  // Включить представление за человека скрипт не может (Google не даёт), поэтому подсказываем, где оно
-  SpreadsheetApp.getUi().alert('Мои задачи',
-    'Готово: личный режим фильтрации «' + view.title + '».\n\n' +
-    'Открой его: «Данные → Режимы фильтрации → ' + view.title + '». У каждого он свой и другим не мешает.\n\n' +
-    'В следующий раз можно сразу оттуда, без меню. Выйти — крестик справа на тёмной полосе над таблицей.',
-    SpreadsheetApp.getUi().ButtonSet.OK);
+  // Включить режим за человека скрипт не может (Google не даёт), но ссылка с fvid открывает его сразу — и только у того, кто нажал
+  const url = SpreadsheetApp.getActive().getUrl() + '#gid=' + sh.getSheetId() + '&fvid=' + view.id;
+  const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  const html = HtmlService.createHtmlOutput(
+    '<div style="font:14px/1.5 Arial,sans-serif;color:#202124">' +
+    '<p style="margin:0 0 12px">Личный режим «' + esc(view.title) + '»: видите только вы, у остальных таблица не меняется.</p>' +
+    '<a href="' + esc(url) + '" target="_top" style="display:inline-block;background:#5B3FD6;color:#fff;text-decoration:none;font-weight:600;padding:9px 16px;border-radius:8px">🙋 Открыть мои задачи</a>' +
+    '<p style="margin:12px 0 0;font-size:12.5px;color:#5f6368">Выйти — крестик справа на тёмной полосе над таблицей. ' +
+    'Можно добавить эту страницу в закладки — откроется сразу с вашими задачами. Или: «Данные → Режимы фильтрации → ' + esc(view.title) + '».</p></div>'
+  ).setWidth(420).setHeight(190);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Мои задачи');
   return view.id;
 }
 
