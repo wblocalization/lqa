@@ -1,6 +1,7 @@
 // Вкладка «Мои задачи»: открытые задачи менеджера, статус меняется прямо здесь.
 import { settings, saveSettings, isConfigured, api, esc, toast, ask } from './core.js';
 import { openEditor } from './edit.js';
+import { openLetterFor } from './task.js';
 import { openMail } from './outlook.js';
 
 
@@ -102,7 +103,8 @@ function render() {
     return `<div class="mine-item${t.overdue ? ' overdue' : ''}">
       <div class="title">${title}</div>
       <div class="meta-row"><div class="meta">${esc(t.id || '—')}${t.ticket ? ' · ' + esc(t.ticket) : ''} · ${due}</div>
-        ${t.id ? `<button class="link-btn mail-btn" type="button" data-mail="${i}" title="Найти письма по этой задаче в Outlook">✉️ Почта</button>` : ''}</div>
+        <span class="meta-btns"><button class="link-btn mail-btn" type="button" data-letter="${i}" title="Написать подрядчику по шаблону — как после добавления задачи">📨 Письмо</button>
+        ${t.id ? `<button class="link-btn mail-btn" type="button" data-mail="${i}" title="Найти письма по этой задаче в Outlook">✉️ Почта</button>` : ''}</span></div>
       <div class="row-actions">
         <select data-i="${i}" class="status-sel" data-status="${esc(t.status)}" aria-label="Статус">
           <option value="">— статус —</option>
@@ -179,6 +181,21 @@ els.list.addEventListener('click', async (e) => {
   const mail = e.target.closest('button[data-mail]');
   if (mail) return openMail(data.tasks[Number(mail.dataset.mail)].id);
   // 🗑 прямо в списке: спросить и удалить, не открывая задачу; список остаётся на месте
+  const letter = e.target.closest('button[data-letter]');
+  if (letter) {
+    const t = data.tasks[Number(letter.dataset.letter)];
+    letter.disabled = true;
+    try {
+      const r = await api({ action: 'getTask', row: t.row, id: t.id || '', origSubject: t.subject });
+      if (!r.ok) throw new Error(r.error);
+      await openLetterFor(r.task);
+    } catch (err) {
+      toast(`Не открылось письмо: ${err.message}`, 'err');
+    } finally {
+      letter.disabled = false;
+    }
+    return;
+  }
   const del = e.target.closest('button[data-del]');
   if (del) {
     const t = data.tasks[Number(del.dataset.del)];

@@ -6,7 +6,7 @@ import { showLetter, lettersForExport, importLetters, loadLetters, listTexts, te
 const $ = (s) => document.querySelector(s);
 const els = {
   form: $('#taskForm'), loading: $('#taskLoading'), done: $('#taskDone'), doneId: $('#taskDoneId'),
-  doneSubject: $('#taskDoneSubject'), doneCopied: $('#taskDoneCopied'), copyDone: $('#taskCopyDone'), again: $('#taskAgain'),
+  doneLabel: $('#taskDoneLabel'), doneSubject: $('#taskDoneSubject'), doneCopied: $('#taskDoneCopied'), copyDone: $('#taskCopyDone'), again: $('#taskAgain'),
   contractor: $('#tContractor'), ticketNum: $('#tTicketNum'),
   template: $('#tTemplate'), saveTpl: $('#tSaveTpl'), delTpl: $('#tDelTpl'), updTpl: $('#tUpdTpl'), renTpl: $('#tRenTpl'), exportTpl: $('#tExportTpl'),
   importTpl: $('#tImportTpl'), importFile: $('#tImportFile'),
@@ -18,7 +18,7 @@ const els = {
   preview: $('#tPreview'), copyPreview: $('#tCopyPreview'), submit: $('#tSubmit'), msg: $('#tMsg'),
   tplChips: $('#tTplChips'), suggest: $('#tSuggest'),
   clearTpl: $('#tClearTpl'),
-  letterText: $('#tLetterText'), letterTextRow: $('#tLetterTextRow'), rows: $('#tRows'), moreRow: $('#tMoreRow'), rowMode: $('#tRowMode'), rowId: $('#tRowId'), rowCancel: $('#tRowCancel'), addRow: $('#taskAddRow'), tplBox: $('.tpl'), tplIoMsg: $('#tTplIoMsg'), openRow: $('#taskOpenRow'),
+  letterText: $('#tLetterText'), letterTextRow: $('#tLetterTextRow'), rows: $('#tRows'), moreRow: $('#tMoreRow'), rowMode: $('#tRowMode'), rowId: $('#tRowId'), rowCancel: $('#tRowCancel'), addRow: $('#taskAddRow'), tplBox: $('.tpl'), tplIoMsg: $('#tTplIoMsg'), openRow: $('#taskOpenRow'), letterAgain: $('#tLetterAgain'), letterAgainId: $('#tLetterAgainId'),
 };
 // «Итого»: «5263+5336» или текст письма с суммами → в таблицу формулой
 const totalSum = sumField(els.total);
@@ -552,6 +552,8 @@ els.form.addEventListener('submit', async (e) => {
 
 /** Экран «Добавлено». rows — все строки, которые сейчас добавили (для письма — языки всех строк). */
 function showDone(r, rows, message) {
+  els.doneLabel.textContent = 'Добавлено';
+  els.addRow.hidden = false;
   els.doneId.textContent = r.id + (rows.length > 1 ? ` · ${rows.length} ${plural(rows.length, 'строка', 'строки', 'строк')}` : '');
   els.doneSubject.textContent = lastSubject;
   setLink(els.openRow, r.url);
@@ -574,8 +576,17 @@ function mergeRows(rows) {
   return { ...rows[0], languages: langs, exactDeadline: dues[0] || '', deadline: withDue.deadline };
 }
 
+// Письмо по последней задаче: после «＋ Новая задача» над формой маленькая ссылка, чтобы к письму можно было вернуться
+let pendingLetter = null; // { task, id } — пока письмо не отправлено
+function showLetterAgain() {
+  els.letterAgain.hidden = !pendingLetter;
+  if (pendingLetter) els.letterAgainId.textContent = pendingLetter.id || 'последней задаче';
+}
+document.addEventListener('letter-sent', () => { pendingLetter = null; showLetterAgain(); });
+
 /** Письмо — подрядчику: штатные языки (переводят свои) ему не нужны. */
 function letterFor(task, id) {
+  pendingLetter = { task, id, subject: lastSubject };
   const shtat = new Set((lists.languages && lists.languages.shtat) || []);
   showLetter({
     contractor: task.contractor, id, subject: lastSubject,
@@ -583,6 +594,32 @@ function letterFor(task, id) {
     codes: task.languages.map((l) => lists.langCodes[l]).filter(Boolean), exactDeadline: task.exactDeadline, deadline: task.deadline,
     product: task.product, manager: task.manager, link: task.link, textId: task.letterText || '',
   }).catch(() => {});
+}
+
+/**
+ * Письмо по уже существующей задаче (из «Мои» или из правки) — тот же экран, что после «Добавить»:
+ * адреса, текст по шаблону, языки, срок, подпись. t — задача из таблицы (getTask).
+ */
+export async function openLetterFor(t) {
+  document.dispatchEvent(new CustomEvent('show-tab', { detail: 'task' }));
+  await initTaskTab();
+  if (!lists) return;
+  exitRowMode();
+  lastSubject = t.subject;
+  lastOrder = { id: t.id, subject: t.subject, contractor: t.contractor, ticket: t.ticket, date: t.date, manager: t.manager };
+  els.doneLabel.textContent = 'Письмо по задаче';
+  els.doneId.textContent = t.id || '';
+  els.doneSubject.textContent = t.subject;
+  els.doneCopied.hidden = true;
+  els.addRow.hidden = !t.id;
+  setLink(els.openRow, '');
+  els.form.hidden = true;
+  els.done.hidden = false;
+  setMsg('');
+  const languages = String(t.languages || '').split(',').map((x) => x.trim()).filter(Boolean);
+  letterFor({ contractor: t.contractor, languages, exactDeadline: t.exactDeadline, deadline: t.deadline,
+    product: t.product, manager: t.manager, link: t.link, letterText: '' }, t.id);
+  window.scrollTo(0, 0);
 }
 
 // ---------- Ещё строка в заказ ----------
@@ -728,6 +765,22 @@ els.again.addEventListener('click', () => {
   els.form.hidden = false;
   resetForm();
   setMsg('');
+  showLetterAgain();
+});
+els.letterAgain.querySelector('button').addEventListener('click', () => {
+  if (!pendingLetter) return;
+  const { task, id, subject } = pendingLetter;
+  exitRowMode();
+  lastSubject = subject;
+  els.doneLabel.textContent = 'Письмо по задаче';
+  els.doneId.textContent = id || '';
+  els.doneSubject.textContent = subject;
+  els.doneCopied.hidden = true;
+  els.form.hidden = true;
+  els.done.hidden = false;
+  els.letterAgain.hidden = true;
+  letterFor(task, id);
+  window.scrollTo(0, 0);
 });
 
 // «✕ Сбросить» — снять шаблон и очистить форму

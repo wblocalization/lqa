@@ -32,6 +32,8 @@ function showTab(name) {
   try { localStorage.setItem('tab', name); } catch { /* не страшно */ }
 }
 els.tabs.forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));
+// Другие разделы просят открыть вкладку (например, «📨 Письмо» из «Мои» → «Задача»)
+document.addEventListener('show-tab', (e) => showTab(e.detail));
 
 // ---------- Настройки ----------
 /**

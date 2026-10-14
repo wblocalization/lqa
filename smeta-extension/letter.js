@@ -612,6 +612,7 @@ els.send.addEventListener('click', async () => {
     soundPrefs().then((p) => playSound(p.sendSound));
     const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
     els.sentText.textContent = `✓ Отправлено в ${time} → ${to.join(', ')}`;
+    document.dispatchEvent(new CustomEvent('letter-sent', { detail: { id: ctx.id } })); // «Задача» уберёт напоминание «письмо — если ещё не написали»
     els.sent.hidden = false;
     toast('📨 Письмо отправлено — оно в «Отправленных»');
   } catch (e) {

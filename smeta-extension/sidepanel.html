@@ -60,6 +60,7 @@
     <p id="taskLoading" class="muted center" hidden></p>
 
     <form id="taskForm" class="task-form" hidden>
+      <p id="tLetterAgain" class="letter-again" hidden><button type="button" class="link-btn">📨 Письмо по <b id="tLetterAgainId"></b></button> — если ещё не написали подрядчику</p>
       <div id="tRowMode" class="row-mode" hidden>
         <div><b>Ещё строка в заказ <span id="tRowId"></span></b><span class="row-mode-note">номер, тема, дата и подрядчик — как у заказа; Band, ник, языки, сроки — свои</span></div>
         <button id="tRowCancel" class="link-btn" type="button">✕ Отменить</button>
@@ -170,7 +171,7 @@
       <span class="done-check" aria-hidden="true">
         <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
       </span>
-      <h2>Добавлено: <span id="taskDoneId"></span></h2>
+      <h2><span id="taskDoneLabel">Добавлено</span>: <span id="taskDoneId"></span></h2>
       <p id="taskDoneSubject" class="done-subject"></p>
       <p id="taskDoneCopied" class="done-copied" hidden>✓ Тема с точным номером уже скопирована</p>
       <div class="done-actions">
@@ -266,6 +267,7 @@
       <div class="edit-head">
         <button id="eBack" class="btn ghost small" type="button">← Назад</button>
         <b id="eTitle"></b>
+        <button id="eLetter" class="btn ghost small e-letter" type="button" title="Письмо подрядчику по этой задаче — по шаблону, как после добавления">📨 Письмо</button>
       </div>
       <p id="eTop" class="status" role="status" hidden></p>
       <section class="fgroup g-what"><span class="fg-title">Что и кому</span>

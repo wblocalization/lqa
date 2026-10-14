@@ -1,10 +1,11 @@
 // Правка задачи из расширения: то же, что «Поиск и правка» в таблице.
 import { api, esc, getLists, autoDeadline, ask, sumField, langGroupsHtml, bindLangCounts, updateLangCounts } from './core.js';
 import { makeLinkList } from './links.js';
+import { openLetterFor } from './task.js';
 
 const $ = (s) => document.querySelector(s);
 const els = {
-  view: $('#mineView'), form: $('#editForm'), back: $('#eBack'), title: $('#eTitle'),
+  view: $('#mineView'), form: $('#editForm'), back: $('#eBack'), title: $('#eTitle'), letter: $('#eLetter'),
   subject: $('#eSubject'), link: $('#eLink'), link2: $('#eLink2'), ticketNum: $('#eTicketNum'), date: $('#eDate'),
   product: $('#eProduct'), customer: $('#eCustomer'), langs: $('#eLangs'), deadline: $('#eDeadline'),
   exactDeadline: $('#eExactDeadline'), status: $('#eStatus'), deliveryStatus: $('#eDeliveryStatus'),
@@ -51,6 +52,13 @@ function close() {
   requestAnimationFrame(() => window.scrollTo(0, returnY));
 }
 els.back.addEventListener('click', close);
+// 📨 Письмо подрядчику по этой задаче (как после «Добавить»); несохранённые правки формы в письмо не попадут
+els.letter.addEventListener('click', () => {
+  if (!current) return;
+  const t = { ...current };
+  close();
+  openLetterFor(t);
+});
 
 /**
  * Открыть задачу на правку. ref — { row, id, origSubject } из списка «Мои задачи» или из поиска.

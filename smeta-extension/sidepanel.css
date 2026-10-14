@@ -828,3 +828,13 @@ dialog.whatsnew li + li { margin-top: 4px; }
 .lg-rare .chip span { font-size: 12.5px; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .lg-shtat { --g: #2DD4BF; } }
 :root[data-theme="dark"] .lg-shtat { --g: #2DD4BF; }
+
+.edit-head .e-letter { margin-left: auto; }
+.mine-item .meta-btns { display: flex; gap: 10px; flex: none; }
+
+/* «📨 Письмо по LIT-… — если ещё не написали»: маленькая строчка над новой задачей */
+.letter-again { margin: 0; font-size: 12px; color: var(--ink-soft); }
+.letter-again .link-btn { font-size: 12px; }
+/* Тема письма — во всю ширину, кнопки под ней */
+.composer .c-subj-row { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: start; }
+.composer .c-subj-row .c-subj-btns { grid-column: 2; flex-direction: row; justify-content: flex-end; gap: 12px; }
