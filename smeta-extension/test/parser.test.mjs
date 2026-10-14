@@ -1,0 +1,154 @@
+// Запуск: node --test smeta-extension/test/
+// Опционально: SMETA_PDF=/путь/к/смете.pdf — прогнать разбор на настоящем PDF (нужен pdfjs-dist).
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { parseEstimate, taskFromFileName, taskFromTexts, extractAmounts, findTotalWithVat, parseMoney, formatMoney, linesFromItems } from '../parser.js';
+
+test('parseMoney понимает пробелы и запятую', () => {
+  assert.equal(parseMoney('110 929,150'), 110929.15);
+  assert.equal(parseMoney('5 937,50'), 5937.5);
+});
+
+test('номер задачи берётся из имени файла', () => {
+  assert.equal(taskFromFileName('LIT-26-2203.pdf'), 'LIT-26-2203');
+  assert.equal(taskFromFileName('LIT-26-2203-РВБ.pdf'), 'LIT-26-2203');
+  assert.equal(taskFromFileName('HELLO-3123-2133132-RWB.pdf'), 'HELLO-3123-2133132');
+  assert.equal(taskFromFileName('HELLO-3123-2133132-РВБ (1).pdf'), 'HELLO-3123-2133132');
+  assert.equal(taskFromFileName('Lit-26-2203-рвб.pdf'), 'LIT-26-2203');
+  assert.equal(taskFromFileName('РВБ.pdf'), null);
+  assert.equal(taskFromFileName('LIT-26-2203 РВБ.pdf'), 'LIT-26-2203');
+  assert.equal(taskFromFileName('LIT-26-2203_РВБ.pdf'), 'LIT-26-2203');
+  assert.equal(taskFromFileName('LIT-26-2203 RWB-1.pdf'), 'LIT-26-2203');
+  assert.equal(taskFromFileName('419cc3c8-LIT-26-2217-___.pdf'), 'LIT-26-2217');
+  assert.equal(taskFromFileName('Смета GLB-5-100 финал.pdf'), 'GLB-5-100');
+  assert.equal(taskFromFileName('lit_7.pdf'), 'LIT-7');
+  assert.equal(taskFromFileName('смета от 22.09.pdf'), null);
+});
+
+test('если в имени файла номера нет — берётся номер сметы из текста, а не чужой код', () => {
+  assert.equal(taskFromTexts(['WB-2063_AZ_AM_HY', '1LIT-26-2217']), 'LIT-26-2217');
+  assert.equal(taskFromTexts(['WB-2063_AZ_AM_HY']), null);
+  assert.equal(parseEstimate(['1LIT-26-2217'], 'LIT-30-1.pdf').task, 'LIT-30-1');
+  assert.equal(parseEstimate(['1LIT-26-2217'], 'смета.pdf').task, 'LIT-26-2217');
+});
+
+test('итог с НДС находится по арифметике, а не по подписям', () => {
+  // Порядок кусков как в настоящем PDF: сначала числа, подписи — отдельно.
+  const texts = [
+    '₽ 90 925,530', '₽ 20 003,620', '₽ 110 929,150',
+    '₽ 5 937,500 Итого без скидок: ₽ 95 201,352', '₽ 84 988,031 ₽ 4 275,821',
+    '₽ 6 250,000 ₽ 5 937,500', '₽ 9 484,050 ₽ 9 009,848',
+    'Без НДС', 'НДС (22%)', 'С НДС',
+  ];
+  const r = parseEstimate(texts, 'LIT-26-2217 смета.pdf');
+  assert.equal(r.task, 'LIT-26-2217');
+  assert.deepEqual(r.total, { net: 90925.53, vat: 20003.62, gross: 110929.15, rate: 0.22, extraDigits: false });
+});
+
+test('НДС 20% и отсутствие итога', () => {
+  assert.equal(findTotalWithVat(extractAmounts(['1 000,00', '200,00', '1 200,00'])).gross, 1200);
+  assert.equal(findTotalWithVat(extractAmounts(['1 000,00', '300,00', '1 300,00'])), null);
+});
+
+test('настоящий PDF (если задан SMETA_PDF)', { skip: !process.env.SMETA_PDF }, async () => {
+  const fs = await import('node:fs');
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(fs.readFileSync(process.env.SMETA_PDF)) }).promise;
+  const texts = [];
+  for (let i = 1; i <= doc.numPages; i++) {
+    const content = await (await doc.getPage(i)).getTextContent();
+    for (const it of content.items) texts.push(it.str);
+  }
+  const r = parseEstimate(texts, process.env.SMETA_PDF);
+  console.log(r);
+  assert.ok(r.task);
+  assert.ok(r.total);
+});
+
+test('сумма — ровно как в смете: доли копейки не округляются', () => {
+  // Обычная смета: «102 641,640» → 102641.64
+  const r = parseEstimate(['₽ 84 132,490', '₽ 18 509,150', '₽ 102 641,640', 'Версия', '1'], 'LIT-26-2198-РВБ.pdf');
+  assert.deepEqual(r.total, { net: 84132.49, vat: 18509.15, gross: 102641.64, rate: 0.22, extraDigits: false });
+  assert.equal(r.version, 1);
+  // Третий знак не ноль — отдаём как есть и помечаем
+  const x = parseEstimate(['1 000,000', '220,005', '1 220,005', 'Версия 2'], 'x.pdf');
+  assert.equal(x.total.gross, 1220.005);
+  assert.equal(x.total.extraDigits, true);
+  assert.equal(x.version, 2);
+  assert.equal(formatMoney(1220.005), '1\u00a0220,005');
+  assert.equal(formatMoney(102641.64), '102\u00a0641,64');
+  // Без ошибок дробей: 1,005 × 100 в обычной арифметике даёт 100,4999…
+  assert.deepEqual(extractAmounts(['1,005']), [101]);
+});
+
+test('версия сметы — по строке, даже если значение лежит в другом месте текстового слоя', () => {
+  const items = [
+    { str: 'Версия', x: 382, y: 471.2, page: 1 }, { str: 'Проект(ы)', x: 53, y: 465, page: 1 },
+    { str: '25.09.2026', x: 302, y: 471.6, page: 1 }, { str: '1', x: 402, y: 471.6, page: 1 }, { str: 'Дата', x: 289, y: 471.2, page: 1 },
+  ];
+  assert.deepEqual(linesFromItems(items), ['Дата 25.09.2026 Версия 1', 'Проект(ы)']);
+  assert.equal(parseEstimate(['Версия', 'Проект(ы)', '1'], 'x.pdf', linesFromItems(items)).version, 1);
+});
+
+test('сметы других подрядчиков: Janus (НДС внутри итога), Logrus Global (английский формат сумм)', async () => {
+  const { taskFor } = await import('../parser.js');
+  // Janus: номер — в квадратных скобках в тексте, в имени файла его нет; «Итого … в том числе НДС 5%»
+  const janus = ['[JWW-26-29] [Janus] [en] [Материалы для поддержки]', 'Перевод 3,2руб. слово 8167,00 26134,40руб.', 'Итого 26134,40руб.', 'в том числе НДС 5% 1244,50руб.', 'Итого с НДС 26134,40руб.', 'Дата начала: 22.09.2026', '30.09 18:00 МСК'];
+  const j = parseEstimate(janus, 'Смета_Janus_LSP_480_00030.pdf');
+  assert.equal(j.task, 'JWW-26-29');
+  assert.deepEqual(j.total, { net: 24889.9, vat: 1244.5, gross: 26134.4, rate: 0.05, included: true, extraDigits: false });
+  // Logrus Global: «21,262.50 руб», номер в начале имени файла (регистр как в таблице)
+  const log = ['[LoG-26-75][logrusGlobal][tg][kk_сyr][ky][uz][Маркетинг]Перевод пушей', 'Итого без НДС 20,250.00 руб', 'НДС 5% 1,012.50 руб', 'Итого с НДС 21,262.50 руб', '2,000.00 руб 4,000.00 руб', '2026-09-30 01'];
+  const l = parseEstimate(log, 'LoG-26-75logrusGlobaltgkk_сyrkyuz Перевод пушей.pdf');
+  assert.equal(l.task, 'LoG-26-75');
+  assert.deepEqual(l.total, { net: 20250, vat: 1012.5, gross: 21262.5, rate: 0.05, extraDigits: false });
+  assert.equal(taskFor('Смета без номера.pdf', ['WB-2063', 'текст [JWW-26-29] ещё']), 'JWW-26-29');
+});
+
+test('суммы из письма и через плюс', async () => {
+  const { parseSum, parseNumber } = await import('../parser.js');
+  assert.equal(parseNumber('4.538₽'), 4538);
+  assert.equal(parseNumber('102 641,64'), 102641.64);
+  assert.equal(parseNumber('21,262.50'), 21262.5);
+  assert.deepEqual(parseSum('Стоимость перевода составит 4.538₽'), { parts: [4538], total: 4538, formula: '' });
+  assert.deepEqual(parseSum('английский — 5.263₽, китайский — 5.336₽'), { parts: [5263, 5336], total: 10599, formula: '5263+5336' });
+  assert.deepEqual(parseSum('=3000+2500,50'), { parts: [3000, 2500.5], total: 5500.5, formula: '3000+2500.5' });
+  assert.equal(parseSum(''), null);
+  assert.ok(parseSum('12+x').error);
+});
+
+test('акт подрядчика: строки одного номера складываются, берётся сумма с НДС', async () => {
+  const { parseAct } = await import('../parser.js');
+  const r = parseAct([
+    'Акт № 125 от 31 октября 2026 г.',
+    '№ Наименование Кол-во Цена Сумма без НДС НДС Сумма с НДС',
+    '1 Перевод LIT-26-2240 английский 1 4 386,00 4 386,00 877,20 5 263,20',
+    '2 Перевод LIT-26-2240 китайский 1 4 446,67 4 446,67 889,33 5 336,00',
+    'ЛИТ-26-2251 (файлы для веба)',
+    '3 Перевод по заказу 1 386,00 386,00 77,20 463,20',
+    '4 Перевод LIT-26-2263 2 000,00 2 000,00',
+    'Итого: 13 062,40 по LIT-26-2240',
+  ]);
+  // «ЛИТ-26-2251» — русское слово, не номер: строка 3 уходит в «проверить вручную»
+  assert.deepEqual(r.items.map((g) => [g.id, g.gross]), [['LIT-26-2240', 10599.2], ['LIT-26-2263', 2000]]);
+  assert.equal(r.items[0].lines.length, 2);
+  assert.equal(r.total, 12599.2);
+  assert.equal(r.unread.length, 1);
+  // номер разорван переносом в узкой колонке (как в настоящем PDF)
+  const { repairIdBreaks, linesFromItems: lfi } = await import('../parser.js');
+  const it = (str, x, y) => ({ str, x, y, page: 1 });
+  const fixed = lfi(repairIdBreaks([
+    it('Перевод LIT-26-', 60, 700), it('1', 40, 690), it('2240', 60, 690), it('5 263,20', 400, 690), it('английский', 60, 680),
+    it('Перевод LIT-26-', 60, 660), it('2', 40, 650), it('5 336,00', 400, 650), it('2240 китайский', 60, 640),
+  ]));
+  assert.deepEqual(parseAct(fixed).items.map((g) => [g.id, g.gross]), [['LIT-26-2240', 10599.2]]);
+  const t = parseAct(['№ Наименование Кол-во Цена Без НДС НДС 20% С НДС',
+    'Перевод LIT-26-2240', '1 1 4 386,00 4 386,00 877,20 5 263,20', 'английский',
+    'Перевод', '2 1 4 446,67 4 446,67 889,33 5 336,00', 'LIT-26-2240 китайский',
+    'Перевод LIT-26-', '2263 (файлы', '4 для веба, 1 1 000,00 1 000,00 200,00 1 200,00', 'длинное', 'название)',
+    'Итого 13 614,34 2 722,86 16 337,20']);
+  assert.deepEqual(t.items.map((g) => [g.id, g.gross]), [['LIT-26-2240', 10599.2], ['LIT-26-2263', 1200]]);
+  // номер латиницей, а сумма на следующей строке (название перенеслось)
+  const w = parseAct(['5 Перевод LIT-26-2251', '(файлы для веба) 1 386,00 386,00 77,20 463,20']);
+  assert.deepEqual(w.items.map((g) => [g.id, g.gross]), [['LIT-26-2251', 463.2]]);
+});

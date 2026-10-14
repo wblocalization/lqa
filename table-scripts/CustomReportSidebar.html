@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<?!= include('Общее') ?>
+</head>
+<body>
+  <h2>Кастомный отчёт</h2>
+  <div class="stack">
+    <div class="two">
+      <label class="field">Год<select id="year"></select></label>
+      <label class="field">Месяц<select id="month">
+        <option value="">Весь год</option><option value="1">Январь</option><option value="2">Февраль</option><option value="3">Март</option>
+        <option value="4">Апрель</option><option value="5">Май</option><option value="6">Июнь</option><option value="7">Июль</option>
+        <option value="8">Август</option><option value="9">Сентябрь</option><option value="10">Октябрь</option>
+        <option value="11">Ноябрь</option><option value="12">Декабрь</option></select></label>
+    </div>
+    <label class="field">Считать по<select id="by"><option value="date">дате поступления</option><option value="due">дате закрытия (срок сдачи)</option></select></label>
+    <button class="btn primary" id="runBtn" type="button">Сформировать</button>
+  </div>
+  <div id="results"></div>
+  <div class="two" id="actions" hidden style="margin-top:8px">
+    <button class="btn" id="excelBtn" type="button">📥 Скачать Excel</button>
+    <button class="btn" id="docBtn" type="button">📄 Открыть в Google Doc</button>
+  </div>
+  <div id="msg" class="msg" style="margin-top:6px"></div>
+
+<script>
+  run('getDashboardYears').then(years => fillSelect($('#year'), years.map(String), 'Всё время'))
+    .catch(e => setMsg($('#msg'), 'Не получилось загрузить годы: ' + e.message, 'err'));
+
+  const period = () => [$('#year').value, $('#year').value ? $('#month').value : '', $('#by').value];
+
+  function table(rows, fmt) {
+    if (!rows.length) return '<p class="small muted">Нет данных</p>';
+    return '<table class="kv">' + rows.map(r => `<tr><td>${esc(r[0])}</td><td>${esc(fmt ? fmt(r) : r[1])}</td></tr>`).join('') + '</table>';
+  }
+
+  $('#runBtn').addEventListener('click', () => {
+    $('#results').innerHTML = '<p class="muted">Считаю…</p>';
+    $('#actions').hidden = true;
+    setMsg($('#msg'), '');
+    run('getCustomReport', ...period()).then(d => {
+      let html = `<p class="small muted">Период: <b>${esc(d.periodLabel)}</b></p><div class="tiles">
+        <div class="tile"><div class="num">${d.totalTasks}</div><div class="lbl">задач</div></div>
+        <div class="tile"><div class="num">${d.totalSp}</div><div class="lbl">SP</div></div>
+        <div class="tile"><div class="num">${d.avgSp}</div><div class="lbl">SP на задачу</div></div>
+        <div class="tile"><div class="num">${money(d.totalMoney)}</div><div class="lbl">₽ с НДС</div></div></div>`;
+      html += '<h3>Продукты по числу задач</h3>' + table(d.topProducts);
+      html += '<h3>Языки по частоте</h3>' + table(d.languages);
+      html += '<h3>Статус отдачи заказчику</h3>' + table(d.deliveryStatus, r => r[1] + ' (' + r[2] + '%)');
+      html += '<h3>Топ-5 менеджеров по SP</h3>' + table(d.topManagers, r => r[2] + ' SP · ' + r[1] + ' задач');
+      html += '<h3>Топ-5 подрядчиков</h3>' + table(d.topContractors);
+      html += '<h3>Топ-10 самых трудоёмких задач</h3>' + (d.topTasksBySP.length ? d.topTasksBySP.map(t =>
+        `<div class="line"><span>${t.link ? `<a href="${esc(t.link)}" target="_blank">${esc(t.subject)}</a>` : esc(t.subject)}</span><span class="v">${t.sp} SP</span></div>`).join('')
+        : '<p class="small muted">Нет задач с SP</p>');
+      $('#results').innerHTML = html;
+      $('#actions').hidden = false;
+    }).catch(e => { $('#results').innerHTML = ''; setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'); });
+  });
+
+  $('#excelBtn').addEventListener('click', () => {
+    setMsg($('#msg'), 'Готовлю файл…');
+    run('exportCustomReportToExcel', ...period()).then(url => { setMsg($('#msg'), 'Готово — файл скачивается', 'ok'); window.open(url, '_blank'); })
+      .catch(e => setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'));
+  });
+  $('#docBtn').addEventListener('click', () => {
+    setMsg($('#msg'), 'Создаю документ…');
+    run('exportCustomReportToDoc', ...period()).then(url => {
+      $('#msg').className = 'msg ok';
+      $('#msg').innerHTML = `<a href="${esc(url)}" target="_blank">Открыть документ →</a>`;
+    }).catch(e => setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'));
+  });
+</script>
+</body>
+</html>
