@@ -2,6 +2,14 @@
 import { settings, saveSettings, isConfigured, api, esc, toast, ask } from './core.js';
 import { openEditor } from './edit.js';
 import { openLetterFor } from './task.js';
+
+// Иконки рисуем сами: эмодзи на Windows иногда выходят серыми квадратиками
+const svg = (d) => `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const ICON = {
+  write: svg('<path d="M22 2 11 13"/><path d="m22 2-7 20-4-9-9-4 20-7z"/>'),
+  search: svg('<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>'),
+  trash: svg('<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>'),
+};
 import { openMail } from './outlook.js';
 
 
@@ -102,16 +110,18 @@ function render() {
     const title = titleHtml(t);
     return `<div class="mine-item${t.overdue ? ' overdue' : ''}">
       <div class="title">${title}</div>
-      <div class="meta-row"><div class="meta">${esc(t.id || '—')}${t.ticket ? ' · ' + esc(t.ticket) : ''} · ${due}</div>
-        <span class="meta-btns"><button class="link-btn mail-btn" type="button" data-letter="${i}" title="Написать подрядчику по шаблону — как после добавления задачи">📨 Письмо</button>
-        ${t.id ? `<button class="link-btn mail-btn" type="button" data-mail="${i}" title="Найти письма по этой задаче в Outlook">✉️ Почта</button>` : ''}</span></div>
+      <div class="meta">${esc(t.id || '—')}${t.ticket ? ' · ' + esc(t.ticket) : ''} · ${due}</div>
+      <div class="task-links">
+        <button class="tl-btn tl-write" type="button" data-letter="${i}" title="Письмо подрядчику по шаблону — как после добавления задачи">${ICON.write}Написать письмо</button>
+        ${t.id ? `<button class="tl-btn" type="button" data-mail="${i}" title="Найти переписку по этой задаче в Outlook">${ICON.search}Найти в Outlook</button>` : ''}
+      </div>
       <div class="row-actions">
         <select data-i="${i}" class="status-sel" data-status="${esc(t.status)}" aria-label="Статус">
           <option value="">— статус —</option>
           ${data.statuses.map((s) => `<option value="${esc(s)}"${s === t.status ? ' selected' : ''}>${esc(s)}</option>`).join('')}
         </select>
         <button class="btn ghost small" type="button" data-edit="${i}">Изменить</button>
-        <button class="icon-btn small del-btn" type="button" data-del="${i}" title="Удалить задачу" aria-label="Удалить задачу">🗑</button>
+        <button class="icon-btn del-btn" type="button" data-del="${i}" title="Удалить задачу" aria-label="Удалить задачу">${ICON.trash}</button>
       </div>
       ${t.status === 'Отдано' ? deliveryRow(t, i) : ''}
     </div>`;
@@ -177,25 +187,26 @@ async function deleteTask(ref) {
   if (!ref.id) deleted.delete(refKey(ref)); // без номера помним по строке, а строки сдвинулись — дальше не нужно
 }
 
+/** «Написать письмо»: задача целиком из таблицы → то же письмо по шаблону, что после «Добавить». */
+async function writeLetter(t, btn) {
+  btn.disabled = true;
+  try {
+    const r = await api({ action: 'getTask', row: t.row, id: t.id || '', origSubject: t.subject });
+    if (!r.ok) throw new Error(r.error);
+    await openLetterFor(r.task);
+  } catch (err) {
+    toast(`Не открылось письмо: ${err.message}`, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 els.list.addEventListener('click', async (e) => {
   const mail = e.target.closest('button[data-mail]');
   if (mail) return openMail(data.tasks[Number(mail.dataset.mail)].id);
   // 🗑 прямо в списке: спросить и удалить, не открывая задачу; список остаётся на месте
   const letter = e.target.closest('button[data-letter]');
-  if (letter) {
-    const t = data.tasks[Number(letter.dataset.letter)];
-    letter.disabled = true;
-    try {
-      const r = await api({ action: 'getTask', row: t.row, id: t.id || '', origSubject: t.subject });
-      if (!r.ok) throw new Error(r.error);
-      await openLetterFor(r.task);
-    } catch (err) {
-      toast(`Не открылось письмо: ${err.message}`, 'err');
-    } finally {
-      letter.disabled = false;
-    }
-    return;
-  }
+  if (letter) return writeLetter(data.tasks[Number(letter.dataset.letter)], letter);
   const del = e.target.closest('button[data-del]');
   if (del) {
     const t = data.tasks[Number(del.dataset.del)];
@@ -236,7 +247,10 @@ function renderFound() {
   els.found.innerHTML = found.length
     ? found.map((t, i) => `<div class="mine-item">
         <div class="title">${titleHtml(t)}</div>
-        ${t.id ? `<div class="meta-row"><span></span><button class="link-btn mail-btn" type="button" data-mail-found="${i}" title="Найти письма по этой задаче в Outlook">✉️ Почта</button></div>` : ''}
+        <div class="task-links">
+          <button class="tl-btn tl-write" type="button" data-letter-found="${i}" title="Письмо подрядчику по шаблону">${ICON.write}Написать письмо</button>
+          ${t.id ? `<button class="tl-btn" type="button" data-mail-found="${i}" title="Найти переписку по этой задаче в Outlook">${ICON.search}Найти в Outlook</button>` : ''}
+        </div>
         <div class="row-actions"><span class="meta" style="flex:1">${esc(t.id || '—')}${t.ticket ? ' · ' + esc(t.ticket) : ''} · ${esc(t.date)}${t.status ? ' · ' + esc(t.status) : ''}</span>
         <button class="btn ghost small" type="button" data-found="${i}">Изменить</button></div>
       </div>`).join('')
@@ -244,7 +258,9 @@ function renderFound() {
 }
 els.searchForm.addEventListener('submit', (e) => { e.preventDefault(); runSearch(); });
 els.search.addEventListener('search', () => { if (!els.search.value) els.found.hidden = true; }); // крестик в поле
-els.found.addEventListener('click', (e) => {
+els.found.addEventListener('click', async (e) => {
+  const lf = e.target.closest('button[data-letter-found]');
+  if (lf) return writeLetter(found[Number(lf.dataset.letterFound)], lf);
   const mail = e.target.closest('button[data-mail-found]');
   if (mail) return openMail(found[Number(mail.dataset.mailFound)].id);
   const b = e.target.closest('button[data-found]');

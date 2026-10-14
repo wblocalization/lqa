@@ -838,3 +838,14 @@ dialog.whatsnew li + li { margin-top: 4px; }
 /* Тема письма — во всю ширину, кнопки под ней */
 .composer .c-subj-row { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: start; }
 .composer .c-subj-row .c-subj-btns { grid-column: 2; flex-direction: row; justify-content: flex-end; gap: 12px; }
+
+/* Под задачей в «Мои»: две разные кнопки — написать подрядчику и найти переписку */
+.mine-item .task-links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.tl-btn { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; font: 600 12.5px inherit; font-family: inherit;
+  color: var(--ink-soft); background: var(--card); border: 1px solid var(--line); cursor: pointer; }
+.tl-btn:hover { color: var(--ink); border-color: var(--ink-soft); }
+.tl-btn.tl-write { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: var(--accent-soft); }
+.tl-btn.tl-write:hover { border-color: var(--accent); }
+.tl-btn:disabled { opacity: .6; cursor: wait; }
+.mine-item .del-btn { width: 34px; height: 34px; flex: none; color: var(--ink-soft); opacity: 1; border: 1px solid var(--line); border-radius: 10px; }
+.mine-item .del-btn:hover { color: var(--err); border-color: var(--err); background: var(--err-soft); }
