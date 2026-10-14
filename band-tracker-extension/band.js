@@ -151,6 +151,8 @@
     .foot { padding: 10px 12px; border-top: 1px solid #E7E1F7; background: #FCFBFF; }
     .foot:empty { display: none; }
     .miss { color: #A79DC0; font-weight: 400; }
+    .bz { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #7A7194; }
+    .bz select { flex: 1; min-width: 0; font: 600 13px system-ui, sans-serif; color: #2A2140; border: 1px solid #E7E1F7; border-radius: 9px; padding: 6px 8px; background: #fff; }
     .lbl { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #8B5CF6; }
     input[type=text] { width: 100%; font: 600 13px system-ui, sans-serif; color: #2A2140; border: 1px solid #E7E1F7; border-radius: 9px; padding: 7px 9px; background: #fff; }
     input[type=text]:focus { outline: none; border-color: #8B5CF6; }
@@ -250,8 +252,9 @@
       ${existing.length ? `<div class="warn">По этому треду уже есть: <b>${existing.map(esc).join(', ')}</b>. Создать ещё — только если это другая задача.</div>` : ''}
       <span class="lbl">Основная задача</span>
       <input type="text" id="title" value="${esc(o.title)}" aria-label="Название задачи">
-      <div class="meta">${fieldLine('БЗ', plan.picked.bz ? [plan.picked.bz] : [], plan.missing.bz ? [plan.missing.bz] : [])}${fieldLine('Страны', plan.picked.countries || [], plan.missing.countries || [])}${o.due ? `<span>Дедлайн <b>${esc(o.due.slice(8, 10) + '.' + o.due.slice(5, 7))}</b></span>` : ''}<span>Тип <b>${esc(plan.board || '—')}</b></span></div>
-      ${(plan.missing.bz || (plan.missing.countries || []).length) ? '<p class="note">Серым — варианты, которых расширение ещё не знает: их выберите в задаче сами. Чтобы знало все — панель расширения → «Типы задач» → «🔄 Загрузить справочники из трекера».</p>' : ''}
+      ${(plan.bzOptions || []).length ? `<label class="bz"><span>БЗ</span><select id="bz"><option value="">— не указывать —</option>${plan.bzOptions.map((x) => `<option value="${esc(x.id)}"${x.label === plan.picked.bz ? ' selected' : ''}>${esc(x.label)}</option>`).join('')}</select></label>` : ''}
+      <div class="meta">${(plan.bzOptions || []).length ? '' : fieldLine('БЗ', plan.picked.bz ? [plan.picked.bz] : [], plan.missing.bz ? [plan.missing.bz] : [])}${fieldLine('Страны', plan.picked.countries || [], plan.missing.countries || [])}${o.due ? `<span>Дедлайн <b>${esc(o.due.slice(8, 10) + '.' + o.due.slice(5, 7))}</b></span>` : ''}<span>Тип <b>${esc(plan.board || '—')}</b></span></div>
+      ${(plan.missing.bz || (plan.missing.countries || []).length) ? '<p class="note">Серым — варианты, которых нет в справочниках трекера (или трекер их ещё не отдал): их выберите в задаче сами.</p>' : ''}
       ${o.languages.length ? `<span class="lbl">Подзадачи по языкам</span><div class="langs">${o.languages.map((l) => `<label class="lang"><input type="checkbox" value="${l.code}"${plan.subLangs.includes(l.code) ? ' checked' : ''}>${esc(l.code)} · ${esc(l.name)}</label>`).join('')}</div>
         <p class="note">Отметьте языки штатных переводчиков — на каждый будет своя подзадача. Расширение запомнит выбор.</p>` : ''}
       <label class="chk"><input type="checkbox" id="reply"${plan.replyInThread ? ' checked' : ''}><span>Ответить в тред со ссылками на тикеты (по этому ответу видно, что тикет уже есть)</span></label>`,
@@ -273,7 +276,7 @@
     const subLangs = [...root.querySelectorAll('.langs input:checked')].map((i) => i.value);
     const wantReply = $('reply').checked;
     const post = { postId: active.postId, text: active.text, author: active.author, link: active.link };
-    const res = await send({ type: 'create', post, title: $('title').value, subLangs, reply: wantReply });
+    const res = await send({ type: 'create', post, title: $('title').value, subLangs, reply: wantReply, bzId: $('bz') ? $('bz').value : '' });
     if (!res.ok) {
       go.disabled = false; go.textContent = 'Попробовать ещё раз';
       $('card').querySelector('.body').insertAdjacentHTML('afterbegin', `<div class="err">${esc(res.error)}</div>`);

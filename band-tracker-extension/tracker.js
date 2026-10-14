@@ -45,7 +45,7 @@ const norm = (s) => String(s || '').trim().toLowerCase().replace(/ё/g, 'е');
  * Поля задачи по заказу: страны (по языкам), БЗ (по продукту), дедлайн. Чего трекер ещё не «показал» — оставляем пустым
  * и сообщаем в missing, чтобы человек видел. → { fields, missing: { countries: [...], bz: '' }, picked: { countries: [...], bz } }
  */
-export async function fieldsFor(board, { countries = [], bz = '', due = '' } = {}) {
+export async function fieldsFor(board, { countries = [], bz = '', due = '', bzId = '' } = {}) {
   const opts = await knownOptions();
   const f = JSON.parse(JSON.stringify((board && board.fields) || {}));
   const find = (fid, label) => {
@@ -63,15 +63,23 @@ export async function fieldsFor(board, { countries = [], bz = '', due = '' } = {
     picked.countries = f[ROLE.countries].map((o) => o.label);
   }
   if (ROLE.bz in f) {
-    let o = bz ? find(ROLE.bz, bz) : null;
+    // выбрали руками для этого продукта раньше («Магазин» → «Магазинка») — берём это
+    const { productBz = {} } = await chrome.storage.local.get('productBz');
+    const remembered = bz && productBz[norm(bz)];
+    let o = remembered ? Object.values(opts[ROLE.bz] || {}).find((x) => x.id === remembered) || null : null;
+    if (!o) o = bz ? find(ROLE.bz, bz) : null;
     // «Tracker» ↔ «Tracker (трекер задач)» — похожее название тоже подходит
     if (!o && bz) o = Object.values(opts[ROLE.bz] || {}).find((x) => norm(x.label).includes(norm(bz)) || norm(bz).includes(norm(x.label))) || null;
     f[ROLE.bz] = o ? [{ id: o.id, label: o.label }] : [];
     if (bz && !o) missing.bz = bz;
     picked.bz = o ? o.label : '';
   }
+  if (ROLE.bz in f && bzId) {
+    const o = Object.values(opts[ROLE.bz] || {}).find((x) => x.id === bzId);
+    if (o) { f[ROLE.bz] = [{ id: o.id, label: o.label }]; picked.bz = o.label; missing.bz = ''; }
+  }
   if (ROLE.due in f) f[ROLE.due] = due ? [due] : [];
-  return { fields: f, missing, picked };
+  return { fields: f, missing, picked, bzOptions: Object.values(opts[ROLE.bz] || {}).sort((a, b) => a.label.localeCompare(b.label, 'ru')) };
 }
 export const issueUrl = (board, key) => `${TRACKER}/i/${encodeURIComponent((board && board.ws) || 'EDITORS')}/${encodeURIComponent(key)}`;
 
@@ -294,4 +302,20 @@ export async function refreshDictionaries(board) {
   const report = Object.fromEntries(Object.entries(got).map(([p, r]) => [p, { status: r.status, error: r.error, shape: r.json ? shapeOf(r.json) : null }]));
   await chrome.storage.local.set({ dictReport: report });
   return { bz: (found[ROLE.bz] || []).length, countries: (found[ROLE.countries] || []).length, executors: people.length, report };
+}
+
+/** Запомнить выбор БЗ для продукта из заказа: в следующий раз «Магазин» сразу станет «Магазинкой». */
+export async function rememberBz(product, bzId) {
+  if (!product || !bzId) return;
+  const { productBz = {} } = await chrome.storage.local.get('productBz');
+  await chrome.storage.local.set({ productBz: { ...productBz, [norm(product)]: bzId } });
+}
+
+/** Справочники сами: если ещё не загружали или прошла неделя. Тихо — ошибки не мешают создать задачу. */
+export async function ensureDictionaries(board, maxAgeMs = 7 * 24 * 3600 * 1000) {
+  const { dictAt = 0 } = await chrome.storage.local.get('dictAt');
+  if (Date.now() - dictAt < maxAgeMs || !board) return null;
+  try {
+    return await Promise.race([refreshDictionaries(board), new Promise((r) => setTimeout(() => r(null), 12000))]);
+  } catch { return null; }
 }
