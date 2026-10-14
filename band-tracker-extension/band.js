@@ -143,11 +143,14 @@
     .btn { position: fixed; display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border: 0; border-radius: 8px; cursor: pointer;
       font: 700 12.5px system-ui, sans-serif; color: #fff; background: linear-gradient(90deg, #8B5CF6, #EC4899); box-shadow: 0 4px 12px rgb(139 92 246 / .35); }
     .btn.has { background: #F2EEFF; color: #6D28D9; box-shadow: 0 2px 8px rgb(0 0 0 / .12); border: 1px solid #DDD3FB; }
-    .card { position: fixed; width: 340px; max-height: 80vh; overflow: auto; background: #FCFBFF; color: #2A2140; border: 1.5px solid #CDBDFB;
+    .card { position: fixed; width: 340px; max-height: calc(100vh - 16px); display: flex; flex-direction: column; overflow: hidden; background: #FCFBFF; color: #2A2140; border: 1.5px solid #CDBDFB;
       border-radius: 16px; box-shadow: 0 18px 40px rgb(42 33 64 / .25); font-size: 13px; line-height: 1.45; }
     .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #E7E1F7; font-weight: 700; }
     .x { border: 0; background: none; font-size: 16px; cursor: pointer; color: #7A7194; }
-    .body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 9px; }
+    .body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 9px; overflow: auto; min-height: 0; }
+    .foot { padding: 10px 12px; border-top: 1px solid #E7E1F7; background: #FCFBFF; }
+    .foot:empty { display: none; }
+    .miss { color: #A79DC0; font-weight: 400; }
     .lbl { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #8B5CF6; }
     input[type=text] { width: 100%; font: 600 13px system-ui, sans-serif; color: #2A2140; border: 1px solid #E7E1F7; border-radius: 9px; padding: 7px 9px; background: #fff; }
     input[type=text]:focus { outline: none; border-color: #8B5CF6; }
@@ -212,12 +215,10 @@
   async function openCard(post) {
     active = { ...postData(post), el: post.el };
     const card = $('card');
-    const r = $('btn').getBoundingClientRect();
-    card.style.left = `${Math.max(8, Math.min(r.right - 340, innerWidth - 348))}px`;
-    card.style.top = `${Math.max(8, Math.min(r.bottom + 6, innerHeight - 420))}px`;
     card.hidden = false;
-    card.innerHTML = '<div class="top">Тикет по сообщению<button class="x" id="x">✕</button></div><div class="body"><p class="note">Читаю сообщение и тред…</p></div>';
+    card.innerHTML = '<div class="top">Тикет по сообщению<button class="x" id="x">✕</button></div><div class="body"><p class="note">Читаю сообщение и тред…</p></div><div class="foot" id="foot"></div>';
     $('x').onclick = closeCard;
+    fitCard();
     if (!active.text) return body('<div class="warn">Не вижу текста сообщения. Если вкладку Band открыли до установки расширения — обновите её (F5).</div>');
     const [plan, thread] = await Promise.all([send({ type: 'plan', post: active }), threadKeys(active.postId).catch(() => null)]);
     if (!plan.ok) return body(`<div class="err">${esc(plan.error)}</div>`);
@@ -225,11 +226,21 @@
     if (existing.length) known.set(active.postId, existing[0]);
     renderForm(plan, existing);
   }
-  function body(html) { $('card').querySelector('.body').innerHTML = html; }
+  function body(html, foot = '') { $('card').querySelector('.body').innerHTML = html; $('foot').innerHTML = foot; fitCard(); }
+  // Карточка всегда целиком на экране: под кнопкой, а если места мало — над ней; кнопки действий внизу видны всегда
+  function fitCard() {
+    const card = $('card'), b = $('btn').getBoundingClientRect();
+    card.style.left = `${Math.max(8, Math.min(b.right - 340, innerWidth - 348))}px`;
+    const h = card.offsetHeight;
+    let top = b.bottom + 6;
+    if (top + h > innerHeight - 8) top = b.top - h - 6;
+    card.style.top = `${Math.max(8, Math.min(top, innerHeight - h - 8))}px`;
+  }
+  addEventListener('resize', () => { if (!$('card').hidden) fitCard(); });
   // «Страны Грузия, Казахстан?» — подставится / ещё не знаю код в трекере
   function fieldLine(label, ok, miss) {
     if (!ok.length && !miss.length) return '';
-    return `<span>${label} <b>${ok.map(esc).join(', ')}</b>${miss.length ? `${ok.length ? ', ' : ''}<s title="Ещё не знаю этот вариант в трекере — выберите в задаче сами" style="color:#A79DC0">${miss.map(esc).join(', ')}</s>` : ''}</span>`;
+    return `<span>${label} <b>${ok.map(esc).join(', ')}</b>${miss.length ? `${ok.length ? ', ' : ''}<span class="miss" title="Расширение ещё не знает этот вариант — выберите в задаче сами">${miss.map(esc).join(', ')} (выберите в трекере)</span>` : ''}</span>`;
   }
   function closeCard() { $('card').hidden = true; active = null; }
 
@@ -240,11 +251,11 @@
       <span class="lbl">Основная задача</span>
       <input type="text" id="title" value="${esc(o.title)}" aria-label="Название задачи">
       <div class="meta">${fieldLine('БЗ', plan.picked.bz ? [plan.picked.bz] : [], plan.missing.bz ? [plan.missing.bz] : [])}${fieldLine('Страны', plan.picked.countries || [], plan.missing.countries || [])}${o.due ? `<span>Дедлайн <b>${esc(o.due.slice(8, 10) + '.' + o.due.slice(5, 7))}</b></span>` : ''}<span>Тип <b>${esc(plan.board || '—')}</b></span></div>
-      ${(plan.missing.bz || (plan.missing.countries || []).length) ? '<p class="note">Серым — что трекер ещё «не показал» расширению: эти значения выберите в задаче сами. Откройте в трекере выпадающий список «БЗ» или «Страны» — расширение запомнит варианты.</p>' : ''}
+      ${(plan.missing.bz || (plan.missing.countries || []).length) ? '<p class="note">Серым — варианты, которых расширение ещё не знает: их выберите в задаче сами. Чтобы знало все — панель расширения → «Типы задач» → «🔄 Загрузить справочники из трекера».</p>' : ''}
       ${o.languages.length ? `<span class="lbl">Подзадачи по языкам</span><div class="langs">${o.languages.map((l) => `<label class="lang"><input type="checkbox" value="${l.code}"${plan.subLangs.includes(l.code) ? ' checked' : ''}>${esc(l.code)} · ${esc(l.name)}</label>`).join('')}</div>
         <p class="note">Отметьте языки штатных переводчиков — на каждый будет своя подзадача. Расширение запомнит выбор.</p>` : ''}
-      <label class="chk"><input type="checkbox" id="reply"${plan.replyInThread ? ' checked' : ''}><span>Ответить в тред со ссылками на тикеты (по этому ответу видно, что тикет уже есть)</span></label>
-      <div class="row"><button type="button" id="more">Все поля…</button><button type="button" class="go" id="go">Создать</button></div>`);
+      <label class="chk"><input type="checkbox" id="reply"${plan.replyInThread ? ' checked' : ''}><span>Ответить в тред со ссылками на тикеты (по этому ответу видно, что тикет уже есть)</span></label>`,
+      '<div class="row"><button type="button" id="more">Все поля…</button><button type="button" class="go" id="go">Создать</button></div>');
     const count = () => { const n = root.querySelectorAll('.langs input:checked').length; $('go').textContent = n ? `Создать ${n + 1} тикета` : 'Создать тикет'; };
     root.querySelectorAll('.langs input').forEach((i) => i.addEventListener('change', count));
     count();
@@ -276,7 +287,7 @@
     }
     body(`<div class="ok">✓ Создано: ${[res.main, ...res.subs].length} ${res.subs.length ? 'тикета' : 'тикет'}</div>
       <div><a href="${esc(res.main.url)}" target="_blank" rel="noopener">${esc(res.main.key)}</a> — основная${res.subs.map((s) => `<br><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.key)}</a> — ${esc(s.lang)}`).join('')}</div>
-      ${replied}<div class="row"><button type="button" id="done">Готово</button></div>`);
+      ${replied}`, '<div class="row"><button type="button" id="done">Готово</button></div>');
     $('done').onclick = closeCard;
     const cp = $('cp');
     if (cp) cp.onclick = (e) => { e.preventDefault(); navigator.clipboard.writeText(replyText(res)); cp.textContent = 'Скопировано ✓'; };

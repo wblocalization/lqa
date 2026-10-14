@@ -50,3 +50,12 @@ test('дедлайн из заказа — как его хранит треке
   assert.equal(parseDue('нет', now), '');
   assert.equal(parseOrder('**Продукт:** X\n**Дедлайн:** 28.10.2026').due, '2026-10-28T00:00:00+03:00');
 });
+
+test('поля одной строкой — разносятся, название не «Языки: …»', () => {
+  const o = parseOrder('Коллеги, привет!\n**Языки:** узбекский, кыргызский, армянский **Ответственный за перевод:** @loc-managers');
+  assert.deepEqual(o.languages.map((l) => l.code), ['uz', 'ky', 'hy']);
+  assert.equal(o.title, 'Локализация — uz, ky, hy');
+  const p = parseOrder('Прошу перевести баннеры. Языки: узбекский, армянский Продукт: Магазин');
+  assert.equal(p.product, 'Магазин');
+  assert.equal(p.title, 'Магазин: переводы — uz, hy');
+});

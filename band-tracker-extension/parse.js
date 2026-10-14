@@ -41,6 +41,8 @@ export function parseLanguages(s) {
   return out;
 }
 
+// Подписи полей заказа — по ним разносим поля, если они слиплись в одну строку
+const FIELD_WORDS = /^(языки|язык|продукт|сервис|проект|ответственный( за перевод)?|веблейт|макеты|дедлайн|срок( сдачи)?|ссылки?|фигма|контекст|приоритет):$/i;
 const GREETING = /^(коллеги|привет|добрый|здравствуй|доброе|всем привет|hi\b|hello\b)/i;
 
 /**
@@ -49,7 +51,9 @@ const GREETING = /^(коллеги|привет|добрый|здравству�
  */
 export function parseOrder(md) {
   const text = String(md || '');
-  const lines = text.split('\n').map(plain).filter(Boolean);
+  // Поля бывают одной строкой: «**Языки:** uz, ky **Ответственный:** @loc **Продукт:** X» — разносим по строкам
+  const split = text.replace(/\s*(\*\*[А-Яа-яЁёA-Za-z ()]{2,40}:\*\*)/g, '\n$1').replace(/\s+([А-ЯЁA-Z][а-яёa-z]{2,20}(?: [а-яёa-z]{2,20}){0,3}:)\s/g, (m, f) => (FIELD_WORDS.test(f) ? `\n${f} ` : m));
+  const lines = split.split('\n').map(plain).filter(Boolean);
   const product = field(lines, 'продукт', 'сервис', 'проект').replace(/[.;]+$/, '');
   const languages = parseLanguages(field(lines, 'языки', 'язык', 'languages'));
   const links = [...text.matchAll(/\[([^\]]+)\]\((https?:[^)\s]+)\)|(https?:\/\/[^\s)]+)/g)]
@@ -63,7 +67,8 @@ export function parseOrder(md) {
   let title = '';
   if (product) title = `${product}: ${verb}${codes ? ` — ${codes}` : ''}`;
   else {
-    const first = lines.find((l) => !GREETING.test(l) && !/^[@#]/.test(l)) || lines[0] || '';
+    const isField = (l) => /^[А-Яа-яЁёA-Za-z ()]{2,40}:/.test(l);
+    const first = lines.find((l) => !GREETING.test(l) && !/^[@#]/.test(l) && !isField(l)) || (codes ? `${verb.charAt(0).toUpperCase()}${verb.slice(1)}` : lines[0] || '');
     title = first.replace(/^прошу\s+/i, '').replace(/^(взять в работу|сделать)\s+/i, '');
     title = title.charAt(0).toUpperCase() + title.slice(1);
     if (codes && !title.includes(codes)) title += ` — ${codes}`;
