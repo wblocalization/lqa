@@ -176,7 +176,7 @@
         <div class="letter-head"><b>Письмо в <span id="lContractor"></span></b><button id="lEdit" class="link-btn strong" type="button">✏️ Настроить</button></div>
         <p id="lEmpty" class="letter-empty">Для этого подрядчика ещё нет адресов и шаблона письма. <button class="link-btn strong" type="button">Настроить один раз →</button></p>
         <div id="lView" class="composer" hidden>
-          <div class="c-row"><span class="c-lbl">Тема</span><div id="lSubject" class="c-subject"></div><button id="lCopySubject" class="link-btn" type="button" title="Скопировать тему">копировать</button></div>
+          <div class="c-row c-subj-row"><label for="lSubject" class="c-lbl">Тема</label><textarea id="lSubject" class="c-subject" rows="2" spellcheck="false" aria-label="Тема письма"></textarea><span class="c-subj-btns"><button id="lCopySubject" class="link-btn" type="button" title="Скопировать тему">копировать</button><button id="lResetSubject" class="link-btn" type="button" title="Вернуть тему задачи" hidden>↺ как в задаче</button></span></div>
           <label class="c-row"><span class="c-lbl">Кому</span><input id="lTo" type="text" placeholder="почты через запятую"></label>
           <label class="c-row"><span class="c-lbl">Копия</span><input id="lCc" type="text" placeholder="если нужно"></label>
           <div id="lTexts" class="lt-chips" hidden></div>

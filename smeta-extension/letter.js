@@ -12,7 +12,7 @@ import { soundPrefs } from './remind.js';
 const $ = (s) => document.querySelector(s);
 const els = {
   box: $('#letter'), contractor: $('#lContractor'), edit: $('#lEdit'), view: $('#lView'), empty: $('#lEmpty'),
-  subject: $('#lSubject'), copySubject: $('#lCopySubject'), to: $('#lTo'), cc: $('#lCc'),
+  subject: $('#lSubject'), copySubject: $('#lCopySubject'), resetSubject: $('#lResetSubject'), to: $('#lTo'), cc: $('#lCc'),
   body: $('#lBody'), texts: $('#lTexts'), eNameRow: $('#lENameRow'), eName: $('#lEName'), eAddr: $('#lEAddr'), copyBody: $('#lCopyBody'), compose: $('#lCompose'), links: $('#lLinks'),
   sig: $('#lSig'), sigEdit: $('#lSigEdit'), sigText: $('#lSigText'), sigFetch: $('#lSigFetch'), sigSave: $('#lSigSave'),
   send: $('#lSend'), sent: $('#lSent'), sentText: $('#lSentText'), sentOpen: $('#lSentOpen'), drop: $('#lDrop'), fileInput: $('#lFileInput'), fileList: $('#lFileList'), attachOpen: $('#lAttachOpen'),
@@ -25,6 +25,9 @@ const OLD_DEFAULTS = [
   'Добрый день!\n\nПросим взять в работу: {тема}\nЯзыки: {языки}\nСрок сдачи: {срок}\n\nСпасибо!',
   'Добрый день!\n\nВозьмите, пожалуйста, в работу.\n\nСпасибо!',
 ];
+
+/** Тема письма — как сейчас в поле (её можно поправить); пусто — тема задачи. */
+const subjectNow = () => els.subject.value.replace(/\s*\n\s*/g, ' ').trim() || ctx.subject;
 
 let letters = {};   // { [подрядчик]: { to, cc, body } }
 let ctx = null;     // задача, которую только что добавили
@@ -202,7 +205,11 @@ function render() {
   els.empty.hidden = Boolean(l);
   els.view.hidden = !l;
   if (!l) return;
-  els.subject.textContent = ctx.subject;
+  // Тему, поправленную руками, не сбрасываем, пока это то же письмо (перерисовка после смены адресов и т. п.)
+  const key = `${ctx.id || ''}|${ctx.subject}`;
+  if (els.subject.dataset.key !== key) { els.subject.value = ctx.subject; els.subject.dataset.key = key; }
+  els.resetSubject.hidden = subjectNow() === ctx.subject;
+  requestAnimationFrame(fitSubject); // после показа панели — тогда известна высота текста
   els.to.value = parseEmails(l.to).join(', ');
   els.cc.value = parseEmails(l.cc).join(', ');
   bodyEdited = false;
@@ -241,7 +248,13 @@ async function copy(text, done) {
   try { await navigator.clipboard.writeText(text); toast(done); } catch { toast('Нет доступа к буферу — выделите и скопируйте вручную', 'err'); }
 }
 
-els.copySubject.addEventListener('click', () => copy(ctx.subject, '✓ Тема скопирована'));
+els.copySubject.addEventListener('click', () => copy(subjectNow(), '✓ Тема скопирована'));
+// Тему можно поправить прямо в письме (в таблице она остаётся прежней); ↺ — вернуть тему задачи
+// Поле темы растёт под длинную тему, чтобы её было видно целиком
+function fitSubject() { els.subject.style.height = 'auto'; els.subject.style.height = `${els.subject.scrollHeight + 2}px`; }
+els.subject.addEventListener('input', () => { els.resetSubject.hidden = subjectNow() === ctx.subject; fitSubject(); });
+els.subject.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); }); // тема — одна строка
+els.resetSubject.addEventListener('click', () => { els.subject.value = ctx.subject; els.resetSubject.hidden = true; fitSubject(); });
 const plain = (t) => String(t).replace(/\*\*([\s\S]+?)\*\*/g, '$1'); // без звёздочек «жирного» — для Outlook и буфера
 els.copyBody.addEventListener('click', () => copy(plain(bodyEd.get()), '✓ Текст письма скопирован'));
 
@@ -446,7 +459,7 @@ function checkLetter(text, to) {
   if (/\{[а-яё]+\}/i.test(t)) out.push('В тексте осталась {переменная} в скобках');
   const saved = parseEmails((letters[ctx.contractor] || {}).to);
   if (saved.length && !saved.some((e) => to.includes(e))) out.push(`В «Кому» нет адресов ${ctx.contractor} из шаблона (${saved.join(', ')})`);
-  if (/^\s*\[/.test(ctx.subject) && !ctx.subject.includes(ctx.id || '')) out.push('В теме нет номера задачи');
+  if (ctx.id && !subjectNow().includes(ctx.id)) out.push('В теме нет номера задачи');
   return out;
 }
 
@@ -461,14 +474,14 @@ els.send.addEventListener('click', async () => {
   const warnings = checkLetter(text, to);
   const ok = await ask({ title: warnings.length ? 'Проверьте письмо' : 'Отправить письмо?', warnings,
     ok: warnings.length ? 'Всё равно отправить' : 'Отправить', icon: warnings.length ? '!' : '📨', text: `Кому: ${to.join(', ')}` + (cc.length ? `\nКопия: ${cc.join(', ')}` : '') +
-    `\nТема: ${ctx.subject}` + (files.length ? `\nВложения: ${files.map((f) => f.name).join(', ')}` : '') +
+    `\nТема: ${subjectNow()}` + (files.length ? `\nВложения: ${files.map((f) => f.name).join(', ')}` : '') +
     `\n\n${plain(text.length > 400 ? `${text.slice(0, 400)}…` : text)}` + (sigText ? `\n\n${sigText}` : '\n\n(без подписи)') });
   if (!ok) return;
   els.send.disabled = true;
   els.send.textContent = files.length ? 'Отправляю с вложениями…' : 'Отправляю…';
   try {
     const signatureHtml = signature ? (signature.html || textToSigHtml(signature.text)) : '';
-    await sendMail({ to, cc, subject: ctx.subject, text, files, signatureHtml });
+    await sendMail({ to, cc, subject: subjectNow(), text, files, signatureHtml });
     files = [];
     renderFiles();
     els.send.textContent = '✓ Отправлено';
@@ -492,17 +505,62 @@ els.sentOpen.addEventListener('click', () => openSent());
 els.compose.addEventListener('click', async () => {
   const q = new URLSearchParams({ path: '/mail/action/compose' });
   const to = parseEmails(els.to.value).join(';');
-  const cc = parseEmails(els.cc.value).join(';');
+  const ccList = parseEmails(els.cc.value);
+  const cc = ccList.join(';');
   if (to) q.set('to', to);
   if (cc) q.set('cc', cc);
-  q.set('subject', ctx.subject);
+  q.set('subject', subjectNow());
+  // Outlook (mail.rwb.ru) «Копию» из ссылки не берёт — адреса заранее в буфер (пока панель в фокусе), потом впишем сами
+  if (cc) { try { await navigator.clipboard.writeText(ccList.join('; ')); } catch { /* без буфера — только автозаполнение */ } }
   q.set('body', plain(bodyEd.get() || fillTemplate(DEFAULT_BODY, ctx)));
   const tab = await chrome.tabs.create({ url: `${OWA_ORIGIN}/owa/?${q.toString().replace(/\+/g, '%20')}` });
-  if (files.length) {
-    await waitComplete(tab.id);
-    attachTo(tab.id);
-  }
+  if (ccList.length || files.length) await waitComplete(tab.id);
+  if (ccList.length) await fillCcIn(tab.id, ccList);
+  if (files.length) attachTo(tab.id);
 });
+
+/** Вписать адреса в «Копию» письма во вкладке Outlook. Не вышло — адреса уже в буфере: Ctrl+V в «Копию». */
+async function fillCcIn(tabId, list) {
+  let r = null;
+  try {
+    [{ result: r }] = await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', func: owaFillCc, args: [list] });
+  } catch { /* нет доступа к вкладке */ }
+  if (r && r.ok) toast(`Копия: ${list.join(', ')} — проверьте поле «Копия» в письме`);
+  else toast('Outlook не принял «Копию» из ссылки. Адреса уже скопированы — нажмите в поле «Копия» и Ctrl+V', 'warn');
+}
+
+/**
+ * Выполняется на странице Outlook Web App: найти поле «Копия» (Cc) в новом письме и вписать адреса.
+ * Поле ищем по подписи (aria-label / placeholder); если оно свёрнуто — жмём кнопку «Копия».
+ */
+async function owaFillCc(list) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const visible = (el) => el && el.offsetParent !== null;
+  const label = (el) => [el.getAttribute('aria-label'), el.getAttribute('placeholder'), el.getAttribute('title')].filter(Boolean).join(' ');
+  const isCc = (t) => /^\s*(копия|cc)(?![\p{L}])/iu.test(t) && !/скрыт|bcc/i.test(t); // \b не видит русские буквы
+  const findField = () => [...document.querySelectorAll('input, textarea, [contenteditable="true"], [role="textbox"], [role="combobox"]')]
+    .find((el) => visible(el) && isCc(label(el)));
+  const findButton = () => [...document.querySelectorAll('button, [role="button"], a, span')]
+    .find((el) => visible(el) && /^\s*(копия|cc)\s*$/i.test(el.textContent || '') && !el.querySelector('input'));
+  let field = null;
+  for (let i = 0; i < 30 && !field; i++) {
+    field = findField();
+    if (!field) { const b = findButton(); if (b && i % 5 === 0) b.click(); await sleep(500); }
+  }
+  if (!field) return { ok: false };
+  field.focus();
+  field.click();
+  const text = list.join('; ') + '; ';
+  if (!document.execCommand('insertText', false, text)) {
+    if ('value' in field) field.value = text; else field.textContent = text;
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  field.dispatchEvent(new KeyboardEvent('keydown', { key: ';', bubbles: true }));
+  field.dispatchEvent(new KeyboardEvent('keyup', { key: ';', bubbles: true }));
+  await sleep(300);
+  field.blur();
+  return { ok: true };
+}
 
 /**
  * Выполняется на странице Outlook Web App: вложить файлы в открытое письмо.

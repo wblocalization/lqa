@@ -608,7 +608,11 @@ select.delivery-sel option { background: var(--card); color: var(--ink); font-we
 .composer { display: flex; flex-direction: column; gap: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--card); }
 .composer > .c-row { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); margin: 0; font-weight: 400; }
 .composer .c-lbl { flex: none; width: 48px; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); }
-.composer .c-subject { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.composer .c-subject { flex: 1; min-width: 0; font: 600 13px/1.4 inherit; overflow-wrap: anywhere; resize: vertical; min-height: 0; padding: 6px 8px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: inherit; }
+.composer .c-subject:hover { border-color: var(--line); }
+.composer .c-subject:focus { border-color: var(--accent); background: var(--card); outline: none; }
+.composer .c-subj-row { align-items: flex-start; }
+.composer .c-subj-btns { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; white-space: nowrap; }
 .composer .c-row input { flex: 1; min-width: 0; border: none; background: transparent; padding: 2px 0; border-radius: 0; font-size: 13px; box-shadow: none; }
 .composer .c-row input:focus { box-shadow: none; }
 .composer .c-body { border: none; border-radius: 0; background: transparent; padding: 12px; font-size: 13.5px; min-height: 170px; box-shadow: none; }
