@@ -45,11 +45,14 @@ function renderLangs(checked) {
 
 makeLinkList(els.link2);
 
+// Где был список, когда открыли задачу: после «Назад», сохранения или удаления возвращаемся туда же,
+// а не наверх — удобно идти по списку дальше (например, удалять тестовые задачи подряд)
+let returnY = 0;
 function close() {
   els.form.hidden = true;
   els.view.hidden = false;
   current = null;
-  window.scrollTo(0, 0); // форма длинная — список и сообщение наверху
+  requestAnimationFrame(() => window.scrollTo(0, returnY));
 }
 els.back.addEventListener('click', close);
 
@@ -60,6 +63,7 @@ els.back.addEventListener('click', close);
 export async function openEditor(ref, done, del) {
   onDone = done || (() => {});
   onDelete = del || (() => {});
+  returnY = window.scrollY;
   els.view.hidden = true;
   els.form.hidden = false;
   els.form.reset();

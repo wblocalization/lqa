@@ -1,5 +1,5 @@
 // Вкладка «Мои задачи»: открытые задачи менеджера, статус меняется прямо здесь.
-import { settings, saveSettings, isConfigured, api, esc, toast } from './core.js';
+import { settings, saveSettings, isConfigured, api, esc, toast, ask } from './core.js';
 import { openEditor } from './edit.js';
 import { openMail } from './outlook.js';
 
@@ -109,6 +109,7 @@ function render() {
           ${data.statuses.map((s) => `<option value="${esc(s)}"${s === t.status ? ' selected' : ''}>${esc(s)}</option>`).join('')}
         </select>
         <button class="btn ghost small" type="button" data-edit="${i}">Изменить</button>
+        <button class="icon-btn small del-btn" type="button" data-del="${i}" title="Удалить задачу" aria-label="Удалить задачу">🗑</button>
       </div>
       ${t.status === 'Отдано' ? deliveryRow(t, i) : ''}
     </div>`;
@@ -130,6 +131,7 @@ function deliveryRow(t, i) {
 /** После сохранения — обновить списки и сказать, что получилось. */
 async function afterSave(text) {
   setMsg(text, 'ok');
+  toast(text);
   await loadMine({ keepMsg: true });
   if (els.search.value.trim()) await runSearch();
 }
@@ -173,9 +175,17 @@ async function deleteTask(ref) {
   if (!ref.id) deleted.delete(refKey(ref)); // без номера помним по строке, а строки сдвинулись — дальше не нужно
 }
 
-els.list.addEventListener('click', (e) => {
+els.list.addEventListener('click', async (e) => {
   const mail = e.target.closest('button[data-mail]');
   if (mail) return openMail(data.tasks[Number(mail.dataset.mail)].id);
+  // 🗑 прямо в списке: спросить и удалить, не открывая задачу; список остаётся на месте
+  const del = e.target.closest('button[data-del]');
+  if (del) {
+    const t = data.tasks[Number(del.dataset.del)];
+    const name = t.id ? `№ ${t.id}` : `«${t.title}»`;
+    if (!await ask({ title: `Удалить задачу ${name}?`, text: `${t.title}\n\nСтрока пропадёт из таблицы, отменить нельзя.`, ok: 'Удалить', danger: true })) return;
+    return deleteTask({ row: t.row, id: t.id || '', origSubject: t.subject });
+  }
   const b = e.target.closest('button[data-edit]');
   if (!b) return;
   const t = data.tasks[Number(b.dataset.edit)];

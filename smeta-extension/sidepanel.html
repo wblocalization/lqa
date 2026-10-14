@@ -83,72 +83,79 @@
         <label id="tLetterTextRow" class="tpl-letter" hidden><span>✉️ Текст письма</span><select id="tLetterText"><option value="">Обычный (как у подрядчика)</option></select></label>
       </div>
 
-      <div class="two">
-        <label><span>Подрядчик <span class="req">*</span></span>
-          <select id="tContractor" required></select>
+      <section class="fgroup g-what"><span class="fg-title">Что и кому</span>
+        <div class="two">
+          <label><span>Подрядчик <span class="req">*</span></span>
+            <select id="tContractor" required></select>
+          </label>
+          <label>Тикет в трекере
+            <span class="prefixed"><span>LOCAL-</span><input id="tTicketNum" type="text" inputmode="numeric" placeholder="1234"></span>
+          </label>
+        </div>
+        <div id="tSuggest" class="suggest" hidden>
+          <span id="tSuggestText"></span>
+          <span class="suggest-btns">
+            <button id="tSuggestApply" class="btn small" type="button">Заполнить</button>
+            <button id="tSuggestClose" class="icon-btn small" type="button" title="Не надо" aria-label="Не надо">✕</button>
+          </span>
+        </div>
+        <label><span>Тема письма <span class="req">*</span></span>
+          <input id="tSubject" type="text" required placeholder="Только суть, номер добавится сам">
+          <span id="tOtHint" class="field-hint">Напишите в конце «от» — дата подставится сама</span>
         </label>
-        <label>Тикет в трекере
-          <span class="prefixed"><span>LOCAL-</span><input id="tTicketNum" type="text" inputmode="numeric" placeholder="1234"></span>
+      </section>
+
+      <section class="fgroup g-from"><span class="fg-title">Откуда пришло</span>
+        <label>Ссылка на Band <span class="opt">если есть</span>
+          <span class="with-btn">
+            <input id="tLink" type="url" placeholder="https://band.wb.ru/…">
+            <button id="tPasteLink" class="btn ghost" type="button">Вставить</button>
+          </span>
         </label>
-      </div>
+        <div class="field-group">
+          <span class="field-label">Ещё ссылки на Band <span class="opt">если переписок несколько</span></span>
+          <div id="tLink2"></div>
+        </div>
+        <div class="two">
+          <label>Ник заказчика
+            <input id="tCustomer" type="text" placeholder="@nick">
+          </label>
+          <label>Продукт <select id="tProduct"></select></label>
+        </div>
+      </section>
 
-      <div id="tSuggest" class="suggest" hidden>
-        <span id="tSuggestText"></span>
-        <span class="suggest-btns">
-          <button id="tSuggestApply" class="btn small" type="button">Заполнить</button>
-          <button id="tSuggestClose" class="icon-btn small" type="button" title="Не надо" aria-label="Не надо">✕</button>
-        </span>
-      </div>
-
-      <label><span>Тема письма <span class="req">*</span></span>
-        <input id="tSubject" type="text" required placeholder="Только суть, номер добавится сам">
-        <span id="tOtHint" class="field-hint">Напишите в конце «от» — дата подставится сама</span>
-      </label>
-
-      <label>Ссылка на Band <span class="opt">если есть</span>
-        <span class="with-btn">
-          <input id="tLink" type="url" placeholder="https://band.wb.ru/…">
-          <button id="tPasteLink" class="btn ghost" type="button">Вставить</button>
-        </span>
-      </label>
-
-      <div class="field-group">
-        <span class="field-label">Ещё ссылки на Band <span class="opt">если переписок несколько</span></span>
-        <div id="tLink2"></div>
-      </div>
-
-      <div class="two">
-        <label>Продукт <select id="tProduct"></select></label>
-        <label>Дата получения <input id="tDate" type="date"></label>
-      </div>
-
-      <div class="two">
-        <label>Срок сдачи <input id="tExactDeadline" type="date"><span id="tWeekend" class="field-hint weekend" hidden></span></label>
+      <section class="fgroup g-when"><span class="fg-title">Сроки</span>
+        <div class="two">
+          <label>Дата получения <input id="tDate" type="date"></label>
+          <label>Срок сдачи <input id="tExactDeadline" type="date"><span id="tWeekend" class="field-hint weekend" hidden></span></label>
+        </div>
         <label>Дедлайн <select id="tDeadline"></select><span class="field-hint">ставится сам по сроку сдачи</span></label>
-      </div>
+      </section>
 
-      <label>Ник заказчика
-        <input id="tCustomer" type="text" placeholder="@nick">
-      </label>
+      <section class="fgroup g-langs"><span class="fg-title">Языки</span>
+        <fieldset class="langs">
+          <legend class="sr-only">Языки</legend>
+          <div id="tLangs"></div>
+        </fieldset>
+      </section>
 
-      <fieldset class="langs">
-        <legend>Языки</legend>
-        <div id="tLangs"></div>
-      </fieldset>
-
-      <div class="two">
-        <label>Менеджер <select id="tManager"></select></label>
-        <label>Статус <select id="tStatus" class="status-sel"></select></label>
-      </div>
+      <section class="fgroup g-who"><span class="fg-title">Кто ведёт</span>
+        <div class="two">
+          <label>Менеджер <select id="tManager"></select></label>
+          <label>Статус <select id="tStatus" class="status-sel"></select></label>
+        </div>
+      </section>
 
       <details class="more">
         <summary>Ещё поля</summary>
         <label>Статус отдачи <select id="tDeliveryStatus"></select></label>
-        <label>Смета (ссылка) <input id="tEstimateLink" type="url"></label>
-        <div class="two">
-          <label>Итого с НДС, ₽ <input id="tTotal" type="text" inputmode="decimal" placeholder="5263+5336"></label>
-          <label>SP <input id="tSp" type="number" step="1" min="0"></label>
-        </div>
+        <section class="fgroup g-money"><span class="fg-title">Деньги и SP</span>
+          <label>Смета (ссылка) <input id="tEstimateLink" type="url"></label>
+          <div class="two">
+            <label>Итого с НДС, ₽ <input id="tTotal" type="text" inputmode="decimal" placeholder="5263+5336"></label>
+            <label>SP <input id="tSp" type="number" step="1" min="0"></label>
+          </div>
+        </section>
         <label>Комментарий <input id="tComment" type="text"></label>
         <label>Жалобы на заказчика <input id="tComplaints" type="text" placeholder="несоблюдение процессов, грубость…"></label>
       </details>
@@ -261,47 +268,59 @@
         <b id="eTitle"></b>
       </div>
       <p id="eTop" class="status" role="status" hidden></p>
-      <label><span>Тема письма <span class="req">*</span></span>
-        <textarea id="eSubject" rows="2" required></textarea>
-      </label>
-      <label>Ссылка на Band <input id="eLink" type="url" placeholder="https://band.wb.ru/…"></label>
-      <div class="field-group">
-        <span class="field-label">Ещё ссылки на Band</span>
-        <div id="eLink2"></div>
-      </div>
-      <div class="two">
-        <label>Тикет в трекере
-          <span class="prefixed"><span>LOCAL-</span><input id="eTicketNum" type="text" inputmode="numeric" placeholder="1234"></span>
+      <section class="fgroup g-what"><span class="fg-title">Что и кому</span>
+        <label><span>Тема письма <span class="req">*</span></span>
+          <textarea id="eSubject" rows="2" required></textarea>
         </label>
-        <label>Дата получения <input id="eDate" type="date"></label>
-      </div>
-      <div class="two">
-        <label>Продукт <select id="eProduct"></select></label>
-        <label>Ник заказчика <input id="eCustomer" type="text" placeholder="@nick"></label>
-      </div>
-      <fieldset class="langs">
-        <legend>Языки</legend>
-        <div id="eLangs"></div>
-      </fieldset>
-      <div class="two">
+        <div class="two">
+          <label>Подрядчик <select id="eContractor"></select></label>
+          <label>Тикет в трекере
+            <span class="prefixed"><span>LOCAL-</span><input id="eTicketNum" type="text" inputmode="numeric" placeholder="1234"></span>
+          </label>
+        </div>
+      </section>
+      <section class="fgroup g-from"><span class="fg-title">Откуда пришло</span>
+        <label>Ссылка на Band <input id="eLink" type="url" placeholder="https://band.wb.ru/…"></label>
+        <div class="field-group">
+          <span class="field-label">Ещё ссылки на Band</span>
+          <div id="eLink2"></div>
+        </div>
+        <div class="two">
+          <label>Ник заказчика <input id="eCustomer" type="text" placeholder="@nick"></label>
+          <label>Продукт <select id="eProduct"></select></label>
+        </div>
+      </section>
+      <section class="fgroup g-when"><span class="fg-title">Сроки</span>
+        <div class="two">
+          <label>Дата получения <input id="eDate" type="date"></label>
+          <label>Срок сдачи <input id="eExactDeadline" type="date"></label>
+        </div>
         <label>Дедлайн <select id="eDeadline"></select><span class="field-hint">ставится сам по сроку сдачи</span></label>
-        <label>Срок сдачи <input id="eExactDeadline" type="date"></label>
-      </div>
-      <div class="two">
-        <label>Статус <select id="eStatus" class="status-sel"></select></label>
+      </section>
+      <section class="fgroup g-langs"><span class="fg-title">Языки</span>
+        <fieldset class="langs">
+          <legend class="sr-only">Языки</legend>
+          <div id="eLangs"></div>
+        </fieldset>
+      </section>
+      <section class="fgroup g-who"><span class="fg-title">Кто ведёт и статус</span>
+        <div class="two">
+          <label>Менеджер <select id="eManager"></select></label>
+          <label>Статус <select id="eStatus" class="status-sel"></select></label>
+        </div>
         <label>Статус отдачи <select id="eDeliveryStatus" class="delivery-sel"></select></label>
-      </div>
-      <div class="two">
-        <label>Подрядчик <select id="eContractor"></select></label>
-        <label>Менеджер <select id="eManager"></select></label>
-      </div>
-      <label>Смета (ссылка) <input id="eEstimateLink" type="url"></label>
-      <div class="two">
-        <label>Итого с НДС <input id="eTotal" type="text" inputmode="decimal" placeholder="5263+5336"></label>
-        <label>SP <input id="eSp" type="number" step="1" min="0"></label>
-      </div>
-      <label>Комментарий <textarea id="eComment" rows="2"></textarea></label>
-      <label>Жалобы на заказчика <textarea id="eComplaints" rows="2"></textarea></label>
+      </section>
+      <section class="fgroup g-money"><span class="fg-title">Деньги и SP</span>
+        <label>Смета (ссылка) <input id="eEstimateLink" type="url"></label>
+        <div class="two">
+          <label>Итого с НДС <input id="eTotal" type="text" inputmode="decimal" placeholder="5263+5336"></label>
+          <label>SP <input id="eSp" type="number" step="1" min="0"></label>
+        </div>
+      </section>
+      <section class="fgroup g-note"><span class="fg-title">Заметки</span>
+        <label>Комментарий <textarea id="eComment" rows="2"></textarea></label>
+        <label>Жалобы на заказчика <textarea id="eComplaints" rows="2"></textarea></label>
+      </section>
       <button id="eSave" class="btn primary" type="submit">Сохранить изменения</button>
       <p id="eMsg" class="status" role="status"></p>
       <button id="eDelete" class="link-btn danger-link" type="button">Удалить задачу</button>

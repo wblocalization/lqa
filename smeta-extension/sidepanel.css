@@ -778,3 +778,39 @@ dialog.whatsnew li + li { margin-top: 4px; }
 .sig-img img { max-width: 160px; max-height: 70px; border: 1px solid var(--line); border-radius: 6px; padding: 3px; background: #fff; }
 .sig-img .hint-inline { font-size: 12px; }
 .c-sig-img { display: block; margin-top: 6px; max-width: 100%; height: auto; }
+
+/* ---------- Цветные блоки формы: глаз сразу находит нужное ---------- */
+:root {
+  --g-what: #8B5CF6; --g-what-bg: #F7F3FF;
+  --g-from: #2F80ED; --g-from-bg: #F1F6FF;
+  --g-when: #E8730C; --g-when-bg: #FFF6EC;
+  --g-langs: #16A34A; --g-langs-bg: #F0FAF3;
+  --g-who: #64748B; --g-who-bg: #F4F6F9;
+  --g-money: #C08A00; --g-money-bg: #FFF9E5;
+  --g-note: #DB2777; --g-note-bg: #FFF3F8;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --g-what: #B39DFA; --g-what-bg: #251E37; --g-from: #7EB0FF; --g-from-bg: #1A2335;
+  --g-when: #F5A35C; --g-when-bg: #2C2118; --g-langs: #5ED48C; --g-langs-bg: #172A20;
+  --g-who: #A3AEC2; --g-who-bg: #22242C; --g-money: #F2C94C; --g-money-bg: #2A2614; --g-note: #F47BB5; --g-note-bg: #2E1A26; } }
+:root[data-theme="dark"] {
+  --g-what: #B39DFA; --g-what-bg: #251E37; --g-from: #7EB0FF; --g-from-bg: #1A2335;
+  --g-when: #F5A35C; --g-when-bg: #2C2118; --g-langs: #5ED48C; --g-langs-bg: #172A20;
+  --g-who: #A3AEC2; --g-who-bg: #22242C; --g-money: #F2C94C; --g-money-bg: #2A2614; --g-note: #F47BB5; --g-note-bg: #2E1A26; }
+.g-what { --g: var(--g-what); --gbg: var(--g-what-bg); }
+.g-from { --g: var(--g-from); --gbg: var(--g-from-bg); }
+.g-when { --g: var(--g-when); --gbg: var(--g-when-bg); }
+.g-langs { --g: var(--g-langs); --gbg: var(--g-langs-bg); }
+.g-who { --g: var(--g-who); --gbg: var(--g-who-bg); }
+.g-money { --g: var(--g-money); --gbg: var(--g-money-bg); }
+.g-note { --g: var(--g-note); --gbg: var(--g-note-bg); }
+.fgroup { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 10px 12px 12px; border-radius: 14px;
+  background: var(--gbg); border: 1px solid color-mix(in srgb, var(--g) 22%, transparent); border-left: 4px solid var(--g); min-width: 0; }
+.fg-title { font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--g); }
+.fgroup :is(input, select, textarea):focus { border-color: var(--g); box-shadow: 0 0 0 3px color-mix(in srgb, var(--g) 18%, transparent); outline: none; }
+/* обязательное и пустое — видно сразу */
+.fgroup :is(input, select, textarea)[required]:invalid { border-color: color-mix(in srgb, var(--warn) 55%, var(--line)); background: var(--warn-soft); }
+.g-langs .chip input:checked + span { background: var(--g); border-color: var(--g); color: #fff; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.del-btn { opacity: .55; }
+.del-btn:hover { opacity: 1; }
