@@ -68,8 +68,11 @@
 
   // Списки вариантов (БЗ, страны…), которые трекер загружает для выпадающих списков: [{ id, label }].
   // Ищем в любом JSON-ответе массивы объектов с id и названием — расширение потом узнает по id, к какому полю они относятся.
-  function scanOptions(text) {
-    if (typeof text !== 'string' || text.length > 2e6 || !/"id"/.test(text)) return;
+  function scanOptions(text, url) {
+    if (typeof text !== 'string' || text.length > 2e6) return;
+    // адрес запроса (без параметров) — чтобы потом брать справочники оттуда же, откуда сам трекер
+    window.postMessage({ __bandTracker: 'api', path: pathOf(url), query: (() => { try { return [...new URL(url, location.href).searchParams.keys()].slice(0, 10); } catch { return []; } })() }, location.origin);
+    if (!/"id"/.test(text)) return;
     let j; try { j = JSON.parse(text); } catch { return; }
     const lists = [];
     (function walk(o, depth) {
@@ -80,7 +83,7 @@
         o.slice(0, 200).forEach((x) => walk(x, depth + 1));
       } else Object.values(o).forEach((x) => walk(x, depth + 1));
     })(j, 0);
-    if (lists.length) window.postMessage({ __bandTracker: 'options', lists }, location.origin);
+    if (lists.length) window.postMessage({ __bandTracker: 'options', lists, path: pathOf(url) }, location.origin);
   }
 
   const origFetch = window.fetch;
@@ -93,7 +96,7 @@
       const url = typeof input === 'string' ? input : (input && input.url) || String(input);
       const method = (init && init.method) || (input && input.method) || 'GET';
       // задачи, которые создаёт само расширение, помечены — тип из них не запоминаем
-      if (API.test(pathOf(url))) p.then((r) => r.clone().text()).then(scanOptions).catch(() => {});
+      if (API.test(pathOf(url))) p.then((r) => r.clone().text()).then((t) => scanOptions(t, url)).catch(() => {});
       if (String(method).toUpperCase() === 'POST' && API.test(pathOf(url)) && !(init && init.bandTrackerOwn)) {
         const names = snapshot();
         Promise.all([reqBody, p.then((r) => r.clone().text().then((t) => [r.status, t]))]).then(([body, [status, t]]) => {
@@ -112,7 +115,7 @@
   XMLHttpRequest.prototype.send = function (body) {
     const m = this.__bandTracker;
     if (m && API.test(pathOf(m.url))) {
-      this.addEventListener('load', () => { try { scanOptions(this.responseType === 'json' ? JSON.stringify(this.response) : this.responseText); } catch { /* пропустим */ } });
+      this.addEventListener('load', () => { try { scanOptions(this.responseType === 'json' ? JSON.stringify(this.response) : this.responseText, m.url); } catch { /* пропустим */ } });
     }
     if (m && isCreate(m.method, m.url, body)) {
       const names = snapshot();

@@ -12,7 +12,21 @@ async function handle(e) {
   if (e.source !== window || e.origin !== location.origin) return;
   const d = e.data;
   // Варианты полей (БЗ, страны…): из созданных руками задач и из списков, которые трекер загружает.
+  // «Собрать всё из трекера»: какие адреса трекер вызывает и какие списки из них приходят (последние 40 / 30)
+  if (d && d.__bandTracker === 'api' && typeof d.path === 'string') {
+    const { trackerApis = [] } = await chrome.storage.local.get('trackerApis');
+    const key = d.path.replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, '{id}').replace(/\/\d+(?=\/|$)/g, '/{n}');
+    await chrome.storage.local.set({ trackerApis: [{ path: key, query: d.query || [] }, ...trackerApis.filter((x) => x.path !== key)].slice(0, 40) });
+    return;
+  }
   if (d && d.__bandTracker === 'options' && Array.isArray(d.lists)) {
+    {
+      const { trackerLists = [] } = await chrome.storage.local.get('trackerLists');
+      const fresh = d.lists.map((items) => ({ path: d.path || '', count: items.length, items: items.slice(0, 300) }));
+      const sig = (l) => l.path + '|' + l.items.slice(0, 3).map((x) => x.id).join(',');
+      const all = [...fresh, ...trackerLists.filter((l) => !fresh.some((f) => sig(f) === sig(l)))].slice(0, 30);
+      await chrome.storage.local.set({ trackerLists: all });
+    }
     const { fieldOptions: saved = {} } = await chrome.storage.local.get('fieldOptions');
     // стартовые варианты (как в tracker.js) — по ним узнаём списки и у тех, кто ещё не создавал задачу руками
     const fieldOptions = JSON.parse(JSON.stringify(SEED_OPTIONS));
