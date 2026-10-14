@@ -338,14 +338,12 @@ test('Расширение: удалить задачу', () => {
 
 test('Фильтры', () => {
   G.hideClosedTasks(); same(tasks().filter.criteria[10].hidden, ['Отдано', 'Отменено']);
-  G.showMyTasks(); // без Sheets API общий фильтр не ставится — только подсказка, как включить
-  assert.ok(!tasks().filter.criteria[14], 'общий фильтр по менеджеру не ставится');
-  assert.match(calls.alerts.at(-1), /Google Sheets API/);
+  G.showMyTasks(); assert.ok(!tasks().filter.criteria[14].hidden.includes('Анастасия Лисовая'));
   G.showAllTasks(); same(tasks().filter.criteria, {});
   G.showInProgressTranslatorTasks(); G.showAllTranslatorTasks();
 });
 
-test('Мои задачи: с Sheets API — личное представление по ссылке, без него — подсказка, общий фильтр не трогаем', () => {
+test('Мои задачи: с Sheets API — личное представление, без него — общий фильтр', () => {
   const reqs = [];
   let existing = [];
   ctx.Sheets = { Spreadsheets: {
@@ -360,7 +358,7 @@ test('Мои задачи: с Sheets API — личное представлен
     const add = reqs[0].addFilterView.filter;
     same([add.title, add.filterSpecs[0].columnIndex, add.filterSpecs[0].filterCriteria.condition.values[0].userEnteredValue],
       ['Задачи: Анастасия Лисовая', 13, 'Анастасия Лисовая']);
-    assert.match(String(calls.html.at(-1)), /fvid=777/); // ссылка сразу открывает личный режим
+    assert.match(calls.alerts.at(-1), /Режимы фильтрации/);
     same(tasks().filter && tasks().filter.criteria, {}, 'общий фильтр не тронут');
     G.showMyTasks(); // второй раз — то же представление обновляется, а не плодится
     assert.equal(reqs[1].updateFilterView.filter.filterViewId, 777);
@@ -374,8 +372,8 @@ test('Мои задачи: с Sheets API — личное представлен
     assert.equal(reqs.length - before, G.getListsData().managers.length);
     assert.match(calls.alerts.at(-1), /Готово: \d+/);
   } finally { delete ctx.Sheets; }
-  G.showMyTasks(); // сервис не включён — общий фильтр не ставим, у остальных таблица не меняется
-  assert.ok(!tasks().filter || !tasks().filter.criteria[14]);
+  G.showMyTasks(); // сервис не включён — как раньше, общий фильтр
+  assert.ok(!tasks().filter.criteria[14].hidden.includes('Анастасия Лисовая'));
   G.showAllTasks();
 });
 
