@@ -847,5 +847,6 @@ dialog.whatsnew li + li { margin-top: 4px; }
 .tl-btn.tl-write { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: var(--accent-soft); }
 .tl-btn.tl-write:hover { border-color: var(--accent); }
 .tl-btn:disabled { opacity: .6; cursor: wait; }
-.mine-item .del-btn { width: 34px; height: 34px; flex: none; color: var(--ink-soft); opacity: 1; border: 1px solid var(--line); border-radius: 10px; }
-.mine-item .del-btn:hover { color: var(--err); border-color: var(--err); background: var(--err-soft); }
+.mine-item .del-btn { width: 36px; height: 36px; flex: none; color: var(--err); opacity: 1; background: var(--err-soft); border: 1px solid color-mix(in srgb, var(--err) 35%, var(--line)); border-radius: 10px; }
+.mine-item .del-btn svg { width: 18px; height: 18px; }
+.mine-item .del-btn:hover { border-color: var(--err); background: color-mix(in srgb, var(--err) 18%, var(--card)); }
