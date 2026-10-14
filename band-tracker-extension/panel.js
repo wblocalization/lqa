@@ -2,7 +2,7 @@
 // Трекер пускает запросы только со своей страницы (вход + csrf_token из cookie), поэтому задачу создаём
 // во вкладке tracker.wb.ru — от имени того, кто в ней вошёл. Нет открытой вкладки — откроем в фоне.
 
-import { PRESETS, issueUrl, createPlan, logCreated, journalFor, fieldsFor } from './tracker.js';
+import { PRESETS, issueUrl, createPlan, logCreated, journalFor, fieldsFor, refreshDictionaries } from './tracker.js';
 import { parseOrder, subtaskTitle, orderSummary } from './parse.js';
 
 const DRAFT_TTL = 10 * 60 * 1000; // черновик из Band старше 10 минут уже не подхватываем
@@ -15,7 +15,7 @@ const els = {
   boards: $('#boards'), boardsBtn: $('#boardsBtn'), boardList: $('#boardList'), boardsClose: $('#boardsClose'),
   msg: $('#msg'), toast: $('#toast'),
   exists: $('#exists'), meta: $('#meta'), subsBox: $('#subsBox'), subs: $('#subs'), replyRow: $('#replyRow'), reply: $('#reply'),
-  doneSubs: $('#doneSubs'), doneReply: $('#doneReply'), diagText: $('#diagText'), diagCopy: $('#diagCopy'), diagLists: $('#diagLists'),
+  doneSubs: $('#doneSubs'), doneReply: $('#doneReply'), diagText: $('#diagText'), diagCopy: $('#diagCopy'), diagLists: $('#diagLists'), diagBand: $('#diagBand'), dictLoad: $('#dictLoad'), dictText: $('#dictText'),
 };
 
 let boards = [];     // типы задач (адрес «пространство/проект/тип»): запомненные + встроенные
@@ -129,6 +129,20 @@ els.boardsBtn.addEventListener('click', () => { showBoards(els.boards.hidden); r
 // ---------- Диагностика: что расширение видело в трекере ----------
 const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'только что' : m < 60 ? `${m} мин назад` : new Date(t).toLocaleString('ru-RU'); };
 async function renderDiag() {
+  // связь со вкладкой Band: расширение подключено к странице и видит сообщения?
+  const bandTabs = await chrome.tabs.query({ url: 'https://band.wb.ru/*' }).catch(() => []);
+  if (!bandTabs.length) els.diagBand.textContent = 'Band: вкладка не открыта.';
+  else {
+    let r = null;
+    try { r = await chrome.tabs.sendMessage(bandTabs[0].id, { type: 'ping' }); } catch { /* не подключено */ }
+    els.diagBand.textContent = r && r.ok
+      ? `Band: подключено (версия ${r.version}), вижу сообщений — ${r.posts}${r.posts ? '' : ' (откройте канал с сообщениями)'}.`
+      : 'Band: расширение не подключено к вкладке — обновите её (F5). После каждого обновления расширения это нужно.';
+  }
+  const { dictAt = 0, executors = [] } = await chrome.storage.local.get(['dictAt', 'executors']);
+  const opts = await (await import('./tracker.js')).knownOptions();
+  const n = (fid) => Object.keys(opts[fid] || {}).length;
+  els.dictText.textContent = dictAt ? `Справочники (${ago(dictAt)}): БЗ — ${n('883735ab-be95-4d44-a830-62740ae23fcb')}, стран — ${n('c907e2d8-c109-4147-ae67-f78fbdc3bdfb')}, исполнителей — ${executors.length}.` : 'Справочники ещё не загружали.';
   const { trackerSeen = [], trackerLists = [], trackerApis = [] } = await chrome.storage.local.get(['trackerSeen', 'trackerLists', 'trackerApis']);
   const last = trackerSeen[0];
   els.diagLists.textContent = `Собрано: списков — ${trackerLists.length} (${trackerLists.slice(0, 6).map((l) => `${l.count} шт.: ${l.items.slice(0, 2).map((x) => x.label).join(', ')}…`).join('; ') || 'пока нет'}), адресов трекера — ${trackerApis.length}.`;
@@ -137,12 +151,28 @@ async function renderDiag() {
     : last.ok ? `Последняя задача в трекере — ${ago(last.at)}: запомнила тип.`
       : `Последний раз в трекере (${ago(last.at)}) не запомнила: ${last.why}. Нажмите «Скопировать для разработчика» и пришлите.`;
 }
+els.dictLoad.addEventListener('click', async () => {
+  const board = currentBoard();
+  if (!board) return setMsg('Нет типа задачи', 'err');
+  els.dictLoad.disabled = true; els.dictLoad.textContent = 'Загружаю…';
+  try {
+    const r = await refreshDictionaries(board);
+    toast(`✓ БЗ: ${r.bz}, стран: ${r.countries}, исполнителей: ${r.executors}`);
+    if (!r.bz || !r.countries) setMsg('Не все списки нашлись — нажмите «Скопировать для разработчика» и пришлите', 'err');
+  } catch (e) {
+    setMsg(`Не загрузилось: ${e.message}`, 'err');
+  } finally {
+    els.dictLoad.disabled = false; els.dictLoad.textContent = '🔄 Загрузить справочники из трекера';
+    renderDiag();
+  }
+});
 els.diagCopy.addEventListener('click', async () => {
-  const { trackerSeen = [], boards: saved = [], trackerLists = [], trackerApis = [], fieldOptions = {} } = await chrome.storage.local.get(['trackerSeen', 'boards', 'trackerLists', 'trackerApis', 'fieldOptions']);
+  const { trackerSeen = [], boards: saved = [], trackerLists = [], trackerApis = [], fieldOptions = {}, dictReport = null, executors = [] } = await chrome.storage.local.get(['trackerSeen', 'boards', 'trackerLists', 'trackerApis', 'fieldOptions', 'dictReport', 'executors']);
   const data = {
     version: chrome.runtime.getManifest().version, seen: trackerSeen,
     boards: saved.map((b) => ({ name: b.name, path: b.path, space: b.space, project: b.project, ws: b.ws, fields: b.fields })),
-    fieldOptions, lists: trackerLists, apis: trackerApis,
+    fieldOptions, dict: dictReport, executors, apis: trackerApis,
+    lists: trackerLists.filter((l) => !/issue\/search/.test(l.path)).slice(0, 8), // поиск задач — не нужен (там названия чужих задач)
   };
   await navigator.clipboard.writeText(JSON.stringify(data, null, 1));
   toast('✓ Скопировано — вставьте в чат разработчику');

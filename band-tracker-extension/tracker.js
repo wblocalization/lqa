@@ -78,7 +78,9 @@ export const issueUrl = (board, key) => `${TRACKER}/i/${encodeURIComponent((boar
 /** Типы задач: запомненные + встроенные; выбранный — первым. */
 export async function loadBoards() {
   const { boards: saved = [], hiddenPresets = [], boardPath = '' } = await chrome.storage.local.get(['boards', 'hiddenPresets', 'boardPath']);
-  const all = [...saved, ...PRESETS.filter((p) => !hiddenPresets.includes(p.path) && !saved.some((b) => b.path === p.path))];
+  // «Локализация · Тип задачи» — подпись формы попала в название по ошибке (2.0): убираем
+  const clean = (b) => ({ ...b, name: String(b.name || '').split(' · ').filter((x) => !/^(тип задачи|проект|пространство)$/i.test(x.trim())).join(' · ') || b.name });
+  const all = [...saved.map(clean), ...PRESETS.filter((p) => !hiddenPresets.includes(p.path) && !saved.some((b) => b.path === p.path))];
   return { boards: all, current: all.find((b) => b.path === boardPath) || all[0] || null };
 }
 
@@ -183,4 +185,113 @@ export async function createPlan(plan) {
     subs.push({ key: k, url: issueUrl(plan.board, k), lang: s.lang || '' });
   }
   return { main, subs };
+}
+
+// ---------- Справочники трекера: варианты БЗ, стран и исполнители ----------
+// Трекер отдаёт форму создания задачи и список исполнителей по адресам (видно в «Скопировать для разработчика»):
+//   /api/gateway/entrypoint/<пространство>/<проект>/<тип>?categoryID=…  — поля формы с вариантами
+//   /api/gateway/namespace/<ws>/entrypoint_group/<проект>/entrypoint/<тип>/executors — исполнители
+// Названия ключей у вариантов заранее не знаем, поэтому ищем похожее: id|value|key|uuid + label|name|title|fullName…
+const OPT_ID = ['id', 'value', 'key', 'uuid', 'code', 'userId', 'user_id'];
+const OPT_LABEL = ['label', 'name', 'title', 'fullName', 'full_name', 'displayName', 'text', 'value', 'login', 'email'];
+function asOption(x) {
+  if (!x || typeof x !== 'object' || Array.isArray(x)) return null;
+  if (x.user && typeof x.user === 'object') { const u = asOption(x.user); if (u) return u; }
+  const idk = OPT_ID.find((k) => typeof x[k] === 'string' && x[k]);
+  const lk = OPT_LABEL.find((k) => k !== idk && typeof x[k] === 'string' && x[k].trim());
+  return idk && lk ? { id: x[idk], label: x[lk].trim() } : null;
+}
+function optionArrays(o, depth = 0, out = []) {
+  if (!o || typeof o !== 'object' || depth > 8) return out;
+  if (Array.isArray(o)) {
+    const opts = o.map(asOption).filter(Boolean);
+    if (opts.length >= 1 && opts.length >= o.length / 2) out.push(opts);
+    o.slice(0, 300).forEach((x) => optionArrays(x, depth + 1, out));
+  } else Object.values(o).forEach((x) => optionArrays(x, depth + 1, out));
+  return out;
+}
+/** Варианты для каждого из нужных полей: объект, где где-то есть id поля, а внутри — массив вариантов. */
+function optionsByField(json, fieldIds) {
+  const found = {};
+  (function walk(o, depth) {
+    if (!o || typeof o !== 'object' || depth > 10) return;
+    if (!Array.isArray(o)) {
+      const fid = fieldIds.find((f) => Object.values(o).some((v) => v === f));
+      if (fid && !found[fid]) {
+        const lists = optionArrays(o).filter((l) => !l.some((x) => x.id === fid));
+        if (lists.length) found[fid] = lists.sort((a, b) => b.length - a.length)[0];
+      }
+    }
+    (Array.isArray(o) ? o : Object.values(o)).forEach((x) => walk(x, depth + 1));
+  })(json, 0);
+  return found;
+}
+/** Устройство ответа без значений — для разработчика, если варианты не нашлись. */
+function shapeOf(o, depth = 0) {
+  if (depth > 6) return '…';
+  if (Array.isArray(o)) return o.length ? [`${o.length}×`, shapeOf(o[0], depth + 1)] : [];
+  if (o && typeof o === 'object') return Object.fromEntries(Object.entries(o).slice(0, 25).map(([k, v]) => [k, shapeOf(v, depth + 1)]));
+  return typeof o;
+}
+
+/** Выполняется на странице tracker.wb.ru: GET от имени вошедшего. */
+async function getJsonInPage(paths) {
+  const out = {};
+  for (const p of paths) {
+    try {
+      const r = await fetch(p, { credentials: 'include', headers: { accept: 'application/json' } });
+      let j = null; try { j = await r.json(); } catch { /* не JSON */ }
+      out[p] = { status: r.status, json: j };
+    } catch (e) { out[p] = { status: 0, error: e.message }; }
+  }
+  return out;
+}
+
+/**
+ * Загрузить справочники для типа задачи: варианты БЗ и стран → fieldOptions, исполнители → executors.
+ * → { bz, countries, executors, report } (числа — сколько вариантов нашлось; report — для «Скопировать для разработчика»)
+ */
+export async function refreshDictionaries(board) {
+  const m = /^\/api\/gateway\/catalog\/([^/]+)\/([^/]+)\/([^/]+)$/.exec((board && board.path) || '');
+  if (!m) throw new Error('Не понимаю адрес типа задачи — пришлите «Скопировать для разработчика»');
+  const [, space, project, type] = m;
+  const { catalogTypes = {} } = await chrome.storage.local.get('catalogTypes');
+  const cat = catalogTypes[type] || '';
+  const ws = board.ws || 'EDITORS', code = board.project || 'LOCAL';
+  const entry = `/api/gateway/entrypoint/${space}/${project}/${type}`;
+  const paths = [entry, ...(cat ? [`${entry}?categoryID=${encodeURIComponent(cat)}`] : []), `/api/catalog/${space}/${project}`,
+    `/api/gateway/namespace/${ws}/entrypoint_group/${code}/entrypoint/${type}/executors`];
+  const tab = await trackerTab();
+  const [res] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: getJsonInPage, args: [paths] });
+  let got = res && res.result || {};
+  // categoryID — id типа в каталоге проекта (Локализация, Перевод, LQA…): узнали — спросим форму ещё раз
+  const catalog = got[`/api/catalog/${space}/${project}`];
+  if (!cat && catalog && catalog.json) {
+    const types = optionArrays(catalog.json).flat();
+    const typeName = (board.name || '').split(' · ')[0].toLowerCase();
+    const t = types.find((x) => x.label.toLowerCase() === typeName) || types.find((x) => x.label.toLowerCase() === 'локализация');
+    if (t) {
+      await chrome.storage.local.set({ catalogTypes: { ...catalogTypes, [type]: t.id } });
+      const [again] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: getJsonInPage, args: [[`${entry}?categoryID=${encodeURIComponent(t.id)}`]] });
+      got = { ...got, ...(again && again.result) };
+    }
+  }
+  const fieldIds = [ROLE.bz, ROLE.countries];
+  const found = {};
+  for (const [p, r] of Object.entries(got)) {
+    if (!p.includes('/entrypoint/') || p.endsWith('/executors') || !r.json) continue;
+    const f = optionsByField(r.json, fieldIds);
+    for (const fid of fieldIds) if (f[fid] && (!found[fid] || f[fid].length > found[fid].length)) found[fid] = f[fid];
+  }
+  const { fieldOptions = {} } = await chrome.storage.local.get('fieldOptions');
+  for (const [fid, list] of Object.entries(found)) {
+    fieldOptions[fid] = fieldOptions[fid] || {};
+    for (const x of list) fieldOptions[fid][norm(x.label)] = { id: x.id, label: x.label };
+  }
+  const exResp = Object.entries(got).find(([p]) => p.endsWith('/executors'));
+  const people = exResp && exResp[1].json ? optionArrays(exResp[1].json).sort((a, b) => b.length - a.length)[0] || [] : [];
+  await chrome.storage.local.set({ fieldOptions, executors: people.slice(0, 500), dictAt: Date.now() });
+  const report = Object.fromEntries(Object.entries(got).map(([p, r]) => [p, { status: r.status, error: r.error, shape: r.json ? shapeOf(r.json) : null }]));
+  await chrome.storage.local.set({ dictReport: report });
+  return { bz: (found[ROLE.bz] || []).length, countries: (found[ROLE.countries] || []).length, executors: people.length, report };
 }

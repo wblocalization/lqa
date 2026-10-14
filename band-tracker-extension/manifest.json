@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Band → Трекер",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Тикеты в tracker.wb.ru из треда Band: кнопка «Создать тикет» у сообщения — название, языки, подзадачи по языкам и ответ в тред со ссылками.",
   "action": {
     "default_title": "Band → Трекер",

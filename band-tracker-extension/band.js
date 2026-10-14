@@ -92,7 +92,7 @@
   // Всё рисуем в своём shadow DOM поверх страницы: вёрстку Band не трогаем, его стили нам не мешают.
   const postData = (post) => {
     const textEl = document.getElementById(`postMessageText_${post.id}`) || document.getElementById(`rhsPostMessageText_${post.id}`) ||
-      post.el.querySelector('.post-message__text');
+      post.el.querySelector('.post-message__text, [class*="post-message__text"], .post__body');
     const team = location.pathname.split('/')[1] || '';
     return { postId: post.id, text: textEl ? toMarkdown(textEl) : '', author: authorOf(post.el), link: team ? `${location.origin}/${team}/pl/${post.id}` : '' };
   };
@@ -120,6 +120,11 @@
   }
   // панель просит то же самое
   chrome.runtime.onMessage.addListener((msg, _s, reply) => {
+    if (msg && msg.type === 'ping') {
+      const posts = document.querySelectorAll('[id^="post_"], [id^="rhsPost_"], [id^="rhsRootPost_"]').length;
+      reply({ ok: true, posts, texts: document.querySelectorAll('[id^="postMessageText_"], [id^="rhsPostMessageText_"]').length, version: chrome.runtime.getManifest().version });
+      return false;
+    }
     if (msg && msg.type === 'bandThread') { threadKeys(msg.postId).then((keys) => reply({ ok: true, keys }), (e) => reply({ ok: false, error: e.message })); return true; }
     if (msg && msg.type === 'bandReply') { replyInThread(msg.postId, msg.message).then(() => reply({ ok: true }), (e) => reply({ ok: false, error: e.message })); return true; }
     return false;
@@ -184,7 +189,7 @@
   document.addEventListener('mouseover', (e) => {
     if (e.composedPath().includes(host)) { clearTimeout(hideTimer); return; }
     const post = e.target instanceof Element ? findPost(e.target) : null;
-    if (post && post.el && (document.getElementById(`postMessageText_${post.id}`) || document.getElementById(`rhsPostMessageText_${post.id}`))) {
+    if (post && post.el) {
       clearTimeout(hideTimer);
       hovered = post;
       placeButton(post);
@@ -195,7 +200,12 @@
       hideTimer = setTimeout(() => { $('btn').hidden = true; }, 350);
     }
   }, true);
-  addEventListener('scroll', () => { if ($('card').hidden) $('btn').hidden = true; }, true);
+  // Прокрутка ленты — кнопка едет за сообщением (раньше пряталась от любой прокрутки на странице)
+  addEventListener('scroll', () => {
+    if (!$('card').hidden || $('btn').hidden || !hovered) return;
+    if (!document.contains(hovered.el)) { $('btn').hidden = true; return; }
+    placeButton(hovered);
+  }, true);
 
   $('btn').addEventListener('click', () => { if (hovered) openCard(hovered); });
 
