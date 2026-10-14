@@ -133,3 +133,5 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .done-subs { margin: 0; padding-left: 18px; font-size: 13.5px; }
 .done-subs a { color: var(--accent); font-weight: 700; }
 @media (prefers-color-scheme: dark) { .warn { background: #2A2316; color: #FBBF24; } }
+
+.diag { display: flex; flex-direction: column; gap: 6px; padding-top: 10px; border-top: 1px dashed var(--line); }

@@ -15,7 +15,7 @@ const els = {
   boards: $('#boards'), boardsBtn: $('#boardsBtn'), boardList: $('#boardList'), boardsClose: $('#boardsClose'),
   msg: $('#msg'), toast: $('#toast'),
   exists: $('#exists'), meta: $('#meta'), subsBox: $('#subsBox'), subs: $('#subs'), replyRow: $('#replyRow'), reply: $('#reply'),
-  doneSubs: $('#doneSubs'), doneReply: $('#doneReply'),
+  doneSubs: $('#doneSubs'), doneReply: $('#doneReply'), diagText: $('#diagText'), diagCopy: $('#diagCopy'),
 };
 
 let boards = [];     // типы задач (адрес «пространство/проект/тип»): запомненные + встроенные
@@ -124,7 +124,24 @@ function showBoards(on) {
   els.boardsBtn.setAttribute('aria-pressed', String(on));
   window.scrollTo(0, 0);
 }
-els.boardsBtn.addEventListener('click', () => showBoards(els.boards.hidden));
+els.boardsBtn.addEventListener('click', () => { showBoards(els.boards.hidden); renderDiag(); });
+
+// ---------- Диагностика: что расширение видело в трекере ----------
+const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'только что' : m < 60 ? `${m} мин назад` : new Date(t).toLocaleString('ru-RU'); };
+async function renderDiag() {
+  const { trackerSeen = [] } = await chrome.storage.local.get('trackerSeen');
+  const last = trackerSeen[0];
+  els.diagText.textContent = !last
+    ? 'В трекере ещё не видела ни одного создания задачи. Обновите вкладку tracker.wb.ru (F5) после установки расширения и создайте задачу там.'
+    : last.ok ? `Последняя задача в трекере — ${ago(last.at)}: запомнила тип.`
+      : `Последний раз в трекере (${ago(last.at)}) не запомнила: ${last.why}. Нажмите «Скопировать для разработчика» и пришлите.`;
+}
+els.diagCopy.addEventListener('click', async () => {
+  const { trackerSeen = [], boards: saved = [] } = await chrome.storage.local.get(['trackerSeen', 'boards']);
+  const data = { version: chrome.runtime.getManifest().version, seen: trackerSeen, boards: saved.map((b) => ({ name: b.name, path: b.path, space: b.space, project: b.project, ws: b.ws, fields: b.fields })) };
+  await navigator.clipboard.writeText(JSON.stringify(data, null, 1));
+  toast('✓ Скопировано — вставьте в чат разработчику');
+});
 els.boardsClose.addEventListener('click', () => showBoards(false));
 els.helpBtn.addEventListener('click', () => {
   showBoards(false);

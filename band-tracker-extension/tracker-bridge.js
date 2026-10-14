@@ -1,7 +1,18 @@
 // Передаёт найденный тип задачи (см. tracker-hook.js) в память расширения.
-window.addEventListener('message', async (e) => {
+// Сообщения обрабатываем строго по очереди: два запроса подряд не должны затереть записи друг друга
+let queue = Promise.resolve();
+window.addEventListener('message', (e) => { queue = queue.then(() => handle(e)).catch(() => {}); });
+
+async function handle(e) {
   if (e.source !== window || e.origin !== location.origin) return;
   const d = e.data;
+  // Диагностика: последние 10 запросов «создать задачу», которые видели в трекере (без названий, описаний и кук)
+  if (d && d.__bandTracker === 'seen') {
+    const { trackerSeen = [] } = await chrome.storage.local.get('trackerSeen');
+    const { __bandTracker, ...rest } = d;
+    await chrome.storage.local.set({ trackerSeen: [{ ...rest, at: Date.now() }, ...trackerSeen].slice(0, 10) });
+    return;
+  }
   if (!d || d.__bandTracker !== 'board' || typeof d.path !== 'string' || typeof d.key !== 'string') return;
   const project = (/^([A-Z][A-Z0-9_]*)-\d+$/.exec(d.key) || [])[1] || '';
   const ws = (/^\/n\/([^/]+)/.exec(d.page || '') || [])[1] || '';
@@ -22,4 +33,4 @@ window.addEventListener('message', async (e) => {
     at: Date.now(),
   };
   await chrome.storage.local.set({ boards: [board, ...boards.filter((b) => b.path !== d.path)], boardsAdded: { path: d.path, at: Date.now() } });
-});
+}
