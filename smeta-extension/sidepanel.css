@@ -772,3 +772,9 @@ dialog.whatsnew li + li { margin-top: 4px; }
 /* Задача добавляется — кнопки заблокированы, видно, что идёт */
 .task-form.busy #tSubmit { opacity: .75; cursor: progress; }
 .task-form.busy #tMoreRow, .task-form.busy .or-del { opacity: .45; cursor: not-allowed; }
+
+/* Картинка в подписи */
+.sig-img { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 6px 0 2px; font-size: 12.5px; color: var(--ink-soft); }
+.sig-img img { max-width: 160px; max-height: 70px; border: 1px solid var(--line); border-radius: 6px; padding: 3px; background: #fff; }
+.sig-img .hint-inline { font-size: 12px; }
+.c-sig-img { display: block; margin-top: 6px; max-width: 100%; height: auto; }

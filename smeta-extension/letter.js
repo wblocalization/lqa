@@ -263,8 +263,103 @@ els.copyBody.addEventListener('click', () => copy(plain(bodyEd.get()), '✓ Те
 let signature = null; // { html, text }
 async function loadSignature() {
   const r = await chrome.storage.local.get('signature');
-  signature = r.signature && (r.signature.html || r.signature.text) ? r.signature : null;
+  signature = r.signature && (r.signature.html || r.signature.text || r.signature.image) ? r.signature : null;
 }
+
+// Цвет текста подписи — как в Outlook бывает серая подпись
+const SIG_COLORS = [['', 'Чёрный'], ['#595959', 'Тёмно-серый'], ['#7F7F7F', 'Серый']];
+const sigColor = () => (signature && signature.color) || '';
+
+/** Подпись для письма: текст (или HTML из Outlook) + цвет + картинка ссылкой cid: на встроенное вложение. */
+function signatureForMail() {
+  if (!signature) return { html: '', inline: [] };
+  const body = signature.html || (signature.text ? textToSigHtml(signature.text) : '');
+  const color = sigColor();
+  let html = body ? (color ? `<div style="color:${color}">${body}</div>` : body) : '';
+  const inline = [];
+  const img = signature.image;
+  if (img && img.dataUrl) {
+    const cid = `sig-${Date.now().toString(36)}@zadachi`;
+    html += `<div><img src="cid:${cid}" width="${img.width || 200}" alt="" style="width:${img.width || 200}px;height:auto;border:0"></div>`;
+    inline.push({ name: img.name || 'signature.png', type: img.type || 'image/png', b64: img.dataUrl.split(',')[1], contentId: cid });
+  }
+  return { html, inline };
+}
+
+/** Картинка из файла/буфера → { dataUrl, type, name, width }. Большие уменьшаем до 400 px в ширину (GIF до 300 КБ не трогаем — анимация). */
+async function prepareSigImage(file) {
+  if (!/^image\//.test(file.type)) throw new Error('Это не картинка');
+  const read = (f) => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; r.readAsDataURL(f); });
+  const src = await read(file);
+  const im = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => no(new Error('Картинка не открылась')); i.src = src; });
+  const MAX = 400;
+  if ((file.type === 'image/gif' && file.size <= 300 * 1024) || (im.naturalWidth <= MAX && file.size <= 200 * 1024)) {
+    return { dataUrl: src, type: file.type, name: file.name || 'signature.png', width: Math.min(im.naturalWidth, MAX) };
+  }
+  const k = Math.min(1, MAX / im.naturalWidth);
+  const c = document.createElement('canvas');
+  c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
+  c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+  return { dataUrl: c.toDataURL('image/png'), type: 'image/png', name: 'signature.png', width: c.width };
+}
+
+async function setSigImage(image) {
+  signature = { ...(signature || { text: '' }), image: image || undefined };
+  if (!image) delete signature.image;
+  if (!signature.html && !signature.text && !signature.image) signature = null;
+  await chrome.storage.local.set({ signature });
+  renderSigExtras();
+  if (ctx && !els.view.hidden && els.sigEdit.hidden) renderSignature(); // открыт редактор — не закрываем его
+  toast(image ? '✓ Картинка в подписи — будет в каждом письме' : 'Картинка из подписи убрана');
+}
+async function setSigColor(color) {
+  signature = { ...(signature || { text: '' }), color };
+  await chrome.storage.local.set({ signature });
+  renderSigExtras();
+  if (ctx && !els.view.hidden && els.sigEdit.hidden) renderSignature(); // открыт редактор — не закрываем его
+}
+
+/** Под полем подписи (в письме и в «Настройках»): картинка и цвет. */
+function renderSigExtras() {
+  ['#lSigImg', '#mlSigImg'].forEach((sel) => {
+    const box = document.querySelector(sel);
+    if (!box) return;
+    const img = signature && signature.image;
+    box.innerHTML = '';
+    if (img) {
+      const pic = document.createElement('img'); pic.src = img.dataUrl; pic.alt = 'Картинка в подписи';
+      const del = document.createElement('button'); del.type = 'button'; del.className = 'link-btn'; del.textContent = '✕ убрать картинку';
+      del.addEventListener('click', () => setSigImage(null));
+      box.append(pic, del);
+    } else {
+      const add = document.createElement('button'); add.type = 'button'; add.className = 'btn ghost small'; add.textContent = '🖼 Добавить картинку';
+      const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*'; input.hidden = true;
+      add.addEventListener('click', () => input.click());
+      input.addEventListener('change', async () => { const f = input.files[0]; if (!f) return; try { await setSigImage(await prepareSigImage(f)); } catch (e) { toast(e.message, 'err'); } });
+      const hint = document.createElement('span'); hint.className = 'hint-inline'; hint.textContent = 'или вставьте картинку в подпись (Ctrl+V)';
+      box.append(add, input, hint);
+    }
+    const col = document.createElement('label'); col.className = 'hint-inline';
+    col.append('Цвет текста: ');
+    const sel2 = document.createElement('select');
+    SIG_COLORS.forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; if (v === sigColor()) o.selected = true; sel2.append(o); });
+    sel2.addEventListener('change', () => setSigColor(sel2.value));
+    col.append(sel2);
+    box.append(col);
+  });
+}
+// Ctrl+V картинки прямо в поле подписи — это картинка подписи (раньше обработчика текста)
+['#lSigText', '#mlSigText'].forEach((sel) => {
+  const el = document.querySelector(sel);
+  if (!el) return;
+  el.addEventListener('paste', async (e) => {
+    const item = [...((e.clipboardData && e.clipboardData.items) || [])].find((i) => i.kind === 'file' && /^image\//.test(i.type));
+    if (!item) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    try { await setSigImage(await prepareSigImage(item.getAsFile())); } catch (err) { toast(err.message, 'err'); }
+  }, true);
+});
 // Подпись храним как текст с **жирным** (или как HTML из Outlook, пока её не правили)
 const sigToText = (s) => (s ? s.text || htmlToRichText(s.html) : '');
 const textToSigHtml = (text) => String(text).split('\n')
@@ -278,6 +373,12 @@ function renderSignature() {
     const pre = document.createElement('div');
     pre.className = 'c-sig-text';
     pre.innerHTML = textToSigHtml(sigToText(signature));
+    if (sigColor()) pre.style.color = sigColor();
+    if (signature.image) {
+      const im = document.createElement('img'); im.className = 'c-sig-img'; im.src = signature.image.dataUrl; im.alt = '';
+      im.style.width = `${Math.min(signature.image.width || 200, 240)}px`;
+      pre.append(im);
+    }
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'link-btn'; b.textContent = 'изменить подпись';
     b.addEventListener('click', openSigEdit);
@@ -292,6 +393,7 @@ function renderSignature() {
 }
 function openSigEdit() {
   sigEd.set(sigToText(signature));
+  renderSigExtras();
   els.sig.hidden = true;
   els.sigEdit.hidden = false;
   sigEd.focus();
@@ -299,7 +401,9 @@ function openSigEdit() {
 async function saveSignature(text) {
   text = text.trim();
   // текст поменяли — своя подпись, без оформления Outlook
-  signature = text ? (signature && signature.html && sigToText({ html: signature.html }) === text ? signature : { text }) : null;
+  const keep = signature ? { image: signature.image, color: signature.color } : {};
+  signature = text ? (signature && signature.html && sigToText({ html: signature.html }) === text ? signature : { text, ...keep }) : (keep.image ? { text: '', ...keep } : null);
+  if (signature && !signature.image) delete signature.image;
   await chrome.storage.local.set({ signature });
   if (ctx) renderSignature();
   toast(text ? '✓ Подпись сохранена — будет в каждом письме' : 'Подпись убрана');
@@ -309,9 +413,11 @@ async function fetchInto(btn, ed) {
   try {
     const s = await fetchOutlookSignature();
     if (!s) return toast('Не нашла подпись в Outlook — вставьте её сюда текстом', 'warn');
-    signature = s;
+    signature = { ...s, color: s.color || sigColor() || undefined };
+    if (s.image) await chrome.storage.local.set({ signature }); // картинку — сразу, текст — по «Сохранить»
     ed.set(sigToText(s));
-    toast('✓ Подпись взята из Outlook — нажмите «Сохранить подпись»');
+    renderSigExtras();
+    toast(s.image ? '✓ Подпись и картинка взяты из Outlook — нажмите «Сохранить подпись»' : '✓ Подпись взята из Outlook — нажмите «Сохранить подпись»');
   } finally {
     btn.disabled = false;
   }
@@ -324,6 +430,7 @@ const card = { save: $('#mlSigSave'), fetch: $('#mlSigFetch') };
 export async function renderSignatureCard() {
   await loadSignature();
   cardEd.set(sigToText(signature));
+  renderSigExtras();
 }
 card.save.addEventListener('click', () => saveSignature(cardEd.get()));
 card.fetch.addEventListener('click', () => fetchInto(card.fetch, cardEd));
@@ -342,6 +449,23 @@ async function fetchOutlookSignature() {
 
 /** Выполняется на странице Outlook: ищем подпись в настройках пользователя (там же, откуда её берёт сам Outlook). */
 async function owaSignatureInPage() {
+  // Картинку из подписи забираем отдельно (data: или скачиваем по ссылке), а из HTML её убираем —
+  // в письмо она уйдёт встроенным вложением, иначе у получателей она часто не показывается
+  async function withImage(sig) {
+    if (!sig || !sig.html || !/<img/i.test(sig.html)) return sig;
+    const d = document.createElement('div');
+    d.innerHTML = sig.html;
+    const img = d.querySelector('img');
+    let image = null;
+    try {
+      const src = img.getAttribute('src') || '';
+      const blob = await (await fetch(src, { credentials: 'include' })).blob();
+      const dataUrl = await new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(blob); });
+      if (/^data:image\//.test(dataUrl)) image = { dataUrl, type: blob.type, name: 'signature.' + ((blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg')), width: Math.min(Number(img.getAttribute('width')) || img.naturalWidth || 200, 400) };
+    } catch { /* не скачалась — оставим без картинки */ }
+    d.querySelectorAll('img').forEach((x) => x.remove());
+    return { html: d.innerHTML, image };
+  }
   const find = (o, depth = 0) => {
     if (!o || typeof o !== 'object' || depth > 8) return null;
     for (const k of Object.keys(o)) {
@@ -362,12 +486,12 @@ async function owaSignatureInPage() {
       const r = await t();
       if (!r.ok) continue;
       const found = find(await r.json());
-      if (found) return found;
+      if (found) return await withImage(found);
     } catch { /* следующий способ */ }
   }
   // открыт черновик — подпись прямо в нём
   const el = document.querySelector('#Signature');
-  return el && el.textContent.trim() ? { html: el.innerHTML } : null;
+  return el && el.textContent.trim() ? withImage({ html: el.innerHTML }) : null;
 }
 
 // ---------- Вложения ----------
@@ -475,13 +599,13 @@ els.send.addEventListener('click', async () => {
   const ok = await ask({ title: warnings.length ? 'Проверьте письмо' : 'Отправить письмо?', warnings,
     ok: warnings.length ? 'Всё равно отправить' : 'Отправить', icon: warnings.length ? '!' : '📨', text: `Кому: ${to.join(', ')}` + (cc.length ? `\nКопия: ${cc.join(', ')}` : '') +
     `\nТема: ${subjectNow()}` + (files.length ? `\nВложения: ${files.map((f) => f.name).join(', ')}` : '') +
-    `\n\n${plain(text.length > 400 ? `${text.slice(0, 400)}…` : text)}` + (sigText ? `\n\n${sigText}` : '\n\n(без подписи)') });
+    `\n\n${plain(text.length > 400 ? `${text.slice(0, 400)}…` : text)}` + (sigText ? `\n\n${sigText}` : (signature && signature.image ? '' : '\n\n(без подписи)')) + (signature && signature.image ? '\n🖼 + картинка в подписи' : '') });
   if (!ok) return;
   els.send.disabled = true;
   els.send.textContent = files.length ? 'Отправляю с вложениями…' : 'Отправляю…';
   try {
-    const signatureHtml = signature ? (signature.html || textToSigHtml(signature.text)) : '';
-    await sendMail({ to, cc, subject: subjectNow(), text, files, signatureHtml });
+    const sig = signatureForMail();
+    await sendMail({ to, cc, subject: subjectNow(), text, files, signatureHtml: sig.html, inline: sig.inline });
     files = [];
     renderFiles();
     els.send.textContent = '✓ Отправлено';

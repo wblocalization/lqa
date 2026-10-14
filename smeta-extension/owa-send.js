@@ -38,7 +38,8 @@ export function textToHtml(text) {
 }
 
 /**
- * Отправить письмо. msg: { to: [], cc: [], subject, text, files: [File], signatureHtml }.
+ * Отправить письмо. msg: { to: [], cc: [], subject, text, files: [File], signatureHtml, inline: [{ name, type, b64, contentId }] }.
+ * inline — картинки подписи: встроенные вложения, на них ссылается <img src="cid:…"> в подписи.
  * Возвращает { ok: true } или бросает ошибку с понятным текстом.
  */
 export async function sendMail(msg) {
@@ -53,7 +54,7 @@ export async function sendMail(msg) {
   try {
     [res] = await chrome.scripting.executeScript({
       target: { tabId: tab.id }, world: 'MAIN', func: owaSendInPage,
-      args: [{ to: msg.to, cc: msg.cc || [], subject: msg.subject, html: textToHtml(msg.text), files, signatureHtml: msg.signatureHtml || '' }],
+      args: [{ to: msg.to, cc: msg.cc || [], subject: msg.subject, html: textToHtml(msg.text), files, signatureHtml: msg.signatureHtml || '', inline: msg.inline || [] }],
     });
   } catch (e) {
     throw new Error(/error page|Cannot access/i.test(e.message) ? 'Outlook не открылся — проверьте сеть/VPN и вход в почту' : e.message);
@@ -129,7 +130,23 @@ async function owaSendInPage(msg) {
     if (!item || !item.Id) throw new Error('Outlook не создал черновик');
     let changeKey = item.ChangeKey;
 
-    // 2. Вложения — по одному, у черновика каждый раз новый ChangeKey
+    // 2. Картинка подписи — встроенным вложением (на неё ссылается cid: в подписи), как делает сам Outlook
+    for (const f of msg.inline || []) {
+      const b = atob(f.b64);
+      const att = await call('CreateAttachmentFromLocalFile', {
+        __type: 'CreateAttachmentJsonRequest:#Exchange', Header: header('Exchange2013'),
+        Body: {
+          __type: 'CreateAttachmentRequest:#Exchange',
+          ParentItemId: { __type: 'ItemId:#Exchange', Id: item.Id, ChangeKey: changeKey },
+          Attachments: [{ __type: 'FileAttachment:#Exchange', Content: f.b64, IsContactPhoto: false, ContentType: f.type, IsInline: true, ContentId: f.contentId, Name: f.name, Size: b.length }],
+          RequireImageType: false, IncludeContentIdInResponse: true, ClientSupportsIrm: true, CancellationId: null,
+        },
+      });
+      const a = att.Attachments && att.Attachments[0] && att.Attachments[0].AttachmentId;
+      if (a && a.RootItemChangeKey) changeKey = a.RootItemChangeKey;
+    }
+
+    // 3. Вложения — по одному, у черновика каждый раз новый ChangeKey
     for (const f of msg.files) {
       const att = await call('CreateAttachmentFromLocalFile', {
         __type: 'CreateAttachmentJsonRequest:#Exchange', Header: header('Exchange2013'),
@@ -144,7 +161,7 @@ async function owaSendInPage(msg) {
       if (a && a.RootItemChangeKey) changeKey = a.RootItemChangeKey;
     }
 
-    // 3. Отправить и сохранить копию в «Отправленных»
+    // 4. Отправить и сохранить копию в «Отправленных»
     await call('UpdateItem', {
       __type: 'UpdateItemJsonRequest:#Exchange', Header: header('Exchange2015'),
       Body: {
