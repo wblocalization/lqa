@@ -187,7 +187,32 @@ export function taskFor(fileName, texts = []) {
  * Главная функция: принимает куски текста PDF и имя файла.
  * Номер задачи — см. taskFor; сумма — «без НДС + НДС = с НДС» или «итог, в том числе НДС».
  */
+/**
+ * Слова, разбитые на отдельные буквы. Жирный шрифт в сметах Logrus набран «вразрядку» и ещё и дважды
+ * (обводка поверх текста): «Итого с НДС» → «2»,«2»,«5»,«5»,«,»,«,»,«2»,«2»… Склеиваем такие серии
+ * обратно в «25,200.00руб», убирая удвоение.
+ */
+export function mergeCharRuns(texts) {
+  const out = [];
+  let run = [];
+  const flush = () => {
+    if (run.length >= 4) {
+      const doubled = run.length % 2 === 0 && run.every((c, i) => i % 2 || c === run[i + 1]);
+      out.push((doubled ? run.filter((_, i) => i % 2 === 0) : run).join(''));
+    } else out.push(...run);
+    run = [];
+  };
+  for (const t of texts) {
+    const s = String(t).trim();
+    if (s.length === 1) run.push(s);
+    else { flush(); out.push(t); }
+  }
+  flush();
+  return out;
+}
+
 export function parseEstimate(texts, fileName = '', lines = []) {
+  texts = mergeCharRuns(texts);
   const task = taskFor(fileName, [...lines, ...texts]);
   const found = findTotalWithVat(extractAmounts(texts));
   let total = null;

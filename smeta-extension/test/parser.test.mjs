@@ -152,3 +152,11 @@ test('акт подрядчика: строки одного номера скл
   const w = parseAct(['5 Перевод LIT-26-2251', '(файлы для веба) 1 386,00 386,00 77,20 463,20']);
   assert.deepEqual(w.items.map((g) => [g.id, g.gross]), [['LIT-26-2251', 463.2]]);
 });
+
+test('Logrus: итог с НДС жирным — по буквам и дважды («2»,«2»,«5»,«5»…)', () => {
+  const dbl = (s) => [...s].flatMap((c) => [c, c]);
+  const texts = ['Итого без НДС', '24,000.00 руб', 'НДС 5%', '1,200.00 руб', 'Итого с НДС', ...dbl('25,200.00руб'),
+    'RU->HY', ...dbl('6,000.00руб'), '6,000.00 руб', '3,000.00 руб'];
+  const r = parseEstimate(texts, 'Q_ООО «РВБ»_2026-10-21_01.pdf');
+  assert.deepEqual([r.total.net, r.total.vat, r.total.gross, r.total.rate, r.total.included], [24000, 1200, 25200, 0.05, undefined]);
+});
