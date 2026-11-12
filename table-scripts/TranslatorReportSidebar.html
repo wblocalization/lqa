@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<?!= include('Общее') ?>
+</head>
+<body>
+  <h2>Отчёт по переводчику</h2>
+  <div class="stack">
+    <div class="two">
+      <label class="field">Переводчик<select id="translator"></select></label>
+      <label class="field">Месяц<select id="month"></select></label>
+    </div>
+    <div class="two">
+      <button class="btn primary" id="runBtn" type="button">Сформировать отчёт</button>
+      <button class="btn" id="trackerBtn" type="button">Список для трекера</button>
+    </div>
+  </div>
+  <div id="results"></div>
+  <pre class="out" id="trackerOut" hidden></pre>
+  <div class="two" style="margin-top:8px">
+    <button class="btn" id="exportBtn" type="button" hidden>📥 Скачать Excel</button>
+    <button class="btn" id="trackerCopy" type="button" hidden>Скопировать список</button>
+  </div>
+  <div id="msg" class="msg" style="margin-top:6px"></div>
+
+<script>
+  let trackerText = '';
+  const badge = r => r === 'Готово' ? 'b-done' : r === 'В работе' ? 'b-progress' : r === 'На проверке' ? 'b-review' : '';
+
+  Promise.all([run('getTranslatorNames'), run('getMonthsList')]).then(([names, months]) => {
+    fillSelect($('#translator'), names, 'Выберите…');
+    $('#month').innerHTML = '<option value="">Все месяцы</option>' + months.map(m => `<option value="${m.value}">${esc(m.label)}</option>`).join('');
+  }).catch(e => setMsg($('#msg'), 'Не получилось загрузить списки: ' + e.message, 'err'));
+
+  function need() {
+    if ($('#translator').value) return true;
+    setMsg($('#msg'), 'Выберите переводчика', 'err');
+    return false;
+  }
+
+  $('#runBtn').addEventListener('click', () => {
+    if (!need()) return;
+    $('#trackerOut').hidden = true; $('#trackerCopy').hidden = true;
+    $('#results').innerHTML = '<p class="muted">Считаю…</p>';
+    setMsg($('#msg'), '');
+    run('getTranslatorReport', $('#translator').value, $('#month').value).then(d => {
+      if (!d.total) { $('#results').innerHTML = '<p class="muted">Ничего не найдено.</p>'; $('#exportBtn').hidden = true; return; }
+      let html = `<div class="tiles">
+        <div class="tile"><div class="num">${d.total}</div><div class="lbl">всего</div></div>
+        <div class="tile"><div class="num">${d.done}</div><div class="lbl">готово</div></div>
+        <div class="tile"><div class="num">${d.inProgress}</div><div class="lbl">в работе</div></div></div>`;
+      Object.keys(d.bySide).forEach(side => {
+        const tasks = d.bySide[side];
+        html += `<div class="group"><h4>${esc(side)} (${tasks.length})</h4>` + tasks.map(t =>
+          `<div class="line"><span>${t.link ? `<a href="${esc(t.link)}" target="_blank">${esc(t.task)}</a>` : esc(t.task)}</span>` +
+          `<span class="badge ${badge(t.readiness)}">${esc(t.readiness)}</span></div>`).join('') + '</div>';
+      });
+      $('#results').innerHTML = html;
+      $('#exportBtn').hidden = false;
+    }).catch(e => { $('#results').innerHTML = ''; setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'); });
+  });
+
+  $('#exportBtn').addEventListener('click', () => {
+    setMsg($('#msg'), 'Готовлю файл…');
+    run('exportTranslatorReportToExcel', $('#translator').value, $('#month').value)
+      .then(url => { setMsg($('#msg'), 'Готово — файл скачивается', 'ok'); window.open(url, '_blank'); })
+      .catch(e => setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'));
+  });
+
+  $('#trackerBtn').addEventListener('click', () => {
+    if (!need()) return;
+    setMsg($('#msg'), 'Считаю…');
+    run('getTranslatorTrackerReportText', $('#translator').value).then(r => {
+      trackerText = r.text;
+      $('#trackerOut').textContent = r.text;
+      $('#trackerOut').hidden = !r.count; $('#trackerCopy').hidden = !r.count;
+      setMsg($('#msg'), r.count ? '' : 'Задач не найдено');
+    }).catch(e => setMsg($('#msg'), 'Не получилось: ' + e.message, 'err'));
+  });
+  $('#trackerCopy').addEventListener('click', () => copyText(trackerText).then(() => setMsg($('#msg'), 'Скопировано', 'ok')));
+</script>
+</body>
+</html>
