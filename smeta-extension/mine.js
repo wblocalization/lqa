@@ -191,7 +191,7 @@ async function deleteTask(ref) {
 async function writeLetter(t, btn) {
   btn.disabled = true;
   try {
-    const r = await api({ action: 'getTask', row: t.row, id: t.id || '', origSubject: t.subject });
+    const r = await api({ action: 'getTask', row: t.row, id: t.id || '', origSubject: t.subject, key: t.key });
     if (!r.ok) throw new Error(r.error);
     await openLetterFor(r.task);
   } catch (err) {
@@ -212,12 +212,12 @@ els.list.addEventListener('click', async (e) => {
     const t = data.tasks[Number(del.dataset.del)];
     const name = t.id ? `№ ${t.id}` : `«${t.title}»`;
     if (!await ask({ title: `Удалить задачу ${name}?`, text: `${t.title}\n\nСтрока пропадёт из таблицы, отменить нельзя.`, ok: 'Удалить', danger: true })) return;
-    return deleteTask({ row: t.row, id: t.id || '', origSubject: t.subject });
+    return deleteTask({ row: t.row, id: t.id || '', origSubject: t.subject, key: t.key });
   }
   const b = e.target.closest('button[data-edit]');
   if (!b) return;
   const t = data.tasks[Number(b.dataset.edit)];
-  openEditor({ row: t.row, id: t.id, origSubject: t.subject }, afterSave, deleteTask);
+  openEditor({ row: t.row, id: t.id, origSubject: t.subject, key: t.key }, afterSave, deleteTask);
 });
 
 // Поиск любой задачи — не только своих открытых
@@ -315,7 +315,7 @@ els.list.addEventListener('change', async (e) => {
   sel.dataset.delivery = sel.value;
   setMsg(`${t.id || 'Задача'}: «${sel.value || 'без статуса отдачи'}» — сохраняю…`);
   try {
-    const r = await api({ action: 'setDelivery', row: t.row, id: t.id, origSubject: t.subject, value: sel.value });
+    const r = await api({ action: 'setDelivery', row: t.row, id: t.id, origSubject: t.subject, key: t.key, value: sel.value });
     if (!r.ok) throw new Error(/Неизвестное действие/.test(r.error || '') ? 'веб-приложение ещё старое: нужна новая версия развёртывания' : r.error);
     saveCache();
     setMsg(`${t.id || 'Задача'}: статус отдачи «${sel.value || '—'}» ✓`, 'ok');
@@ -344,7 +344,7 @@ els.list.addEventListener('change', async (e) => {
   render();
   setMsg(`${t.id || 'Задача'}: «${status || 'пусто'}» — сохраняю…`);
   try {
-    const r = await api({ action: 'setStatus', row: t.row, id: t.id, origSubject: t.subject, status });
+    const r = await api({ action: 'setStatus', row: t.row, id: t.id, origSubject: t.subject, key: t.key, status });
     if (!r.ok) throw new Error(r.error);
     setMsg(`${t.id || 'Задача'}: статус «${status || 'пусто'}» ✓`, 'ok');
   } catch (err) {

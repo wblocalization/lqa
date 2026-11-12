@@ -131,6 +131,12 @@ async function showTableLink() {
   setLink($('#openTable'), lists && lists.tableUrl);
   // в «Настройках» — та же таблица; таблица прислала свой адрес — берём его, иначе остаётся вписанный в разметку
   if (lists && lists.tableUrl) $('#mlOpenTable').href = lists.tableUrl;
+  // Таблица подрядчиков присылает, что в ней не подключено (отчёты, письма по расписанию), — это прячем
+  const off = (lists && lists.features) || {};
+  const reportsTab = document.querySelector('.tabbar .tab[data-tab="reports"]');
+  reportsTab.hidden = off.reports === false;
+  $('#mlSchedules').hidden = off.mail === false;
+  if (reportsTab.hidden && reportsTab.getAttribute('aria-selected') === 'true') showTab('task');
 }
 chrome.storage.onChanged.addListener((changes) => { if (changes[`lists:${settings.url}`]) showTableLink(); });
 

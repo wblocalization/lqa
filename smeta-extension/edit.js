@@ -61,7 +61,7 @@ els.letter.addEventListener('click', () => {
 });
 
 /**
- * Открыть задачу на правку. ref — { row, id, origSubject } из списка «Мои задачи» или из поиска.
+ * Открыть задачу на правку. ref — { row, id, origSubject, key } из списка «Мои задачи» или из поиска.
  * done() вызывается после сохранения — обновить список, del(ref) — после подтверждения удаления.
  */
 export async function openEditor(ref, done, del) {
@@ -86,7 +86,7 @@ export async function openEditor(ref, done, del) {
     // Справочники — из памяти, задача — одним запросом, параллельно
     const [l, r] = await Promise.all([
       lists ? lists : getLists((fresh) => { lists = fresh; }),
-      api({ action: 'getTask', row: ref.row, id: ref.id || '', origSubject: ref.origSubject }),
+      api({ action: 'getTask', row: ref.row, id: ref.id || '', origSubject: ref.origSubject, key: ref.key }),
     ]);
     lists = l;
     if (!r.ok) throw new Error(r.error);
@@ -138,13 +138,16 @@ els.form.addEventListener('submit', async (e) => {
   if (!els.subject.value.trim()) return setMsg('Тема не может быть пустой', 'err');
   let total;
   try { total = totalSum.read(); } catch (err) { return setMsg(err.message, 'err'); }
-  const ticketNum = els.ticketNum.value.trim().replace(/^local-?\s*/i, '');
+  // В старых строках таблицы подрядчиков в «Задаче» бывает текст, а не тикет: пока его не меняют — оставляем как есть
+  const oldText = /^LOCAL-\d+$/i.test(current.ticket || '') ? '' : String(current.ticket || '').trim();
+  const keepText = oldText && els.ticketNum.value.trim() === oldText;
+  const ticketNum = keepText ? '' : els.ticketNum.value.trim().replace(/^local-?\s*/i, '');
   if (ticketNum && !/^\d+$/.test(ticketNum)) return setMsg('В тикете — только цифры, LOCAL- подставится сам', 'err');
   const task = {
-    row: current.row, id: current.id, origSubject: current.origSubject,
+    row: current.row, id: current.id, origSubject: current.origSubject, key: current.key,
     subject: els.subject.value.trim(), link: els.link.value.trim(),
     link2: els.link2.value.split(/[\s,;]+/).filter(Boolean).join('\n'),
-    ticket: ticketNum ? `LOCAL-${ticketNum}` : '', date: els.date.value, product: els.product.value,
+    ticket: keepText ? oldText : (ticketNum ? `LOCAL-${ticketNum}` : ''), date: els.date.value, product: els.product.value,
     customer: els.customer.value.trim(), deadline: els.deadline.value, exactDeadline: els.exactDeadline.value,
     status: els.status.value, deliveryStatus: els.deliveryStatus.value, contractor: els.contractor.value,
     manager: els.manager.value, estimateLink: els.estimateLink.value.trim(), total,
@@ -172,7 +175,7 @@ els.del.addEventListener('click', async () => {
   if (!current) return;
   const name = current.id ? `№ ${current.id}` : `«${current.subject}»`;
   if (!await ask({ title: `Удалить задачу ${name}?`, text: 'Строка пропадёт из таблицы, отменить нельзя.', ok: 'Удалить', danger: true })) return;
-  const ref = { row: current.row, id: current.id || '', origSubject: current.origSubject };
+  const ref = { row: current.row, id: current.id || '', origSubject: current.origSubject, key: current.key };
   close();
   onDelete(ref);
 });

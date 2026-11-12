@@ -90,6 +90,7 @@ export async function loadMail() {
     return setMsg('Выберите себя в настройках (⚙️ → «Кто вы»)', 'err');
   }
   els.who.textContent = settings.manager;
+  if ($('#mlSchedules').hidden) return; // в этой таблице писем по расписанию нет — и спрашивать нечего
   setMsg('Загружаю…');
   try {
     const st = await call({ action: 'mailStatus', manager: settings.manager });
