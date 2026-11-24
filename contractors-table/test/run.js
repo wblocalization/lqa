@@ -329,6 +329,24 @@ check('сумма с длинным хвостом после запятой: с
   ok(/было 322 919,665 ₽ → стало 322 920,00 ₽/.test(e.sheet.peek(9, 13).note), e.sheet.peek(9, 13).note);
 });
 
+check('SP: прочерк в ячейке не стирается при сохранении; не число из формы — ошибка, а не NaN', () => {
+  const fx = JSON.parse(JSON.stringify(SYN));
+  fx.rows[8][16] = '-';
+  const e = load(fx);
+  const t = e.post({ action: 'getTask', row: 9, id: 'LIT-26-12' }).task;
+  eq(t.sp, '-');
+  eq(e.post({ action: 'saveTask', task: t }).changed, 0);
+  eq(e.post({ action: 'saveTask', task: Object.assign({}, t, { sp: '' }) }).changed, 0, 'числовое поле формы прочерк не показывает');
+  eq(e.sheet.ops, []);
+  ok(/SP должен быть числом/.test(e.post({ action: 'saveTask', task: Object.assign({}, t, { sp: 'много' }) }).error));
+  eq(e.sheet.ops, []);
+  eq(e.post({ action: 'saveTask', task: Object.assign({}, t, { sp: '2,5' }) }).changed, 1);
+  eq(e.val(9, 17), 2.5);
+  const r = e.post({ action: 'addTask', task: Object.assign({}, NEW_TASK, { sp: 'x' }) });
+  ok(!r.ok && /SP должен быть числом/.test(r.error), JSON.stringify(r));
+  eq(e.sheet.maxRows, 60, 'строка не вставлена');
+});
+
 check('отчёты и письма по расписанию — понятный отказ, неизвестное действие — ошибка', () => {
   const e = load(SYN);
   ok(/пока не подключено/.test(e.post({ action: 'reportLists' }).error));

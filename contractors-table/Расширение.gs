@@ -17,7 +17,7 @@
 const TABLE_LINK = '';
 
 const SHEET_NAME = 'Localization Misc';
-const SCRIPT_VERSION = '12 ноября (таблица подрядчиков: задачи, «Мои», правка, сметы)';
+const SCRIPT_VERSION = '24 ноября (таблица подрядчиков: задачи, «Мои», правка, сметы; прочерк в SP не стирается)';
 
 // Колонки листа A..S
 const COL = {
@@ -369,6 +369,15 @@ function today_() {
   return parseIsoDate_(fmtDate_(new Date(), 'yyyy-MM-dd'));
 }
 
+/** SP из формы: пусто или число. Не число — ошибка, а не «NaN» в ячейке. */
+function spValue_(v) {
+  v = str_(v).replace(',', '.');
+  if (v === '') return '';
+  const n = Number(v);
+  if (!isFinite(n)) throw new Error('SP должен быть числом: ' + v);
+  return n;
+}
+
 function exactMoney_(v) {
   return Math.round(Number(v) * 1000) / 1000;
 }
@@ -564,7 +573,7 @@ function addTask_(req) {
   const values = [
     id, task.product, date, subject, task.ticket, task.bandUrls.join('\n'), task.customer, task.languages.join(', '),
     task.deadline || deadlineFromDue_(due, date, t.lists), due, task.status, task.estimateLink, task.totalIn.value,
-    task.contractor, task.manager, task.deliveryStatus, task.sp ? Number(task.sp) : '', task.comment, task.complaints
+    task.contractor, task.manager, task.deliveryStatus, spValue_(task.sp), task.comment, task.complaints
   ];
   const row = insertRow_(t.sh, t.raw.length + 1, t.raw.length + 3); // заготовка — пустая строка, что была следующей
   fillRow_(t.sh, row, values, task);
@@ -613,7 +622,7 @@ function addTaskRow_(req) {
     task.bandUrls.join('\n'), task.customer, task.languages.join(', '),
     task.deadline || deadlineFromDue_(due, date, t.lists), due, task.status, '', '',
     str_(base[COL.CONTRACTOR - 1]), task.manager || str_(base[COL.MANAGER - 1]),
-    task.deliveryStatus, task.sp ? Number(task.sp) : '', task.comment, ''
+    task.deliveryStatus, spValue_(task.sp), task.comment, ''
   ];
   // Последняя строка заказа объединена с задачей под ней (бывает у «Задачи», Band и ника): вставленная строка
   // попала бы внутрь такого объединения, и её ячейки было бы не заполнить
@@ -875,7 +884,10 @@ function saveTask_(req) {
   put(COL.CONTRACTOR, 'text', task.contractor);
   put(COL.MANAGER, 'text', task.manager);
   put(COL.DELIVERY, 'text', task.deliveryStatus);
-  put(COL.SP, 'num', task.sp === '' ? '' : Number(task.sp));
+  // в SP бывает текст («-»): в числовое поле формы он не попадает — пустое поле тогда значит «не меняли»
+  const oldSp = old[COL.SP - 1];
+  const spKept = typeof oldSp === 'string' && oldSp !== '' && (task.sp === '' || task.sp === str_(oldSp));
+  if (!spKept) put(COL.SP, 'num', spValue_(task.sp));
   put(COL.COMMENT, 'text', task.comment);
   if (req.task.complaints !== undefined) put(COL.COMPLAINTS, 'text', task.complaints);
   return { ok: true, row: i + 2, changed: changed.length };
