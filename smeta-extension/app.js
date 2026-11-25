@@ -15,6 +15,13 @@ const els = {
   tabs: [...document.querySelectorAll('.tabbar .tab')], title: $('#pageTitle'),
 };
 
+// Колёсико мыши над числовым полем, в котором стоит курсор, меняет число (Chrome так устроен): листали форму —
+// а SP или тикет уехали. Убираем курсор из такого поля — страница просто прокручивается.
+document.addEventListener('wheel', () => {
+  const a = document.activeElement;
+  if (a && a.matches && a.matches('input[type="number"], input[type="date"], input[type="time"]')) a.blur();
+}, { passive: true, capture: true });
+
 // ---------- Вкладки ----------
 function showTab(name) {
   els.tabs.forEach((t) => {

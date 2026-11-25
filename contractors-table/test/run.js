@@ -347,6 +347,46 @@ check('SP: прочерк в ячейке не стирается при сох�
   eq(e.sheet.maxRows, 60, 'строка не вставлена');
 });
 
+check('даты пишутся номером дня: в ячейке ровно выбранный день, даже если таблица «сдвигает» даты-объекты', () => {
+  const fx = JSON.parse(JSON.stringify(SYN));
+  fx.dateBug = 2; // как будто запись объектом Date уезжает на два дня
+  const e = load(fx);
+  const r = e.post({ action: 'addTask', task: Object.assign({}, NEW_TASK, { date: '2026-11-24', exactDeadline: '2026-11-26' }) });
+  eq([r.ok, r.date, r.due, r.warn], [true, '24.11.2026', '26.11.2026', undefined]);
+  eq([e.sheet.getRange(10, 3).getDisplayValue(), e.sheet.getRange(10, 10).getDisplayValue()], ['24.11', '26.11']);
+  eq([e.day(10, 3), e.day(10, 10)], ['2026-11-24 00:00', '2026-11-26 00:00']);
+  const t = e.post({ action: 'getTask', row: 10, id: r.id }).task;
+  eq([t.date, t.exactDeadline], ['2026-11-24', '2026-11-26']);
+  t.exactDeadline = '2026-12-01'; t.date = '2026-11-23'; t.deadline = '';
+  const s2 = e.post({ action: 'saveTask', task: t });
+  eq([s2.ok, s2.warn], [true, undefined]);
+  eq([e.sheet.getRange(10, 3).getDisplayValue(), e.sheet.getRange(10, 10).getDisplayValue()], ['23.11', '1.12']);
+  const row = e.post({ action: 'addTaskRow', id: r.id, task: { languages: ['Армянский'], exactDeadline: '2026-11-30' } });
+  eq([e.sheet.getRange(row.row, 3).getDisplayValue(), e.sheet.getRange(row.row, 10).getDisplayValue()], ['23.11', '30.11']);
+  // на конец года и високосный день
+  const y = e.post({ action: 'addTask', task: Object.assign({}, NEW_TASK, { date: '2026-12-31', exactDeadline: '2028-02-29' }) });
+  eq([e.sheet.getRange(y.row, 3).getDisplayValue(), e.sheet.getRange(y.row, 10).getDisplayValue(), e.day(y.row, 10)], ['31.12', '29.2', '2028-02-29 00:00']);
+});
+
+check('если таблица всё же показала не тот день — расширение получает предупреждение', () => {
+  const e = load(SYN);
+  const real = e.sheet.getRange(10, 3).constructor.prototype.getDisplayValue;
+  e.sheet.getRange(10, 3).constructor.prototype.getDisplayValue = function () { return this.c === 3 && this.r === 10 ? '26.11' : real.call(this); };
+  try {
+    const r = e.post({ action: 'addTask', task: Object.assign({}, NEW_TASK, { date: '2026-11-24' }) });
+    eq(r.ok, true);
+    ok(/Проверьте дату в таблице: в ячейке C10 таблица показывает «26\.11», а должно быть 24\.11\.2026/.test(r.warn), r.warn);
+  } finally { e.sheet.getRange(10, 3).constructor.prototype.getDisplayValue = real; }
+});
+
+check('проверка дат из редактора (checkDates) ничего не меняет', () => {
+  const e = load(SYN);
+  e.ctx.checkDates();
+  ok(e.ctx.__log.some(l => /Часовой пояс таблицы: Europe\/Moscow · скрипта: America\/New_York/.test(l)), e.ctx.__log[0]);
+  ok(e.ctx.__log.some(l => /C9 · LIT-26-12 · на экране «9\.11» · скрипт читает 09\.11\.2026 00:00/.test(l)), e.ctx.__log.join('\n'));
+  eq(e.sheet.ops, []);
+});
+
 check('отчёты и письма по расписанию — понятный отказ, неизвестное действие — ошибка', () => {
   const e = load(SYN);
   ok(/пока не подключено/.test(e.post({ action: 'reportLists' }).error));

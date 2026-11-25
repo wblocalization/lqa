@@ -49,6 +49,8 @@ class Sheet {
     this.merges = (fx.merges || []).map(m => m.slice());
     this.lists = fx.lists || {};   // проверка данных по колонкам — у всех строк под шапкой
     this.multi = fx.multi || [];   // колонки, где можно выбрать несколько значений
+    this.dateCols = fx.dateCols || [3, 10]; // колонки с форматом даты («д.м»)
+    this.dateBug = fx.dateBug || 0;         // «таблица сдвигает даты, записанные объектом Date, на N дней» — для проверки
     this.maxRows = Math.max(fx.maxRows || 0, this.cells.length);
     this.maxCols = fx.maxCols || 30;
     this.ops = [];                 // что меняли: для проверки «тронули только нужное»
@@ -116,6 +118,11 @@ class Range {
       if (bad.length) throw new Error(`Данные в ячейке R${r}C${c} не соответствуют правилам проверки данных: «${bad[0]}»`);
     }
     const cell = this.sh.cell(r, c);
+    const isDateCell = r > 1 && this.sh.dateCols.indexOf(c) !== -1 && !/^[#0]/.test(cell.num || 'd.m');
+    if (v instanceof Date && this.sh.dateBug) v = new Date(v.getTime() + this.sh.dateBug * 864e5);
+    // число в ячейке с форматом даты — это номер дня: таблица покажет его датой, без часовых поясов
+    if (typeof v === 'number' && isDateCell) v = new Date((v - 25569) * 864e5 - MSK);
+    if (cell.v instanceof Date && v instanceof Date ? cell.v.getTime() === v.getTime() && !rt && !cell.rt : false) return;
     if (cell.v === v && !rt && !cell.rt) return;
     cell.v = v; cell.rt = rt || null; delete cell.formula;
     this.sh.ops.push(['set', r, c, v instanceof Date ? v.toISOString() : v]);
@@ -135,6 +142,17 @@ class Range {
   setRichTextValue(rt) { this.write(this.r, this.c, rt.getText(), rt); return this; }
   setFormula(f) { const cell = this.sh.cell(this.r, this.c); cell.formula = f; this.sh.ops.push(['formula', this.r, this.c, f]); return this; }
   getFormula() { return this.sh.peek(this.r, this.c).formula || ''; }
+  getNumberFormat() { const cell = this.sh.peek(this.r, this.c); return cell.num || (this.r > 1 && this.sh.dateCols.indexOf(this.c) !== -1 ? 'd.m' : ''); }
+  getNumberFormats() { const out = []; for (let i = 0; i < this.nr; i++) out.push([new Range(this.sh, this.r + i, this.c, 1, 1).getNumberFormat()]); return out; }
+  /** Что видно на экране: дата — в формате ячейки «д.м», как в таблице. */
+  getDisplayValue() {
+    const v = this.sh.peek(this.r, this.c).v;
+    if (!(v instanceof Date)) return String(v);
+    const x = new Date(v.getTime() + MSK);
+    return x.getUTCDate() + '.' + (x.getUTCMonth() + 1);
+  }
+  getDisplayValues() { const out = []; for (let i = 0; i < this.nr; i++) out.push([new Range(this.sh, this.r + i, this.c, 1, 1).getDisplayValue()]); return out; }
+  getA1Notation() { return String.fromCharCode(64 + this.c) + this.r; }
   setNumberFormat(f) { this.each((r, c) => { this.sh.cell(r, c).num = f; }); return this; }
   setNote(n) { this.sh.cell(this.r, this.c).note = String(n); this.sh.ops.push(['note', this.r, this.c]); return this; }
   getNote() { return this.sh.peek(this.r, this.c).note || ''; }

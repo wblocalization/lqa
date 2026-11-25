@@ -17,7 +17,7 @@
 const TABLE_LINK = '';
 
 const SHEET_NAME = 'Localization Misc';
-const SCRIPT_VERSION = '24 ноября (таблица подрядчиков: задачи, «Мои», правка, сметы; прочерк в SP не стирается)';
+const SCRIPT_VERSION = '25 ноября (даты пишутся номером дня — без часовых поясов — и сверяются с тем, что показывает таблица)';
 
 // Колонки листа A..S
 const COL = {
@@ -79,6 +79,28 @@ function checkTable() {
   Logger.log('Следующие номера: ' + JSON.stringify(nextIds_(raw, lists)));
 }
 
+/**
+ * Запустите из редактора, если в таблице оказалась не та дата. Ничего не меняет: пишет в журнал часовые пояса
+ * и что лежит в «Дате» и «Дедлайне» у последних строк — как это видит таблица и как это читает скрипт.
+ */
+function checkDates() {
+  const sh = sheet_();
+  const raw = readRaw_(sh);
+  Logger.log('Часовой пояс таблицы: ' + tz_() + ' · скрипта: ' + Session.getScriptTimeZone() + ' · сейчас по таблице: ' + fmtDate_(new Date(), 'dd.MM.yyyy HH:mm'));
+  const probe = parseIsoDate_(fmtDate_(new Date(), 'yyyy-MM-dd'));
+  Logger.log('Сегодняшняя дата для записи: ' + fmtDate_(probe, 'dd.MM.yyyy') + ' → номер дня ' + daySerial_(probe) + ' (момент ' + probe.toISOString() + ')');
+  const n = Math.min(8, raw.length), from = raw.length - n + 2;
+  [COL.DATE, COL.DUE].forEach(c => {
+    const rng = sh.getRange(from, c, n, 1);
+    const vals = rng.getValues(), shown = rng.getDisplayValues(), fmts = rng.getNumberFormats();
+    for (let i = 0; i < n; i++) {
+      const v = vals[i][0];
+      Logger.log(colLetter_(c) + (from + i) + ' · ' + str_(raw[from + i - 2][COL.ID - 1]) + ' · на экране «' + shown[i][0] + '» · скрипт читает ' +
+        (isDate_(v) ? fmtDate_(v, 'dd.MM.yyyy HH:mm') + ' (момент ' + v.toISOString() + ')' : '«' + v + '» (' + typeof v + ')') + ' · формат «' + fmts[i][0] + '»');
+    }
+  });
+}
+
 // ==================== ВХОД ====================
 
 function doPost(e) {
@@ -113,7 +135,9 @@ function doPost(e) {
   }
   try {
     const res = write(req);
-    console.log(req.action + ' · ' + str_(req.user) + ' · ' + str_(res && (res.id || res.row) || req.id || req.task && req.task.id || req.task));
+    const tk = req.task && typeof req.task === 'object' ? req.task : {};
+    console.log(req.action + ' · ' + str_(req.user) + ' · ' + str_(res && (res.id || res.row) || req.id || tk.id || req.task) +
+      (tk.date || tk.exactDeadline ? ' · пришло: дата ' + str_(tk.date) + ', срок ' + str_(tk.exactDeadline) : '') + (res && res.warn ? ' · ' + res.warn : ''));
     return json_(res);
   } catch (err) {
     return json_({ ok: false, error: String(err && err.message || err) });
@@ -365,6 +389,37 @@ function parseIsoDate_(s) {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? Utilities.parseDate(s, tz_(), 'yyyy-MM-dd') : '';
 }
 
+/**
+ * Дата для ячейки — номером дня, как её хранит сама Таблица (дни от 30.12.1899). У такого числа нет ни часов,
+ * ни часового пояса, поэтому в ячейке окажется ровно тот день, который выбрали, — где бы ни работал скрипт.
+ */
+function daySerial_(d) {
+  const p = fmtDate_(d, 'yyyy-MM-dd').split('-').map(Number);
+  return Math.round(Date.UTC(p[0], p[1] - 1, p[2]) / 864e5) + 25569;
+}
+
+/**
+ * Записать дату в ячейку и посмотреть, что таблица показывает на самом деле. Возвращает '' или текст
+ * предупреждения, если на экране не тот день (он же уходит в журнал выполнений).
+ */
+function setDateCell_(cell, d) {
+  if (!isDate_(d)) { cell.setValue(d == null ? '' : d); return ''; }
+  cell.setValue(daySerial_(d));
+  if (!/[dmy]/i.test(String(cell.getNumberFormat() || ''))) cell.setNumberFormat('dd.mm.yyyy'); // формат ячейки — не дата
+  return dateShownWrong_(cell, d);
+}
+
+function dateShownWrong_(cell, d) {
+  const want = fmtDate_(d, 'dd.MM.yyyy'), p = want.split('.').map(Number);
+  const shown = String(cell.getDisplayValue());
+  const nums = (shown.match(/\d+/g) || []).map(Number);
+  if (!nums.length) return ''; // месяц словом или пусто — сравнить не с чем
+  if (nums.indexOf(p[0]) !== -1 && (nums.length < 2 || nums.indexOf(p[1]) !== -1)) return '';
+  const msg = 'в ячейке ' + cell.getA1Notation() + ' таблица показывает «' + shown + '», а должно быть ' + want;
+  console.log('ДАТА НЕ СОВПАЛА: ' + msg);
+  return msg;
+}
+
 function today_() {
   return parseIsoDate_(fmtDate_(new Date(), 'yyyy-MM-dd'));
 }
@@ -544,7 +599,12 @@ function insertRow_(sh, after, tpl) {
 /** Записать строку; таблица не приняла значение (проверка данных) — убрать вставленную строку и объяснить. */
 function fillRow_(sh, row, values, task) {
   try {
-    sh.getRange(row, 1, 1, NCOLS).setValues([values]);
+    // даты — отдельно и номером дня (см. daySerial_), остальное — одной записью
+    const dates = [COL.DATE, COL.DUE].map(c => [c, values[c - 1]]);
+    const plain = values.slice();
+    dates.forEach(x => { if (isDate_(x[1])) plain[x[0] - 1] = daySerial_(x[1]); });
+    sh.getRange(row, 1, 1, NCOLS).setValues([plain]);
+    task.dateWarn = dates.map(x => (isDate_(x[1]) ? setDateCell_(sh.getRange(row, x[0]), x[1]) : '')).filter(Boolean).join('; ');
     if (task.bandUrls && task.bandUrls.length) sh.getRange(row, COL.BAND).setRichTextValue(linksRich_(task.bandUrls));
     if (task.estimateLink) {
       sh.getRange(row, COL.ESTIMATE).setRichTextValue(SpreadsheetApp.newRichTextValue().setText(task.estimateLink).setLinkUrl(task.estimateLink).build());
@@ -555,6 +615,11 @@ function fillRow_(sh, row, values, task) {
     try { sh.deleteRow(row); } catch (e2) { /* останется пустая строка */ }
     throw new Error('Таблица не приняла строку: ' + String(err && err.message || err));
   }
+}
+
+function withWarn_(res, warn) {
+  if (warn) res.warn = 'Проверьте дату в таблице: ' + warn;
+  return res;
 }
 
 function addTask_(req) {
@@ -577,7 +642,7 @@ function addTask_(req) {
   ];
   const row = insertRow_(t.sh, t.raw.length + 1, t.raw.length + 3); // заготовка — пустая строка, что была следующей
   fillRow_(t.sh, row, values, task);
-  return { ok: true, id: id, row: row, url: tableUrl_(t.sh, row) };
+  return withWarn_({ ok: true, id: id, row: row, url: tableUrl_(t.sh, row), date: fmtDate_(date, 'dd.MM.yyyy'), due: fmtDate_(due, 'dd.MM.yyyy') }, task.dateWarn);
 }
 
 /**
@@ -643,7 +708,7 @@ function addTaskRow_(req) {
     if (mergeSubject) sh.getRange(first + 2, COL.SUBJECT).setValue(subject);
     else for (let i = first; i <= last; i++) if (t.raw[i][COL.SUBJECT - 1] !== '') sh.getRange(i + 2, COL.SUBJECT).setValue(subject);
   }
-  return { ok: true, id: id, row: row, subject: subject, url: tableUrl_(sh, row) };
+  return withWarn_({ ok: true, id: id, row: row, subject: subject, url: tableUrl_(sh, row) }, task.dateWarn);
 }
 
 // ==================== ПОИСК, «МОИ», ПРАВКА ====================
@@ -845,7 +910,9 @@ function saveTask_(req) {
   };
 
   put(COL.PRODUCT, 'text', task.product);
-  put(COL.DATE, 'date', date);
+  const dateWarn = [];
+  const putDate = (c, v) => put(c, 'date', v, x => { const w = setDateCell_(x, v); if (w) dateWarn.push(w); });
+  putDate(COL.DATE, date);
   put(COL.SUBJECT, 'text', task.subject);
   if (!same.text(old[COL.TICKET - 1], task.ticket)) requireTicket_(task.ticket); // прежний текст в «Задаче» не трогаем и не проверяем
   put(COL.TICKET, 'text', task.ticket);
@@ -857,7 +924,7 @@ function saveTask_(req) {
   if (langKey(old[COL.LANGS - 1]) !== task.languages.join('|')) put(COL.LANGS, 'text', task.languages.join(', ')); // тот же набор — не переписываем
   // «Дедлайн» (ASAP, 1-2 дня…) пересчитываем, только если поменяли даты: без правок строка остаётся как была
   const datesChanged = !same.date(old[COL.DUE - 1], due) || !same.date(old[COL.DATE - 1], date);
-  put(COL.DUE, 'date', due);
+  putDate(COL.DUE, due);
   put(COL.DEADLINE, 'text', task.deadline || (datesChanged && deadlineFromDue_(due, date || old[COL.DATE - 1], t.lists)) || str_(old[COL.DEADLINE - 1]));
   put(COL.STATUS, 'text', task.status);
   const oldEstimate = estimateUrl_(cell(COL.ESTIMATE), old[COL.ESTIMATE - 1]);
@@ -890,7 +957,7 @@ function saveTask_(req) {
   if (!spKept) put(COL.SP, 'num', spValue_(task.sp));
   put(COL.COMMENT, 'text', task.comment);
   if (req.task.complaints !== undefined) put(COL.COMPLAINTS, 'text', task.complaints);
-  return { ok: true, row: i + 2, changed: changed.length };
+  return withWarn_({ ok: true, row: i + 2, changed: changed.length }, dateWarn.join('; '));
 }
 
 /** Сумму или смету поменяли — прежние остаются в заметке к ячейке суммы (для сверки с подрядчиком). */

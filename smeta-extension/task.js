@@ -102,6 +102,7 @@ function resetForm() {
   hideSuggest();
   els.date.value = autoDate = today();
   updateOtHint();
+  checkDate();
   if (settings.manager && lists.managers.includes(settings.manager)) els.manager.value = settings.manager;
   if (lists.statuses.includes('Принято')) els.status.value = 'Принято'; // новая задача — сразу «Принято»
   els.status.dataset.status = els.status.value;
@@ -117,6 +118,7 @@ function refreshAutoDate() {
   els.date.value = autoDate = today();
   els.subject.value = withToday(els.subject.value);
   updateOtHint();
+  checkDate();
 }
 
 document.addEventListener('visibilitychange', () => { if (!document.hidden && lists) refreshAutoDate(); });
@@ -510,6 +512,14 @@ els.form.addEventListener('submit', async (e) => {
   if (busy) return; // уже добавляем — второй раз не отправляем
   const bad = checkForm();
   if (bad) return setMsg(bad, 'err');
+  // Дата получения в будущем — почти всегда опечатка (или сюда вписали срок сдачи): не добавляем молча
+  if (!rowOrder && els.date.value > today()) {
+    const fix = await ask({ title: `Дата получения — ${dmOf(els.date.value)}, это в будущем`, icon: '📅',
+      text: `Сегодня ${dmOf(today())}. Дата получения — день, когда пришла задача; срок сдачи — соседнее поле справа.`,
+      ok: 'Поставить сегодня', cancel: 'Назад' });
+    if (!fix) { els.date.focus(); return setMsg('Проверьте «Дату получения» — она в будущем.', 'err'); }
+    setToday();
+  }
   const current = taskFromForm();
   const rows = [...pendingRows];
   if (!rows.length || rowFilled(current)) rows.push(current);
@@ -541,7 +551,8 @@ els.form.addEventListener('submit', async (e) => {
     if (rows.length > 1) {
       return await addOrderRows(lastOrder, rows.slice(1), { first: r, all: rows });
     }
-    showDone(r, [task], `Задача ${r.id} добавлена`); // заодно убирает предупреждение о предварительном номере
+    showDone(r, [task], `Задача ${r.id} добавлена` + (r.date ? ` · дата ${r.date.slice(0, 5)}${r.due ? `, срок ${r.due.slice(0, 5)}` : ''}` : '')); // заодно убирает предупреждение о предварительном номере
+    if (r.warn) { setMsg(r.warn, 'err'); toast(r.warn, 'err'); } // таблица показала не тот день
   } catch (err) {
     setMsg(`Не добавилось: ${err.message}`, 'err');
     toast('Задача не добавилась — причина под кнопкой', 'err');
@@ -649,6 +660,7 @@ function exitRowMode() {
   els.rowMode.hidden = true;
   lockShared();
   updateSubmitLabel();
+  checkDate(); // дата могла остаться от заказа, в который добавляли строку
 }
 
 // ---------- Несколько строк одного заказа — прямо в форме, до «Добавить» ----------
@@ -787,6 +799,28 @@ els.letterAgain.querySelector('button').addEventListener('click', () => {
 els.clearTpl.addEventListener('click', () => {
   resetForm();
   setMsg('');
+});
+
+// ---------- Дата получения — не сегодня ----------
+// Поле по умолчанию — сегодня. Если в нём другой день, это видно сразу, и вернуть «сегодня» можно одним нажатием.
+const dateHint = document.querySelector('#tDateHint');
+function dmOf(iso) { const [, m, d] = String(iso).split('-'); return `${d}.${m}`; }
+function setToday() {
+  els.date.value = autoDate = today();
+  els.date.dispatchEvent(new Event('change', { bubbles: true }));
+}
+function checkDate() {
+  const v = els.date.value, t = today();
+  if (!v || v === t || els.date.disabled) { dateHint.hidden = true; return; }
+  dateHint.innerHTML = `${v > t ? 'Это в будущем' : 'Это не сегодня'}: <button type="button" class="link-btn strong" data-today="1">сегодня ${dmOf(t)}</button>`;
+  dateHint.hidden = false;
+}
+els.date.addEventListener('change', checkDate);
+els.date.addEventListener('input', checkDate);
+dateHint.addEventListener('click', (e) => {
+  if (!e.target.closest('button[data-today]')) return;
+  e.preventDefault();
+  setToday();
 });
 
 // ---------- Срок сдачи на выходной ----------

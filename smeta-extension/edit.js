@@ -161,7 +161,7 @@ els.form.addEventListener('submit', async (e) => {
     const r = await api({ action: 'saveTask', task });
     if (!r.ok) throw new Error(r.error);
     close();
-    onDone(`${task.id || 'Задача'}: сохранено ✓`);
+    onDone(r.warn ? `${task.id || 'Задача'}: сохранено, но ${r.warn}` : `${task.id || 'Задача'}: сохранено ✓`);
   } catch (err) {
     setMsg(`Не сохранилось: ${err.message}`, 'err');
   } finally {
