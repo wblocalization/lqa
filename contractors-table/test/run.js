@@ -23,7 +23,12 @@ function load(fixture, patch) {
   const env = makeContext(JSON.parse(JSON.stringify(fixture)), { now: NOW });
   vm.createContext(env.ctx);
   vm.runInContext(patch ? patch(SRC) : SRC, env.ctx, { filename: 'Расширение.gs' });
-  env.post = (req, token) => JSON.parse(env.ctx.doPost({ postData: { contents: JSON.stringify(Object.assign({ token: token || 'T', user: 'Тест' }, req)) } }));
+  env.post = (req, token) => { // ms — время работы скрипта, в сравнениях не нужно
+    const res = JSON.parse(env.ctx.doPost({ postData: { contents: JSON.stringify(Object.assign({ token: token || 'T', user: 'Тест' }, req)) } }));
+    delete res.ms;
+    return res;
+  };
+  env.calls = fn => { const before = env.sheet.calls; fn(); return env.sheet.calls - before; }; // сколько раз скрипт обратился к таблице
   env.day = (r, c) => { const v = env.sheet.peek(r, c).v; return v instanceof Date ? formatDate(v, TABLE_TZ, 'yyyy-MM-dd HH:mm') : v; };
   env.val = (r, c) => env.sheet.peek(r, c).v;
   env.row = r => { const out = []; for (let c = 1; c <= 19; c++) out.push(env.val(r, c)); return out; };
@@ -385,6 +390,19 @@ check('проверка дат из редактора (checkDates) ничего
   ok(e.ctx.__log.some(l => /Часовой пояс таблицы: Europe\/Moscow · скрипта: America\/New_York/.test(l)), e.ctx.__log[0]);
   ok(e.ctx.__log.some(l => /C9 · LIT-26-12 · на экране «9\.11» · скрипт читает 09\.11\.2026 00:00/.test(l)), e.ctx.__log.join('\n'));
   eq(e.sheet.ops, []);
+});
+
+check('скорость: справочники из памяти лист не читают; добавление и смена статуса не перебирают объединения', () => {
+  const e = load(SYN);
+  e.post({ action: 'taskForm' }); // первый раз — читает и запоминает
+  ok(e.calls(() => e.post({ action: 'taskForm' })) <= 1, 'taskForm из памяти');
+  ok(e.calls(() => e.post({ action: 'managers' })) <= 1, 'managers из памяти');
+  const add = e.calls(() => e.post({ action: 'addTask', task: NEW_TASK }));
+  ok(add <= 16, 'addTask: обращений ' + add);
+  const st = e.calls(() => e.post({ action: 'setStatus', row: 9, id: 'LIT-26-12', status: 'Отдано' }));
+  ok(st <= 8, 'setStatus: обращений ' + st);
+  const ids = e.calls(() => e.post({ action: 'previewTaskIds' }));
+  ok(ids <= 4, 'previewTaskIds: обращений ' + ids);
 });
 
 check('отчёты и письма по расписанию — понятный отказ, неизвестное действие — ошибка', () => {

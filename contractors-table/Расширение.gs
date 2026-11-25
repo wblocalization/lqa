@@ -17,7 +17,7 @@
 const TABLE_LINK = '';
 
 const SHEET_NAME = 'Localization Misc';
-const SCRIPT_VERSION = '25 ноября (даты пишутся номером дня — без часовых поясов — и сверяются с тем, что показывает таблица)';
+const SCRIPT_VERSION = '25 ноября, вечер (быстрее: меньше обращений к таблице при добавлении, статусе и правке; даты — номером дня)';
 
 // Колонки листа A..S
 const COL = {
@@ -52,7 +52,7 @@ const RARE_LANGS = ['Белорусский', 'Иврит', 'Корейский'
 
 // Объединённые ячейки читаем по-настоящему только у последних строк (там живые задачи): у всего листа это долго.
 // Выше — по виду: строка без номера и без темы продолжает заказ над ней.
-const TAIL_ROWS = 400;
+const TAIL_ROWS = 250;
 const DUP_SCAN_ROWS = 800;
 const MY_TASKS_LIMIT = 100;
 const LISTS_CACHE_SEC = 600;
@@ -113,10 +113,12 @@ function doPost(e) {
   const token = PropertiesService.getScriptProperties().getProperty('SMETA_TOKEN');
   if (!token || req.token !== token) return json_({ ok: false, error: 'Неверный токен' });
 
+  const started = Date.now();
+  const timed = res => { if (res && typeof res === 'object') res.ms = Date.now() - started; return res; }; // сколько работал скрипт
   // Чтение — без очереди
   try {
     const read = READ_ACTIONS[req.action];
-    if (read) return json_(read(req));
+    if (read) return json_(timed(read(req)));
     if (LATER_ACTIONS.indexOf(req.action) !== -1) {
       return json_({ ok: false, error: 'В таблице подрядчиков это пока не подключено — только задачи, «Мои» и сметы' });
     }
@@ -137,8 +139,9 @@ function doPost(e) {
     const res = write(req);
     const tk = req.task && typeof req.task === 'object' ? req.task : {};
     console.log(req.action + ' · ' + str_(req.user) + ' · ' + str_(res && (res.id || res.row) || req.id || tk.id || req.task) +
-      (tk.date || tk.exactDeadline ? ' · пришло: дата ' + str_(tk.date) + ', срок ' + str_(tk.exactDeadline) : '') + (res && res.warn ? ' · ' + res.warn : ''));
-    return json_(res);
+      (tk.date || tk.exactDeadline ? ' · пришло: дата ' + str_(tk.date) + ', срок ' + str_(tk.exactDeadline) : '') + (res && res.warn ? ' · ' + res.warn : '') +
+      ' · ' + (Date.now() - started) + ' мс');
+    return json_(timed(res));
   } catch (err) {
     return json_({ ok: false, error: String(err && err.message || err) });
   } finally {
@@ -153,10 +156,10 @@ function doGet() {
 }
 
 const READ_ACTIONS = {
-  managers: () => { const t = table_(); return { ok: true, managers: t.lists.managers }; },
+  managers: () => ({ ok: true, managers: listsOnly_().lists.managers }),
   taskForm: () => taskForm_(),
-  previewTaskId: req => { const t = table_(); const c = str_(req.contractor); return { ok: true, id: c ? nextId_(t.raw, c) : '' }; },
-  previewTaskIds: () => { const t = table_(); return { ok: true, ids: nextIds_(t.raw, t.lists) }; },
+  previewTaskId: req => { const c = str_(req.contractor); return { ok: true, id: c ? nextId_(table_({ light: true }).raw, c) : '' }; },
+  previewTaskIds: () => { const t = table_({ light: true }); return { ok: true, ids: nextIds_(t.raw, t.lists) }; },
   checkDuplicates: req => ({ ok: true, duplicates: findDuplicates_(req.task || {}) }),
   myTasks: req => Object.assign({ ok: true }, myTasks_(req.manager || '*', req.filter)),
   searchTasks: req => ({ ok: true, tasks: searchTasks_(str_(req.query)) }),
@@ -215,6 +218,12 @@ function checkHeader_(sh) {
   return head;
 }
 
+function colNumber_(letters) {
+  let n = 0;
+  for (let i = 0; i < letters.length; i++) n = n * 26 + letters.charCodeAt(i) - 64;
+  return n;
+}
+
 function colLetter_(c) {
   return String.fromCharCode(64 + c);
 }
@@ -239,14 +248,25 @@ function table_(opts) {
   const rows = raw.map(r => r.slice());
   const anchor = {};
   const head = rows.map((r, i) => i);
-  const from = Math.max(0, raw.length - TAIL_ROWS);
+  // light — только значения ячеек, без объединений: этого хватает, чтобы выдать номер и добавить строку,
+  // и это заметно быстрее (объединения читаются по одному)
+  if (opts && opts.light) {
+    const lt = { sh: sh, raw: raw, rows: rows, anchor: anchor, head: head, light: true };
+    lt.lists = lists_(sh, raw);
+    return lt;
+  }
+  // guess — для списков («Мои», поиск, дубли, смета): строки-продолжения узнаём по виду во всём листе, без чтения
+  // объединений. Перед любой записью объединения нужной строки всё равно читаются точно (anchorsFor_).
+  const from = opts && opts.guess ? raw.length : Math.max(0, raw.length - TAIL_ROWS);
 
-  // 1) Последние строки — по настоящим объединениям
-  if (raw.length) {
+  // 1) Последние строки — по настоящим объединениям (адрес каждого — одним обращением: «A4308:A4309»)
+  if (raw.length && from < raw.length) {
     sh.getRange(from + 2, 1, raw.length - from, NCOLS).getMergedRanges().forEach(m => {
-      const nr = m.getNumRows();
+      const a = String(m.getA1Notation()).match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/);
+      if (!a) return;
+      const nr = Number(a[4]) - Number(a[2]) + 1;
       if (nr < 2) return;
-      const top = m.getRow() - 2, c0 = m.getColumn(), c1 = Math.min(c0 + m.getNumColumns() - 1, NCOLS);
+      const top = Number(a[2]) - 2, c0 = colNumber_(a[1]), c1 = Math.min(colNumber_(a[3]), NCOLS);
       if (top < 0) return;
       for (let c = c0; c <= c1; c++) {
         for (let i = top + 1; i < top + nr && i < rows.length; i++) {
@@ -296,11 +316,15 @@ function targetRow_(t, i, c) {
 
 // ==================== СПРАВОЧНИКИ ====================
 
+function listsKey_(sh) {
+  return 'lists:v2:' + sh.getSheetId();
+}
+
 /** Выпадающие списки — те же, что в ячейках таблицы (проверка данных). Запоминаются на 10 минут. */
 function lists_(sh, raw, fresh) {
   let cache = null;
   try { cache = CacheService.getScriptCache(); } catch (e) { /* без памяти */ }
-  const key = 'lists:v2:' + sh.getSheetId();
+  const key = listsKey_(sh);
   if (cache && !fresh) {
     const hit = cache.get(key);
     if (hit) { try { return JSON.parse(hit); } catch (e) { /* читаем заново */ } }
@@ -348,8 +372,17 @@ function validationList_(range) {
   return [];
 }
 
+/** Справочники: из памяти (10 минут) — тогда лист вообще не читаем; нет — читаем и запоминаем. */
+function listsOnly_() {
+  const sh = sheet_();
+  let hit = null;
+  try { hit = CacheService.getScriptCache().get(listsKey_(sh)); } catch (e) { /* без памяти */ }
+  if (hit) { try { return { sh: sh, lists: JSON.parse(hit) }; } catch (e) { /* читаем заново */ } }
+  return table_({ light: true });
+}
+
 function taskForm_() {
-  const t = table_();
+  const t = listsOnly_();
   const l = t.lists;
   const shtat = l.langs.filter(x => /^ШТАТ/i.test(x));
   const rare = l.langs.filter(x => RARE_LANGS.indexOf(x) !== -1);
@@ -409,12 +442,18 @@ function setDateCell_(cell, d) {
   return dateShownWrong_(cell, d);
 }
 
+/** На экране не тот день? Месяц словом или пусто — сравнить не с чем, считаем, что всё в порядке. */
+function dateTextWrong_(shown, d) {
+  const p = fmtDate_(d, 'dd.MM.yyyy').split('.').map(Number);
+  const nums = (String(shown).match(/\d+/g) || []).map(Number);
+  if (!nums.length) return false;
+  return !(nums.indexOf(p[0]) !== -1 && (nums.length < 2 || nums.indexOf(p[1]) !== -1));
+}
+
 function dateShownWrong_(cell, d) {
-  const want = fmtDate_(d, 'dd.MM.yyyy'), p = want.split('.').map(Number);
+  const want = fmtDate_(d, 'dd.MM.yyyy');
   const shown = String(cell.getDisplayValue());
-  const nums = (shown.match(/\d+/g) || []).map(Number);
-  if (!nums.length) return ''; // месяц словом или пусто — сравнить не с чем
-  if (nums.indexOf(p[0]) !== -1 && (nums.length < 2 || nums.indexOf(p[1]) !== -1)) return '';
+  if (!dateTextWrong_(shown, d)) return '';
   const msg = 'в ячейке ' + cell.getA1Notation() + ' таблица показывает «' + shown + '», а должно быть ' + want;
   console.log('ДАТА НЕ СОВПАЛА: ' + msg);
   return msg;
@@ -604,7 +643,15 @@ function fillRow_(sh, row, values, task) {
     const plain = values.slice();
     dates.forEach(x => { if (isDate_(x[1])) plain[x[0] - 1] = daySerial_(x[1]); });
     sh.getRange(row, 1, 1, NCOLS).setValues([plain]);
-    task.dateWarn = dates.map(x => (isDate_(x[1]) ? setDateCell_(sh.getRange(row, x[0]), x[1]) : '')).filter(Boolean).join('; ');
+    // что показывает таблица — одним запросом на обе даты; формат «не дата» или не тот день — тогда разбираемся по ячейке
+    const span = sh.getRange(row, COL.DATE, 1, COL.DUE - COL.DATE + 1);
+    const shown = span.getDisplayValues()[0], fmts = span.getNumberFormats()[0];
+    task.dateWarn = dates.map(x => {
+      if (!isDate_(x[1])) return '';
+      const k = x[0] - COL.DATE;
+      if (/[dmy]/i.test(String(fmts[k] || '')) && !dateTextWrong_(shown[k], x[1])) return '';
+      return setDateCell_(sh.getRange(row, x[0]), x[1]);
+    }).filter(Boolean).join('; ');
     if (task.bandUrls && task.bandUrls.length) sh.getRange(row, COL.BAND).setRichTextValue(linksRich_(task.bandUrls));
     if (task.estimateLink) {
       sh.getRange(row, COL.ESTIMATE).setRichTextValue(SpreadsheetApp.newRichTextValue().setText(task.estimateLink).setLinkUrl(task.estimateLink).build());
@@ -629,7 +676,7 @@ function addTask_(req) {
   requireTicket_(task.ticket);
   requireUrl_(task.estimateLink);
 
-  const t = table_();
+  const t = table_({ light: true });
   checkHeader_(t.sh);
   const id = nextId_(t.raw, task.contractor);
   const subject = buildSubject_(id, task, t.lists);
@@ -729,7 +776,18 @@ function keyOf_(raw) {
  * Где сейчас задача: строки могли сдвинуться, пока панель была открыта, — ищем по номеру, теме и отпечатку.
  * Подходит несколько строк, а номер строки уже не тот — не гадаем, а просим открыть задачу заново.
  */
-function locate_(t, row, id, origSubject, key) {
+/**
+ * Задача для правки или смены статуса. Сначала быстро: лист без объединений и строка под тем номером, что прислало
+ * расширение (так бывает почти всегда). Не она — читаем лист целиком и ищем по номеру, теме и отпечатку.
+ */
+function findTask_(row, id, origSubject, key) {
+  let t = table_({ light: true });
+  let i = locate_(t, row, id, origSubject, key, true);
+  if (i < 0) { t = table_(); i = locate_(t, row, id, origSubject, key); }
+  return { t: t, i: i };
+}
+
+function locate_(t, row, id, origSubject, key, directOnly) {
   id = str_(id);
   if (!id && origSubject == null) throw new Error('Не знаю, какую задачу искать — откройте её заново.');
   const hasSubject = origSubject != null;
@@ -743,6 +801,7 @@ function locate_(t, row, id, origSubject, key) {
     anchorsFor_(t, i0); // точные объединения этой строки: номер и тема могут быть в ячейке выше
     if (exact(i0)) return i0;
   }
+  if (directOnly) return -1;
   const found = [];
   t.rows.forEach((r, k) => { if (exact(k)) found.push(k); });
   if (found.length === 1) return found[0];
@@ -759,7 +818,7 @@ function locate_(t, row, id, origSubject, key) {
 function searchTasks_(q) {
   q = q.toLowerCase();
   if (!q) return [];
-  const t = table_();
+  const t = table_({ guess: true });
   const out = [];
   for (let i = t.rows.length - 1; i >= 0 && out.length < 30; i--) { // новые задачи — внизу листа
     const r = t.rows[i];
@@ -795,9 +854,10 @@ function taskOf_(t, i) {
 }
 
 function getTask_(req) {
-  const t = table_();
   const id = str_(req.id);
-  const i = id || req.origSubject != null ? locate_(t, req.row, id, req.origSubject, req.key) : Number(req.row) - 2;
+  if (id || req.origSubject != null) { const f = findTask_(req.row, id, req.origSubject, req.key); return { ok: true, task: taskOf_(f.t, f.i) }; }
+  const t = table_({ light: true });
+  const i = Number(req.row) - 2;
   if (!(i >= 0 && i < t.rows.length)) throw new Error('Нет такой строки — найдите задачу заново.');
   return { ok: true, task: taskOf_(t, i) };
 }
@@ -813,7 +873,7 @@ function myFilter_(filter, status) {
 function myTasks_(manager, filter) {
   filter = ['open', 'done', 'cancelled', 'all'].indexOf(filter) !== -1 ? filter : 'open';
   manager = manager === '*' ? '' : str_(manager);
-  const t = table_();
+  const t = table_({ guess: true });
   const l = t.lists;
   if (!manager) return { manager: '', filter: filter, tasks: [], overdue: 0, counts: {}, statuses: [], managers: l.managers };
   const today = today_().getTime();
@@ -849,7 +909,7 @@ function myTasks_(manager, filter) {
 
 /** Похожие задачи среди последних: та же ссылка на Band или та же тема с тем же тикетом. */
 function findDuplicates_(task) {
-  const t = table_();
+  const t = table_({ guess: true });
   const subject = shortSubject_(task.subject).toLowerCase();
   const ticket = normTicket_(task.ticket);
   const link = str_(task.link);
@@ -869,9 +929,8 @@ function findDuplicates_(task) {
 
 /** Одна ячейка задачи (статус, статус отдачи). */
 function setCell_(req, col, value) {
-  const t = table_();
+  const f = findTask_(req.row, req.id, req.origSubject, req.key), t = f.t, i = f.i;
   checkHeader_(t.sh);
-  const i = locate_(t, req.row, req.id, req.origSubject, req.key);
   anchorsFor_(t, i);
   t.sh.getRange(targetRow_(t, i, col), col).setValue(str_(value));
   return { ok: true, row: i + 2 };
@@ -883,10 +942,9 @@ function setCell_(req, col, value) {
  */
 function saveTask_(req) {
   const task = cleanTask_(req.task);
-  const t = table_();
+  const f = findTask_(req.task.row, req.task.id, req.task.origSubject, req.task.key), t = f.t, i = f.i;
   checkHeader_(t.sh);
   const sh = t.sh;
-  const i = locate_(t, req.task.row, req.task.id, req.task.origSubject, req.task.key);
   anchorsFor_(t, i);
   const old = t.rows[i];
   const date = parseIsoDate_(task.date), due = parseIsoDate_(task.exactDeadline);
@@ -1002,7 +1060,7 @@ function findOrder_(t, task) {
 }
 
 function smetaLookup_(req) {
-  const t = table_();
+  const t = table_({ guess: true });
   const f = findOrder_(t, req.task);
   if (!f) return { ok: true, found: false };
   anchorsFor_(t, f.i);
@@ -1020,7 +1078,7 @@ function smetaWrite_(req) {
   if (!(total > 0)) return { ok: false, error: 'Сумма должна быть больше нуля' };
   if (!/^https?:\/\//i.test(link)) return { ok: false, error: 'Ссылка должна начинаться с http' };
 
-  const t = table_();
+  const t = table_({ guess: true });
   checkHeader_(t.sh);
   const f = findOrder_(t, req.task);
   if (!f) return { ok: false, error: 'Задача ' + req.task + ' не найдена в листе «' + SHEET_NAME + '»' };

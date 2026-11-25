@@ -54,6 +54,7 @@ class Sheet {
     this.maxRows = Math.max(fx.maxRows || 0, this.cells.length);
     this.maxCols = fx.maxCols || 30;
     this.ops = [];                 // что меняли: для проверки «тронули только нужное»
+    this.calls = 0;                // сколько раз обратились к листу (каждое обращение в настоящей таблице стоит времени)
   }
   cell(r, c) {
     while (this.cells.length < r) this.cells.push([]);
@@ -67,12 +68,14 @@ class Sheet {
   getMaxRows() { return this.maxRows; }
   getMaxColumns() { return this.maxCols; }
   getLastRow() {
+    this.calls++;
     for (let r = this.cells.length; r >= 1; r--) if (this.cells[r - 1].some(c => c && c.v !== '' && c.v != null)) return r;
     return 0;
   }
-  getRange(r, c, nr, nc) { return new Range(this, r, c, nr || 1, nc || 1); }
+  getRange(r, c, nr, nc) { this.calls++; return new Range(this, r, c, nr || 1, nc || 1); }
   mergeAt(r, c) { return this.merges.find(m => r >= m[0] && r < m[0] + m[2] && c >= m[1] && c < m[1] + m[3]) || null; }
   insertRowAfter(r) {
+    this.calls++;
     if (r < 1 || r > this.maxRows) throw new Error('insertRowAfter: нет строки ' + r);
     while (this.cells.length < r) this.cells.push([]);
     this.cells.splice(r, 0, []); this.maxRows++;
@@ -100,7 +103,7 @@ class Range {
     Object.assign(this, { sh, r, c, nr, nc });
   }
   each(fn) { for (let i = 0; i < this.nr; i++) for (let j = 0; j < this.nc; j++) fn(this.r + i, this.c + j, i, j); }
-  getRow() { return this.r; } getColumn() { return this.c; } getNumRows() { return this.nr; } getNumColumns() { return this.nc; }
+  getRow() { this.sh.calls++; return this.r; } getColumn() { this.sh.calls++; return this.c; } getNumRows() { this.sh.calls++; return this.nr; } getNumColumns() { this.sh.calls++; return this.nc; }
   getValues() {
     const out = [];
     for (let i = 0; i < this.nr; i++) { const row = []; for (let j = 0; j < this.nc; j++) row.push(this.sh.peek(this.r + i, this.c + j).v); out.push(row); }
@@ -152,7 +155,11 @@ class Range {
     return x.getUTCDate() + '.' + (x.getUTCMonth() + 1);
   }
   getDisplayValues() { const out = []; for (let i = 0; i < this.nr; i++) out.push([new Range(this.sh, this.r + i, this.c, 1, 1).getDisplayValue()]); return out; }
-  getA1Notation() { return String.fromCharCode(64 + this.c) + this.r; }
+  getA1Notation() {
+    this.sh.calls++;
+    const a = String.fromCharCode(64 + this.c) + this.r;
+    return this.nr === 1 && this.nc === 1 ? a : a + ':' + String.fromCharCode(64 + this.c + this.nc - 1) + (this.r + this.nr - 1);
+  }
   setNumberFormat(f) { this.each((r, c) => { this.sh.cell(r, c).num = f; }); return this; }
   setNote(n) { this.sh.cell(this.r, this.c).note = String(n); this.sh.ops.push(['note', this.r, this.c]); return this; }
   getNote() { return this.sh.peek(this.r, this.c).note || ''; }
