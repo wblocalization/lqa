@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<?!= include('Общее') ?>
+</head>
+<body class="has-foot">
+  <div class="stack">
+    <label class="field">Найти<input type="text" id="q" placeholder="Номер, тема, тикет или ник"></label>
+    <div class="small muted" id="qHint">Ваши задачи:</div>
+    <div class="results" id="results"></div>
+
+    <div id="editor" class="stack" hidden>
+      <div class="card">
+        <div class="t" id="cardTitle"></div><div class="small muted" id="cardMeta"></div>
+        <button class="btn small" id="copySubject" type="button" style="margin-top:6px">Скопировать тему</button>
+      </div>
+
+      <div class="field">Статус<div class="seg" id="statusSeg"></div></div>
+      <div class="two">
+        <label class="field">Срок сдачи<input type="date" id="f_exactDeadline"></label>
+        <label class="field">SP<input type="number" id="f_sp" step="1" min="0"></label>
+      </div>
+      <div class="field">Языки<div id="f_langs"></div></div>
+
+      <details class="more">
+        <summary>Задача: тема, ссылки, тикет, дата получения, продукт, ник</summary>
+        <div class="stack">
+          <label class="field">Тема письма<input type="text" id="f_subject"></label>
+          <label class="field">Ссылка на Band<input type="url" id="f_link"></label>
+          <div class="field">Ещё ссылки на Band<div id="f_link2"></div></div>
+          <div class="two">
+            <label class="field">Тикет в трекере<input type="text" id="f_ticket" placeholder="LOCAL-1234"></label>
+            <label class="field">Дата получения<input type="date" id="f_date"></label>
+          </div>
+          <label class="field">Продукт<select id="f_product"></select></label>
+          <label class="field">Ник заказчика<input type="text" id="f_customer"></label>
+          <label class="field">Дедлайн<select id="f_deadline"></select></label>
+        </div>
+      </details>
+      <details class="more">
+        <summary>Смета и деньги</summary>
+        <div class="stack">
+          <label class="field">Смета (ссылка)<input type="url" id="f_estimateLink"></label>
+          <div class="two">
+            <label class="field">Итого с НДС, ₽<input type="number" id="f_total" step="any" min="0"></label>
+            <label class="field">Статус отдачи<select id="f_deliveryStatus"></select></label>
+          </div>
+        </div>
+      </details>
+      <details class="more">
+        <summary>Подрядчик, менеджер, комментарий</summary>
+        <div class="stack">
+          <div class="two">
+            <label class="field">Подрядчик<select id="f_contractor"></select></label>
+            <label class="field">Менеджер<select id="f_manager"></select></label>
+          </div>
+          <label class="field">Комментарий<textarea id="f_comment"></textarea></label>
+          <label class="field">Жалобы на заказчика<textarea id="f_complaints"></textarea></label>
+        </div>
+      </details>
+    </div>
+    <div id="msg" class="msg"></div>
+  </div>
+
+  <div class="foot col" id="foot" hidden>
+    <button class="btn primary full" id="saveBtn" type="button">Сохранить</button>
+    <button class="link-danger" id="deleteBtn" type="button">Удалить задачу</button>
+  </div>
+
+<script>
+  const STATUS_COLORS = { 'Принято': '#EDEDED', 'В работе': '#D6E4F0', 'Отдано': '#D9EAD3', 'Отменено': '#F4CCCC', 'Холд': '#FFF2CC' };
+  let LISTS = null, current = null, status = '';
+
+  run('getAddTaskFormLists').then(d => {
+    LISTS = d;
+    fillSelect($('#f_product'), d.products, '—');
+    fillSelect($('#f_deadline'), d.deadlines, '—');
+    fillSelect($('#f_deliveryStatus'), d.deliveryStatuses, '—');
+    fillSelect($('#f_contractor'), d.contractors, '—');
+    fillSelect($('#f_manager'), d.managers, '—');
+    search('');
+  }).catch(e => setMsg($('#msg'), 'Не получилось загрузить списки: ' + e.message, 'err'));
+
+  // ---------- поиск ----------
+  let timer = null, seq = 0;
+  $('#q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => search($('#q').value), 350); });
+
+  function search(q) {
+    const my = ++seq;
+    $('#qHint').textContent = q.trim() ? 'Найдено:' : 'Ваши задачи (или последние, если вашей почты нет в «Списках»):';
+    run('searchTasks', q).then(list => {
+      if (my !== seq) return;
+      $('#results').innerHTML = list.length ? list.map(r =>
+        `<button type="button" data-row="${r.row}"${current && current.row === r.row ? ' class="on"' : ''}>` +
+        `<b>${esc(r.id || '—')}</b>${esc(r.title)} <span class="d">· ${esc(r.date)}${r.status ? ' · ' + esc(r.status) : ''}</span></button>`
+      ).join('') : '<div class="small muted" style="padding:8px 10px">Ничего не найдено</div>';
+    }).catch(e => setMsg($('#msg'), 'Поиск не сработал: ' + e.message, 'err'));
+  }
+
+  $('#results').addEventListener('click', e => {
+    const b = e.target.closest('button[data-row]');
+    if (!b) return;
+    $$('#results button').forEach(x => x.classList.toggle('on', x === b));
+    open(Number(b.dataset.row));
+  });
+
+  // ---------- карточка ----------
+  function open(row) {
+    setMsg($('#msg'), 'Открываю…');
+    run('getTaskForEdit', row).then(fill).catch(e => setMsg($('#msg'), 'Не открылась: ' + e.message, 'err'));
+  }
+
+  function renderStatus() {
+    $('#statusSeg').innerHTML = LISTS.statuses.map(s =>
+      `<button type="button" data-s="${esc(s)}" class="${s === status ? 'on' : ''}" style="${s === status ? 'background:' + (STATUS_COLORS[s] || '#EEF3FE') : ''}">${esc(s)}</button>`).join('');
+  }
+  $('#statusSeg').addEventListener('click', e => {
+    const b = e.target.closest('button[data-s]');
+    if (!b) return;
+    status = status === b.dataset.s ? '' : b.dataset.s;
+    renderStatus();
+  });
+
+  function fill(t) {
+    current = t;
+    status = t.status;
+    $('#cardTitle').textContent = (t.id || 'без номера') + (t.ticket ? ' · ' + t.ticket : '');
+    $('#cardMeta').textContent = [t.contractor, t.manager, t.product].filter(Boolean).join(' · ');
+    renderStatus();
+    const set = (id, v) => { $('#f_' + id).value = v == null ? '' : v; };
+    ['exactDeadline', 'sp', 'subject', 'link', 'link2', 'ticket', 'date', 'product', 'customer', 'deadline',
+     'estimateLink', 'total', 'deliveryStatus', 'contractor', 'manager', 'comment', 'complaints'].forEach(k => set(k, t[k]));
+
+    const langs = t.languages.split(',').map(s => s.trim()).filter(Boolean);
+    const known = [].concat(LISTS.languages.regular, LISTS.languages.shtat, LISTS.languages.rare);
+    renderChips($('#f_langs'), [
+      { title: '', items: LISTS.languages.regular },
+      { title: 'ШТАТ', items: LISTS.languages.shtat },
+      { title: 'Редкие', items: LISTS.languages.rare },
+      { title: 'Другие', items: langs.filter(l => !known.includes(l)) }
+    ], langs, v => v.replace(/^ШТАТ\s+/i, ''));
+
+    $('#editor').hidden = false;
+    $('#foot').hidden = false;
+    setMsg($('#msg'), '');
+  }
+
+  makeLinkList($('#f_link2'));
+
+  $('#copySubject').addEventListener('click', () => {
+    if (!current) return;
+    copyText(current.subject).then(() => {
+      $('#copySubject').textContent = 'Скопировано ✓';
+      setTimeout(() => { $('#copySubject').textContent = 'Скопировать тему'; }, 1500);
+    });
+  });
+
+  // ---------- сохранить / удалить ----------
+  $('#saveBtn').addEventListener('click', () => {
+    if (!current) return;
+    const get = id => $('#f_' + id).value;
+    const task = {
+      row: current.row, id: current.id, origSubject: current.origSubject, status: status,
+      languages: chipValues($('#f_langs')).join(', ')
+    };
+    ['exactDeadline', 'sp', 'subject', 'link', 'link2', 'ticket', 'date', 'product', 'customer', 'deadline',
+     'estimateLink', 'total', 'deliveryStatus', 'contractor', 'manager', 'comment', 'complaints'].forEach(k => { task[k] = get(k); });
+    const btn = $('#saveBtn');
+    btn.disabled = true;
+    setMsg($('#msg'), 'Сохраняю…');
+    run('saveTaskEdits', task).then(r => {
+      setMsg($('#msg'), 'Сохранено ✓', 'ok');
+      return run('getTaskForEdit', r.row).then(fill).then(() => setMsg($('#msg'), 'Сохранено ✓', 'ok'));
+    }).catch(e => setMsg($('#msg'), 'Не сохранилось: ' + e.message, 'err'))
+      .finally(() => { btn.disabled = false; });
+  });
+
+  $('#deleteBtn').addEventListener('click', () => {
+    if (!current) return;
+    if (!confirm('Удалить задачу ' + (current.id || '') + '? Отменить будет нельзя.')) return;
+    run('deleteTask', current.row, current.id, current.origSubject).then(() => {
+      current = null;
+      $('#editor').hidden = true; $('#foot').hidden = true;
+      setMsg($('#msg'), 'Удалено.', 'ok');
+      search($('#q').value);
+    }).catch(e => setMsg($('#msg'), 'Не удалилось: ' + e.message, 'err'));
+  });
+  autoDeadline($('#f_deadline'), $('#f_exactDeadline'), $('#f_date'));
+</script>
+</body>
+</html>
