@@ -41,6 +41,24 @@ export function showOverdue(n) {
   chrome.action.setBadgeBackgroundColor({ color: '#C0262D' });
 }
 
+// Только что отданные задачи: карточка остаётся в «Открытых», пока не выбран статус отдачи («в срок», «сообщили
+// о просрочке»…), — даже если список за это время обновился из таблицы. Выбрали — задача уходит в «Отданные».
+const awaiting = new Map();
+const pinKey = (t) => `${t.id || ''}|${t.subject || ''}|${t.key || ''}`;
+function withAwaiting(d) {
+  if (!d || !d.tasks || filter !== 'open' || !awaiting.size) return d;
+  const tasks = d.tasks.slice();
+  const extra = [];
+  awaiting.forEach((p, k) => {
+    if (p.manager !== d.manager) return;
+    const i = tasks.findIndex((t) => pinKey(t) === k);
+    // ответ таблицы мог уйти раньше, чем записался статус, — тогда задача в нём ещё «открытая»
+    if (i !== -1) tasks[i] = p.task = { ...tasks[i], status: 'Отдано', overdue: false, dueToday: false, delivery: p.task.delivery || tasks[i].delivery };
+    else extra.push(p.task);
+  });
+  return { ...d, tasks: extra.concat(tasks) };
+}
+
 export async function loadMine({ keepMsg = false } = {}) {
   if (!isConfigured()) {
     els.summary.textContent = 'Заполните настройки (⚙️), чтобы видеть свои задачи.';
@@ -53,7 +71,7 @@ export async function loadMine({ keepMsg = false } = {}) {
   let cached = null;
   try { cached = (await chrome.storage.local.get(key))[key]; } catch { /* нет — просто ждём таблицу */ }
   if (cached && seq === loadSeq) {
-    data = notDeleted(cached);
+    data = withAwaiting(notDeleted(cached));
     render();
     els.summary.textContent += ' · обновляю…';
   } else {
@@ -64,7 +82,7 @@ export async function loadMine({ keepMsg = false } = {}) {
     const r = await api({ action: 'myTasks', manager, filter });
     if (!r.ok) throw new Error(r.error);
     if (seq !== loadSeq) return; // пока грузили, переключили фильтр или менеджера
-    data = notDeleted(r);
+    data = withAwaiting(notDeleted(r));
     render();
   } catch (e) {
     if (seq !== loadSeq) return;
@@ -132,11 +150,13 @@ function render() {
 const DELIVERY_FALLBACK = ['Отдано в срок', 'Сообщили о просрочке', 'Не сообщили о просрочке'];
 function deliveryRow(t, i) {
   const list = (data.deliveryStatuses && data.deliveryStatuses.length) ? data.deliveryStatuses : DELIVERY_FALLBACK;
-  return `<label class="delivery-row"><span>Статус отдачи</span>
+  const waits = filter === 'open' && awaiting.has(pinKey(t)); // ждёт статуса отдачи — потом уйдёт в «Отданные»
+  return `<label class="delivery-row${waits ? ' waits' : ''}"><span>Статус отдачи</span>
     <select data-d="${i}" class="delivery-sel" data-delivery="${esc(t.delivery || '')}" aria-label="Статус отдачи">
       <option value="">— выберите —</option>
       ${list.map((s) => `<option value="${esc(s)}"${s === t.delivery ? ' selected' : ''}>${esc(s)}</option>`).join('')}
-    </select></label>`;
+    </select></label>` +
+    (waits ? `<div class="delivery-wait">Выберите статус отдачи — и задача уйдёт в «Отданные». <button type="button" class="link-btn" data-later="${i}">Позже</button></div>` : '');
 }
 
 // ---------- Правка ----------
@@ -319,12 +339,33 @@ els.list.addEventListener('change', async (e) => {
     if (!r.ok) throw new Error(/Неизвестное действие/.test(r.error || '') ? 'веб-приложение ещё старое: нужна новая версия развёртывания' : r.error);
     saveCache();
     setMsg(`${t.id || 'Задача'}: статус отдачи «${sel.value || '—'}» ✓`, 'ok');
+    if (sel.value && awaiting.delete(pinKey(t)) && filter === 'open') {
+      toast(`${t.id || 'Задача'}: отдано · ${sel.value.toLowerCase()} — в «Отданных»`);
+      setTimeout(() => dropCard(t), 700); // секунду видно, что выбрано, — и карточка уходит
+    }
   } catch (err) {
     t.delivery = prev;
     sel.value = prev;
     sel.dataset.delivery = prev;
     setMsg(`${t.id || 'Задача'}: не сохранилось — ${err.message}`, 'err');
   }
+});
+
+/** Убрать карточку из списка на экране (в таблице задача уже «Отдано»). */
+function dropCard(t) {
+  if (!data || !data.tasks) return;
+  const i = data.tasks.indexOf(t);
+  if (i === -1) return;
+  data.tasks.splice(i, 1);
+  render();
+}
+// «Позже» — статус отдачи проставят потом (в «Отданных» или в таблице): карточку убираем сейчас
+els.list.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-later]');
+  if (!b) return;
+  const t = data.tasks[Number(b.dataset.later)];
+  awaiting.delete(pinKey(t));
+  dropCard(t);
 });
 
 els.list.addEventListener('change', async (e) => {
@@ -341,6 +382,8 @@ els.list.addEventListener('change', async (e) => {
   recount(prev, status);
   if (CLOSED.includes(status) && t.overdue) { t.overdue = false; data.overdue--; }
   if (gone) data.tasks.splice(i, 1);
+  if (status === 'Отдано' && filter === 'open') awaiting.set(pinKey(t), { task: t, manager: data.manager });
+  else awaiting.delete(pinKey(t));
   render();
   setMsg(`${t.id || 'Задача'}: «${status || 'пусто'}» — сохраняю…`);
   try {
@@ -349,6 +392,7 @@ els.list.addEventListener('change', async (e) => {
     setMsg(`${t.id || 'Задача'}: статус «${status || 'пусто'}» ✓`, 'ok');
   } catch (err) {
     recount(status, prev);
+    awaiting.delete(pinKey(t));
     t.status = prev;
     if (wasLate && !t.overdue) { t.overdue = true; data.overdue++; }
     if (gone) data.tasks.splice(Math.min(i, data.tasks.length), 0, t);

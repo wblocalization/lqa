@@ -853,3 +853,8 @@ dialog.whatsnew li + li { margin-top: 4px; }
 
 .table-item { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); background: var(--accent-soft); }
 .table-item .btn { text-decoration: none; white-space: nowrap; }
+
+/* «Отдано», но статус отдачи ещё не выбран: карточка ждёт в «Открытых» */
+.delivery-row.waits .delivery-sel { border-color: var(--accent, #7c5cff); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #7c5cff) 18%, transparent); }
+.delivery-wait { font-size: 12px; color: var(--ink-soft); margin-top: 4px; font-weight: 400; }
+.delivery-wait .link-btn { font-size: 12px; }
